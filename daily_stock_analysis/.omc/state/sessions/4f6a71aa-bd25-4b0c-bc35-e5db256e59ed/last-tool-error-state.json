@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"grep \\\"title\\\" \\\"F:/daily_stock_analysis/update_version/frontend/index.html\\\" | head -3 && echo \\\"\\\" && echo \\\"=== src/App.vue 仍含\\\\\\\"三榜\\\\\\\"? ===\\\" && grep -c \\\"三榜\\\" \\\"F:/daily_stock_analys...",
+  "error": "Exit code 1\n    <title>三榜交集分析 · DSA</title>\n\n=== src/App.vue 仍含\"三榜\"? ===\n0",
+  "timestamp": "2026-07-06T08:26:57.707Z",
+  "retry_count": 1
+}

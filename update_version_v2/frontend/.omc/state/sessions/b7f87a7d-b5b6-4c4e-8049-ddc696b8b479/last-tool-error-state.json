@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd \\\"F:/daily_stock_analysis_v2/update_version_v2/backend\\\" && python -X utf8 -c \\\"\\nimport urllib.request, json\\ndef req(method, url, payload=None):\\n    data = json.dumps(payload).encode...",
+  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<string>\", line 18, in <module>\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\json\\__init__.py\", line 346, in loads\r\n    return _default_decoder.decode(s)\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\json\\decoder.py\", line 338, in decode\r\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\r\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_an...",
+  "timestamp": "2026-08-11T16:55:21.933Z",
+  "retry_count": 1
+}

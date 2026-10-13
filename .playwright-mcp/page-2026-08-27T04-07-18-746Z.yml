@@ -1,0 +1,55 @@
+- generic [ref=f4e1]:
+  - generic [ref=f4e5]:
+    - banner [ref=f4e6]:
+      - generic [ref=f4e7]:
+        - heading "📈 四榜交集分析" [level=1] [ref=f4e8]
+        - button "切换到暗色模式" [ref=f4e9] [cursor=pointer]:
+          - generic [ref=f4e10]: 🌙
+      - paragraph [ref=f4e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+      - generic [ref=f4e12]:
+        - generic [ref=f4e13]:
+          - generic [ref=f4e14]: 📅
+          - text: 2026 年 8 月 27 日 · 周四
+        - generic [ref=f4e16]:
+          - generic [ref=f4e17]: 🕐
+          - text: 12:07:17
+    - generic [ref=f4e20]:
+      - generic [ref=f4e21]: 📊 分析
+      - generic [ref=f4e24]: 🔍 单股
+      - generic [ref=f4e27]: 📐 技术
+      - generic [ref=f4e30]: 🗞 大盘复盘
+      - generic [ref=f4e33]: 📈 可视化
+      - generic [ref=f4e36]: 📚 历史
+      - generic [ref=f4e39]: 🔄 对比
+      - generic [ref=f4e42]: ⭐ 自选
+      - generic [ref=f4e45]: 📋 模板
+      - generic [ref=f4e48]: ⏰ 定时
+    - generic [ref=f4e1054]:
+      - generic [ref=f4e1055]:
+        - button "返回分析主页" [ref=f4e1056] [cursor=pointer]:
+          - generic [ref=f4e1057]: ← 返回
+        - generic [ref=f4e1058]: 🔄 对比分析
+      - text: 第一次分析：
+      - generic "选择第一次分析记录" [ref=f4e1059]:
+        - generic [active] [ref=f4e1061] [cursor=pointer]:
+          - generic: 选择分析记录
+          - img "loading" [ref=f4e1062]
+      - text: 第二次分析：
+      - generic "选择第二次分析记录" [ref=f4e1069]:
+        - generic [ref=f4e1071] [cursor=pointer]:
+          - generic: 选择分析记录
+          - img "loading" [ref=f4e1072]
+      - button "开始对比两次分析记录" [disabled] [ref=f4e1079]:
+        - generic [ref=f4e1080]: 🔄 开始对比
+      - status
+  - generic [ref=f4e1084]:
+    - generic [ref=f4e1085] [cursor=pointer]: "#406 2026-08-27T10:49 | 通过1只"
+    - generic [ref=f4e1087] [cursor=pointer]: "#401 2026-07-30T10:00 | 通过3只"
+    - generic [ref=f4e1089] [cursor=pointer]: "#400 2026-08-26T17:22 | 通过2只"
+    - generic [ref=f4e1091] [cursor=pointer]: "#399 2026-08-26T15:43 | 通过3只"
+    - generic [ref=f4e1093] [cursor=pointer]: "#398 2026-08-26T14:34 | 通过2只"
+    - generic [ref=f4e1095] [cursor=pointer]: "#397 2026-08-26T12:42 | 通过1只"
+    - generic [ref=f4e1097] [cursor=pointer]: "#392 2026-07-30T10:00 | 通过3只"
+    - generic [ref=f4e1099] [cursor=pointer]: "#383 2026-07-30T10:00 | 通过3只"
+    - generic [ref=f4e1101] [cursor=pointer]: "#378 2026-07-30T10:00 | 通过3只"
+    - generic [ref=f4e1103] [cursor=pointer]: "#373 2026-07-30T10:00 | 通过3只"

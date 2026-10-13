@@ -1,0 +1,256 @@
+- generic [ref=f13e5]:
+  - banner [ref=f13e6]:
+    - generic [ref=f13e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=f13e8]
+      - button "切换到暗色模式" [ref=f13e9] [cursor=pointer]:
+        - generic [ref=f13e10]: 🌙
+    - paragraph [ref=f13e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=f13e12]:
+      - generic [ref=f13e13]:
+        - generic [ref=f13e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=f13e16]:
+        - generic [ref=f13e17]: 🕐
+        - text: 18:28:08
+  - generic [ref=f13e20]:
+    - generic [ref=f13e21]: 📊 分析
+    - generic [ref=f13e24]: 🔍 单股
+    - generic [ref=f13e27]: 📐 技术
+    - generic [ref=f13e30]: 🗞 大盘复盘
+    - generic [ref=f13e33]: 📈 可视化
+    - generic [ref=f13e36]: 📚 历史
+    - generic [ref=f13e39]: 🔄 对比
+    - generic [ref=f13e42]: ⭐ 自选
+    - generic [ref=f13e45]: 📋 模板
+    - generic [ref=f13e48]: ⏰ 定时
+  - generic [ref=f13e52]:
+    - generic [ref=f13e53]:
+      - generic [ref=f13e54]:
+        - generic [ref=f13e55]:
+          - generic [ref=f13e56]: ⏱
+          - generic [ref=f13e57]: 最长任务时间
+        - generic "最长任务时间" [ref=f13e58]:
+          - generic [ref=f13e59] [cursor=pointer]:
+            - generic [ref=f13e60]:
+              - radio "60分钟"
+            - generic [ref=f13e62]: 60分钟
+          - generic [ref=f13e63] [cursor=pointer]:
+            - generic [ref=f13e64]:
+              - radio "120分钟"
+            - generic [ref=f13e66]: 120分钟
+          - generic [ref=f13e67] [cursor=pointer]:
+            - generic [ref=f13e68]:
+              - radio "180分钟" [checked]
+            - generic [ref=f13e70]: 180分钟
+          - generic [ref=f13e71] [cursor=pointer]:
+            - generic [ref=f13e72]:
+              - radio "240分钟"
+            - generic [ref=f13e74]: 240分钟
+          - generic [ref=f13e75] [cursor=pointer]:
+            - generic [ref=f13e76]:
+              - radio "300分钟"
+            - generic [ref=f13e78]: 300分钟
+          - generic [ref=f13e79] [cursor=pointer]:
+            - generic [ref=f13e80]:
+              - radio "600分钟"
+            - generic [ref=f13e82]: 600分钟
+          - generic [ref=f13e83] [cursor=pointer]:
+            - generic [ref=f13e84]:
+              - radio "1200分钟"
+            - generic [ref=f13e86]: 1200分钟
+          - generic [ref=f13e87] [cursor=pointer]:
+            - generic [ref=f13e88]:
+              - radio "1800分钟"
+            - generic [ref=f13e90]: 1800分钟
+        - generic [ref=f13e91]: LLM 单次 ~30-60s
+      - generic [ref=f13e92]:
+        - generic [ref=f13e93]:
+          - generic [ref=f13e94]: 📊
+          - generic [ref=f13e95]: 分析数量
+        - generic "分析数量" [ref=f13e96]:
+          - generic [ref=f13e97] [cursor=pointer]:
+            - generic [ref=f13e98]:
+              - radio "1只" [checked]
+            - generic [ref=f13e100]: 1只
+          - generic [ref=f13e101] [cursor=pointer]:
+            - generic [ref=f13e102]:
+              - radio "5只"
+            - generic [ref=f13e104]: 5只
+          - generic [ref=f13e105] [cursor=pointer]:
+            - generic [ref=f13e106]:
+              - radio "10只"
+            - generic [ref=f13e108]: 10只
+          - generic [ref=f13e109] [cursor=pointer]:
+            - generic [ref=f13e110]:
+              - radio "30只"
+            - generic [ref=f13e112]: 30只
+          - generic [ref=f13e113] [cursor=pointer]:
+            - generic [ref=f13e114]:
+              - radio "50只"
+            - generic [ref=f13e116]: 50只
+          - generic [ref=f13e117] [cursor=pointer]:
+            - generic [ref=f13e118]:
+              - radio "100只"
+            - generic [ref=f13e120]: 100只
+          - generic [ref=f13e121] [cursor=pointer]:
+            - generic [ref=f13e122]:
+              - radio "200只"
+            - generic [ref=f13e124]: 200只
+          - generic [ref=f13e125] [cursor=pointer]:
+            - generic [ref=f13e126]:
+              - radio "300只"
+            - generic [ref=f13e128]: 300只
+        - generic [ref=f13e129]: 10只 ≈ 5min / 100只 ≈ 1.5h / 300只 ≈ 5h
+      - generic [ref=f13e130]:
+        - generic [ref=f13e131]:
+          - generic [ref=f13e132]: 🔁
+          - generic [ref=f13e133]: 轮数 / 间隔
+        - generic "分析轮数" [ref=f13e134]:
+          - generic [ref=f13e135] [cursor=pointer]:
+            - generic [ref=f13e136]:
+              - radio "1轮" [checked]
+            - generic [ref=f13e138]: 1轮
+          - generic [ref=f13e139] [cursor=pointer]:
+            - generic [ref=f13e140]:
+              - radio "2轮"
+            - generic [ref=f13e142]: 2轮
+          - generic [ref=f13e143] [cursor=pointer]:
+            - generic [ref=f13e144]:
+              - radio "3轮"
+            - generic [ref=f13e146]: 3轮
+          - generic [ref=f13e147] [cursor=pointer]:
+            - generic [ref=f13e148]:
+              - radio "4轮"
+            - generic [ref=f13e150]: 4轮
+          - generic [ref=f13e151] [cursor=pointer]:
+            - generic [ref=f13e152]:
+              - radio "5轮"
+            - generic [ref=f13e154]: 5轮
+        - generic "轮间间隔秒数" [ref=f13e155]:
+          - generic [ref=f13e156] [cursor=pointer]:
+            - generic [ref=f13e157]:
+              - radio "0s"
+            - generic [ref=f13e159]: 0s
+          - generic [ref=f13e160] [cursor=pointer]:
+            - generic [ref=f13e161]:
+              - radio "0.3s"
+            - generic [ref=f13e163]: 0.3s
+          - generic [ref=f13e164] [cursor=pointer]:
+            - generic [ref=f13e165]:
+              - radio "0.6s" [checked]
+            - generic [ref=f13e167]: 0.6s
+          - generic [ref=f13e168] [cursor=pointer]:
+            - generic [ref=f13e169]:
+              - radio "1s"
+            - generic [ref=f13e171]: 1s
+          - generic [ref=f13e172] [cursor=pointer]:
+            - generic [ref=f13e173]:
+              - radio "2s"
+            - generic [ref=f13e175]: 2s
+          - generic [ref=f13e176] [cursor=pointer]:
+            - generic [ref=f13e177]:
+              - radio "5s"
+            - generic [ref=f13e179]: 5s
+        - generic [ref=f13e180]: 每只股票的 LLM 轮询轮数 × 间隔
+      - generic [ref=f13e181]:
+        - generic [ref=f13e182]:
+          - generic [ref=f13e183]: ⏳
+          - generic [ref=f13e184]: LLM 单次超时
+        - generic "LLM 单次超时秒数" [ref=f13e185]:
+          - generic [ref=f13e186] [cursor=pointer]:
+            - generic [ref=f13e187]:
+              - radio "60s"
+            - generic [ref=f13e189]: 60s
+          - generic [ref=f13e190] [cursor=pointer]:
+            - generic [ref=f13e191]:
+              - radio "120s"
+            - generic [ref=f13e193]: 120s
+          - generic [ref=f13e194] [cursor=pointer]:
+            - generic [ref=f13e195]:
+              - radio "180s" [checked]
+            - generic [ref=f13e197]: 180s
+          - generic [ref=f13e198] [cursor=pointer]:
+            - generic [ref=f13e199]:
+              - radio "300s"
+            - generic [ref=f13e201]: 300s
+          - generic [ref=f13e202] [cursor=pointer]:
+            - generic [ref=f13e203]:
+              - radio "600s"
+            - generic [ref=f13e205]: 600s
+        - generic [ref=f13e206]: 每次 LLM 调用的最大等待时间
+      - generic [ref=f13e207]:
+        - generic [ref=f13e208]:
+          - generic [ref=f13e209]: ⚡
+          - generic [ref=f13e210]: 市场分析并发
+        - generic "市场分析并发数" [ref=f13e211]:
+          - generic [ref=f13e212] [cursor=pointer]:
+            - generic [ref=f13e213]:
+              - radio "1只（串行）"
+            - generic [ref=f13e215]: 1只（串行）
+          - generic [ref=f13e216] [cursor=pointer]:
+            - generic [ref=f13e217]:
+              - radio "2只并发" [checked]
+            - generic [ref=f13e219]: 2只并发
+          - generic [ref=f13e220] [cursor=pointer]:
+            - generic [ref=f13e221]:
+              - radio "3只并发"
+            - generic [ref=f13e223]: 3只并发
+          - generic [ref=f13e224] [cursor=pointer]:
+            - generic [ref=f13e225]:
+              - radio "4只并发"
+            - generic [ref=f13e227]: 4只并发
+          - generic [ref=f13e228] [cursor=pointer]:
+            - generic [ref=f13e229]:
+              - radio "5只并发"
+            - generic [ref=f13e231]: 5只并发
+        - generic [ref=f13e232]: 同时分析 2 只股票
+        - generic [ref=f13e234]: 并发越高越快，但可能触发 LLM 限流导致部分股票超时
+      - generic [ref=f13e243] [cursor=pointer]:
+        - generic [ref=f13e244]: 🔧
+        - generic [ref=f13e245]: 过滤规则
+        - generic [ref=f13e246]: 高级
+      - button "开始四榜交集分析" [ref=f13e248] [cursor=pointer]:
+        - generic [ref=f13e249]: 🚀
+        - generic [ref=f13e250]: 重新分析
+      - text: 上次分析结果（17:13）：本轮未发现符合条件的股票
+      - button "复制分析结果为纯文本" [ref=f13e251] [cursor=pointer]:
+        - generic [ref=f13e252]: 📋 复制
+      - button "导出为 TXT 文本" [ref=f13e253] [cursor=pointer]:
+        - generic [ref=f13e254]: 📥 TXT
+      - button "导出为 CSV 文件" [ref=f13e255] [cursor=pointer]:
+        - generic [ref=f13e256]: 📊 CSV
+      - button "生成并下载 PDF 分析报告" [ref=f13e257] [cursor=pointer]:
+        - generic [ref=f13e258]: 📄 PDF
+    - generic [ref=f13e260]:
+      - generic [ref=f13e261]:
+        - generic [ref=f13e262]: 📡
+        - generic [ref=f13e263]: 本次抓取
+      - generic [ref=f13e264]: ✓ 东方财富 (200)
+      - generic [ref=f13e266]: ✓ 雪球 (200)
+      - generic [ref=f13e268]: ⚠ 同花顺 (200)
+      - generic [ref=f13e270]: ✓ 全市场活跃 (200)
+    - generic [ref=f13e272]:
+      - generic [ref=f13e275]:
+        - generic [ref=f13e276]: 📡
+        - generic [ref=f13e277]:
+          - generic [ref=f13e278]: 榜单抓取
+          - text: 200 / 200 / 200 / 200
+      - generic [ref=f13e281]:
+        - generic [ref=f13e282]: 🎯
+        - generic [ref=f13e283]:
+          - generic [ref=f13e284]: 交集 / 剔688
+          - text: 283 / 231
+      - generic [ref=f13e287]:
+        - generic [ref=f13e288]: 📊
+        - generic [ref=f13e289]:
+          - generic [ref=f13e290]: 分析 / 通过
+          - text: 1 / 0
+      - generic [ref=f13e293]:
+        - generic [ref=f13e294]: ⏱
+        - generic [ref=f13e295]:
+          - generic [ref=f13e296]: 总耗时
+          - text: 382.79s
+    - generic [ref=f13e298]:
+      - generic [ref=f13e304]: 暂未发现符合条件的股票
+      - generic [ref=f13e305]: 建议调整：增大分析数量、关闭剔除科创板、提高轮间间隔
+    - generic [ref=f13e306]: 🚫 未通过过滤（1 只）

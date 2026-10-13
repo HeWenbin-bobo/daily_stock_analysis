@@ -1,0 +1,222 @@
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - generic [ref=e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=e8]
+      - button "切换到暗色模式" [ref=e9] [cursor=pointer]:
+        - generic [ref=e10]: 🌙
+    - paragraph [ref=e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=e16]:
+        - generic [ref=e17]: 🕐
+        - text: 10:50:48
+  - generic [ref=e20]:
+    - generic [ref=e21]: 📊 分析
+    - generic [ref=e24]: 🔍 单股
+    - generic [ref=e27]: 📐 技术
+    - generic [ref=e30]: 🗞 大盘复盘
+    - generic [ref=e33]: 📈 可视化
+    - generic [ref=e36]: 📚 历史
+    - generic [ref=e39]: 🔄 对比
+    - generic [ref=e42]: ⭐ 自选
+    - generic [ref=e45]: 📋 模板
+    - generic [ref=e48]: ⏰ 定时
+  - generic [ref=e53]:
+    - generic [ref=e54]:
+      - generic [ref=e55]:
+        - generic [ref=e56]: ⏱
+        - generic [ref=e57]: 最长任务时间
+      - generic "最长任务时间" [ref=e58]:
+        - generic [ref=e59]:
+          - generic [ref=e60]:
+            - radio "60分钟" [disabled]
+          - generic [ref=e62]: 60分钟
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - radio "120分钟" [disabled]
+          - generic [ref=e66]: 120分钟
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - radio "180分钟" [checked] [disabled]
+          - generic [ref=e70]: 180分钟
+        - generic [ref=e71]:
+          - generic [ref=e72]:
+            - radio "240分钟" [disabled]
+          - generic [ref=e74]: 240分钟
+        - generic [ref=e75]:
+          - generic [ref=e76]:
+            - radio "300分钟" [disabled]
+          - generic [ref=e78]: 300分钟
+        - generic [ref=e79]:
+          - generic [ref=e80]:
+            - radio "600分钟" [disabled]
+          - generic [ref=e82]: 600分钟
+        - generic [ref=e83]:
+          - generic [ref=e84]:
+            - radio "1200分钟" [disabled]
+          - generic [ref=e86]: 1200分钟
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - radio "1800分钟" [disabled]
+          - generic [ref=e90]: 1800分钟
+      - generic [ref=e91]: LLM 单次 ~30-60s
+    - generic [ref=e92]:
+      - generic [ref=e93]:
+        - generic [ref=e94]: 📊
+        - generic [ref=e95]: 分析数量
+      - generic "分析数量" [ref=e96]:
+        - generic [ref=e97]:
+          - generic [ref=e98]:
+            - radio "1只" [checked] [disabled]
+          - generic [ref=e100]: 1只
+        - generic [ref=e101]:
+          - generic [ref=e102]:
+            - radio "5只" [disabled]
+          - generic [ref=e104]: 5只
+        - generic [ref=e105]:
+          - generic [ref=e106]:
+            - radio "10只" [disabled]
+          - generic [ref=e108]: 10只
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - radio "30只" [disabled]
+          - generic [ref=e112]: 30只
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - radio "50只" [disabled]
+          - generic [ref=e116]: 50只
+        - generic [ref=e117]:
+          - generic [ref=e118]:
+            - radio "100只" [disabled]
+          - generic [ref=e120]: 100只
+        - generic [ref=e121]:
+          - generic [ref=e122]:
+            - radio "200只" [disabled]
+          - generic [ref=e124]: 200只
+        - generic [ref=e125]:
+          - generic [ref=e126]:
+            - radio "300只" [disabled]
+          - generic [ref=e128]: 300只
+      - generic [ref=e129]: 10只 ≈ 5min / 100只 ≈ 1.5h / 300只 ≈ 5h
+    - generic [ref=e130]:
+      - generic [ref=e131]:
+        - generic [ref=e132]: 🔁
+        - generic [ref=e133]: 轮数 / 间隔
+      - generic "分析轮数" [ref=e134]:
+        - generic [ref=e135]:
+          - generic [ref=e136]:
+            - radio "1轮" [checked] [disabled]
+          - generic [ref=e138]: 1轮
+        - generic [ref=e139]:
+          - generic [ref=e140]:
+            - radio "2轮" [disabled]
+          - generic [ref=e142]: 2轮
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - radio "3轮" [disabled]
+          - generic [ref=e146]: 3轮
+        - generic [ref=e147]:
+          - generic [ref=e148]:
+            - radio "4轮" [disabled]
+          - generic [ref=e150]: 4轮
+        - generic [ref=e151]:
+          - generic [ref=e152]:
+            - radio "5轮" [disabled]
+          - generic [ref=e154]: 5轮
+      - generic "轮间间隔秒数" [ref=e155]:
+        - generic [ref=e156]:
+          - generic [ref=e157]:
+            - radio "0s" [disabled]
+          - generic [ref=e159]: 0s
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - radio "0.3s" [disabled]
+          - generic [ref=e163]: 0.3s
+        - generic [ref=e164]:
+          - generic [ref=e165]:
+            - radio "0.6s" [checked] [disabled]
+          - generic [ref=e167]: 0.6s
+        - generic [ref=e168]:
+          - generic [ref=e169]:
+            - radio "1s" [disabled]
+          - generic [ref=e171]: 1s
+        - generic [ref=e172]:
+          - generic [ref=e173]:
+            - radio "2s" [disabled]
+          - generic [ref=e175]: 2s
+        - generic [ref=e176]:
+          - generic [ref=e177]:
+            - radio "5s" [disabled]
+          - generic [ref=e179]: 5s
+      - generic [ref=e180]: 每只股票的 LLM 轮询轮数 × 间隔
+    - generic [ref=e181]:
+      - generic [ref=e182]:
+        - generic [ref=e183]: ⏳
+        - generic [ref=e184]: LLM 单次超时
+      - generic "LLM 单次超时秒数" [ref=e185]:
+        - generic [ref=e186]:
+          - generic [ref=e187]:
+            - radio "60s" [disabled]
+          - generic [ref=e189]: 60s
+        - generic [ref=e190]:
+          - generic [ref=e191]:
+            - radio "120s" [disabled]
+          - generic [ref=e193]: 120s
+        - generic [ref=e194]:
+          - generic [ref=e195]:
+            - radio "180s" [checked] [disabled]
+          - generic [ref=e197]: 180s
+        - generic [ref=e198]:
+          - generic [ref=e199]:
+            - radio "300s" [disabled]
+          - generic [ref=e201]: 300s
+        - generic [ref=e202]:
+          - generic [ref=e203]:
+            - radio "600s" [disabled]
+          - generic [ref=e205]: 600s
+      - generic [ref=e206]: 每次 LLM 调用的最大等待时间
+    - generic [ref=e207]:
+      - generic [ref=e208]:
+        - generic [ref=e209]: ⚡
+        - generic [ref=e210]: 市场分析并发
+      - generic "市场分析并发数" [ref=e211]:
+        - generic [ref=e212]:
+          - generic [ref=e213]:
+            - radio "1只（串行）" [disabled]
+          - generic [ref=e215]: 1只（串行）
+        - generic [ref=e216]:
+          - generic [ref=e217]:
+            - radio "2只并发" [checked] [disabled]
+          - generic [ref=e219]: 2只并发
+        - generic [ref=e220]:
+          - generic [ref=e221]:
+            - radio "3只并发" [disabled]
+          - generic [ref=e223]: 3只并发
+        - generic [ref=e224]:
+          - generic [ref=e225]:
+            - radio "4只并发" [disabled]
+          - generic [ref=e227]: 4只并发
+        - generic [ref=e228]:
+          - generic [ref=e229]:
+            - radio "5只并发" [disabled]
+          - generic [ref=e231]: 5只并发
+      - generic [ref=e232]: 同时分析 2 只股票
+      - generic [ref=e234]: 并发越高越快，但可能触发 LLM 限流导致部分股票超时
+    - generic [ref=e243] [cursor=pointer]:
+      - generic [ref=e244]: 🔧
+      - generic [ref=e245]: 过滤规则
+      - generic [ref=e246]: 高级
+    - button "开始四榜交集分析" [disabled] [ref=e248]:
+      - img "loading" [ref=e291]
+      - generic [ref=e250]: 分析中…
+    - text: 正在分析 平安银行(000001)（0/1）
+    - status [ref=e297]:
+      - img "loading" [ref=e299]
+      - generic [ref=e305]: 已等待 90 秒 · 最多 180 分钟
+      - generic [ref=e306]:
+        - progressbar [ref=e307]
+        - generic [ref=e311]: "平安银行(000001)（0/1）· 通过: 0"
+      - button "取消分析" [ref=e312] [cursor=pointer]:
+        - generic [ref=e313]: ✕ 取消分析

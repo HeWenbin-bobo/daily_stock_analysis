@@ -1,0 +1,36 @@
+- generic [ref=f4e5]:
+  - banner [ref=f4e6]:
+    - generic [ref=f4e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=f4e8]
+      - button "切换到暗色模式" [ref=f4e9] [cursor=pointer]:
+        - generic [ref=f4e10]: 🌙
+    - paragraph [ref=f4e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=f4e12]:
+      - generic [ref=f4e13]:
+        - generic [ref=f4e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=f4e16]:
+        - generic [ref=f4e17]: 🕐
+        - text: 12:01:38
+  - generic [ref=f4e20]:
+    - generic [ref=f4e21]: 📊 分析
+    - generic [ref=f4e24]: 🔍 单股
+    - generic [ref=f4e27]: 📐 技术
+    - generic [ref=f4e30]: 🗞 大盘复盘
+    - generic [ref=f4e33]: 📈 可视化
+    - generic [ref=f4e36]: 📚 历史
+    - generic [ref=f4e39]: 🔄 对比
+    - generic [ref=f4e42]: ⭐ 自选
+    - generic [ref=f4e45]: 📋 模板
+    - generic [ref=f4e48]: ⏰ 定时
+  - generic [ref=f4e926]:
+    - generic [ref=f4e927]:
+      - button "返回分析主页" [ref=f4e928] [cursor=pointer]:
+        - generic [ref=f4e929]: ← 返回
+      - text: ⏰ 定时任务 定时自动执行分析
+      - button "新建定时任务" [ref=f4e930] [cursor=pointer]:
+        - generic [ref=f4e931]: + 新建任务
+    - alert [ref=f4e932]:
+      - generic [ref=f4e939]: ★ Round 20：定时任务已接入后端调度器，按 cron 表达式自动执行；也可随时点击"执行"立即运行一次。
+    - status [ref=f4e941]:
+      - generic [ref=f4e942]: 暂无定时任务

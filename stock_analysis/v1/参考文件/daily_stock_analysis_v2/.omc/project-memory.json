@@ -1,0 +1,649 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1785482808205,
+  "projectRoot": "F:\\daily_stock_analysis_v2",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml",
+          "requirements.txt"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": "snake_case",
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts",
+      "src",
+      "static",
+      "tests"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "api": {
+      "path": "api",
+      "purpose": "API routes",
+      "fileCount": 3,
+      "lastAccessed": 1785482808148,
+      "keyFiles": [
+        "app.py",
+        "deps.py",
+        "__init__.py"
+      ]
+    },
+    "apps": {
+      "path": "apps",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1785482808149,
+      "keyFiles": []
+    },
+    "bot": {
+      "path": "bot",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1785482808158,
+      "keyFiles": [
+        "dispatcher.py",
+        "handler.py",
+        "models.py",
+        "__init__.py"
+      ]
+    },
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 4,
+      "lastAccessed": 1785482808159,
+      "keyFiles": [
+        "stock_analysis.db",
+        "stock_analysis.db-shm",
+        "stock_analysis.db-wal"
+      ]
+    },
+    "data_provider": {
+      "path": "data_provider",
+      "purpose": null,
+      "fileCount": 19,
+      "lastAccessed": 1785482808159,
+      "keyFiles": [
+        "akshare_fetcher.py",
+        "alphavantage_fetcher.py",
+        "baostock_fetcher.py",
+        "base.py",
+        "efinance_fetcher.py"
+      ]
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1785482808160,
+      "keyFiles": [
+        "docker-compose.yml",
+        "Dockerfile",
+        "entrypoint.sh"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 39,
+      "lastAccessed": 1785482808160,
+      "keyFiles": [
+        "agent-stream-events.md",
+        "alerts.md",
+        "alphasift-integration.md",
+        "analysis-context-pack.md",
+        "beginner-client-setup.md"
+      ]
+    },
+    "logs": {
+      "path": "logs",
+      "purpose": null,
+      "fileCount": 72,
+      "lastAccessed": 1785482808161,
+      "keyFiles": [
+        "api_server_20260703.log",
+        "api_server_20260705.log",
+        "api_server_20260706.log",
+        "api_server_20260707.log",
+        "api_server_20260709.log"
+      ]
+    },
+    "reports": {
+      "path": "reports",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1785482808161,
+      "keyFiles": [
+        "market_review_20260522.md",
+        "market_review_20260617.md",
+        "market_review_20260622.md",
+        "market_review_20260623.md",
+        "market_review_20260624.md"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 22,
+      "lastAccessed": 1785482808162,
+      "keyFiles": [
+        "build-all-macos.sh",
+        "build-all.ps1",
+        "build-backend-macos.sh",
+        "build-backend.ps1",
+        "build-desktop-macos.sh"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 29,
+      "lastAccessed": 1785482808162,
+      "keyFiles": [
+        "analysis_context_pack_overview.py",
+        "analysis_context_pack_prompt.py",
+        "analyzer.py",
+        "auth.py",
+        "config.py"
+      ]
+    },
+    "static": {
+      "path": "static",
+      "purpose": "Static files",
+      "fileCount": 3,
+      "lastAccessed": 1785482808163,
+      "keyFiles": [
+        "index.html",
+        "stocks.index.json",
+        "vite.svg"
+      ]
+    },
+    "strategies": {
+      "path": "strategies",
+      "purpose": null,
+      "fileCount": 16,
+      "lastAccessed": 1785482808163,
+      "keyFiles": [
+        "bottom_volume.yaml",
+        "box_oscillation.yaml",
+        "bull_trend.yaml",
+        "chan_theory.yaml",
+        "dragon_head.yaml"
+      ]
+    },
+    "templates": {
+      "path": "templates",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1785482808164,
+      "keyFiles": [
+        "report_brief.j2",
+        "report_markdown.j2",
+        "report_wechat.j2",
+        "_macros.j2"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 250,
+      "lastAccessed": 1785482808165,
+      "keyFiles": [
+        "conftest.py",
+        "litellm_stub.py",
+        "longbridge_live_smoke.py",
+        "test_agent_backend.py",
+        "test_agent_backend_status_service.py"
+      ]
+    },
+    "update_version": {
+      "path": "update_version",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1785482808165,
+      "keyFiles": [
+        "README.md",
+        "start_hot_analysis.bat",
+        "stop_hot_analysis.bat",
+        "__init__.py"
+      ]
+    },
+    "update_version_v2": {
+      "path": "update_version_v2",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1785482808165,
+      "keyFiles": [
+        "README.md",
+        "__init__.py"
+      ]
+    },
+    "__pycache__": {
+      "path": "__pycache__",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1785482808166,
+      "keyFiles": [
+        "main.cpython-312.pyc",
+        "server.cpython-312.pyc"
+      ]
+    },
+    "docs\\assets": {
+      "path": "docs\\assets",
+      "purpose": "Static assets",
+      "fileCount": 20,
+      "lastAccessed": 1785482808167,
+      "keyFiles": [
+        "2026-01-10_155341_daily_analysis.gif",
+        "alert-center-p5-web.png",
+        "alipay.jpg"
+      ]
+    },
+    "src\\data": {
+      "path": "src\\data",
+      "purpose": "Data files",
+      "fileCount": 3,
+      "lastAccessed": 1785482808168,
+      "keyFiles": [
+        "stock_index_loader.py",
+        "stock_mapping.py",
+        "__init__.py"
+      ]
+    },
+    "static\\assets": {
+      "path": "static\\assets",
+      "purpose": "Static assets",
+      "fileCount": 40,
+      "lastAccessed": 1785482808169,
+      "keyFiles": [
+        "AlertsPage-CSdIHnxq.js",
+        "AppPage-BbMIYu_F.js",
+        "BacktestPage-DiDcbSr5.js"
+      ]
+    },
+    "tests\\fixtures": {
+      "path": "tests\\fixtures",
+      "purpose": "Test fixtures",
+      "fileCount": 0,
+      "lastAccessed": 1785482808170,
+      "keyFiles": []
+    },
+    "update_version\\data": {
+      "path": "update_version\\data",
+      "purpose": "Data files",
+      "fileCount": 1,
+      "lastAccessed": 1785482808171,
+      "keyFiles": [
+        "history.db"
+      ]
+    },
+    "update_version\\services": {
+      "path": "update_version\\services",
+      "purpose": "Business logic services",
+      "fileCount": 2,
+      "lastAccessed": 1785482808171,
+      "keyFiles": [
+        "market_review_service.py",
+        "__init__.py"
+      ]
+    },
+    "update_version_v2\\data": {
+      "path": "update_version_v2\\data",
+      "purpose": "Data files",
+      "fileCount": 1,
+      "lastAccessed": 1785482808171,
+      "keyFiles": [
+        "history.db"
+      ]
+    },
+    "update_version_v2\\services": {
+      "path": "update_version_v2\\services",
+      "purpose": "Business logic services",
+      "fileCount": 2,
+      "lastAccessed": 1785482808172,
+      "keyFiles": [
+        "market_review_service.py",
+        "__init__.py"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "api\\v1\\endpoints\\hot_analysis.py",
+      "accessCount": 30,
+      "lastAccessed": 1783326075566,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\src\\App.vue",
+      "accessCount": 29,
+      "lastAccessed": 1783321332752,
+      "type": "file"
+    },
+    {
+      "path": "update_version",
+      "accessCount": 23,
+      "lastAccessed": 1785297183134,
+      "type": "directory"
+    },
+    {
+      "path": "main.py",
+      "accessCount": 16,
+      "lastAccessed": 1785228584293,
+      "type": "file"
+    },
+    {
+      "path": "daily_stock.bat",
+      "accessCount": 12,
+      "lastAccessed": 1784021724710,
+      "type": "file"
+    },
+    {
+      "path": "api\\v1\\schemas\\hot_analysis.py",
+      "accessCount": 9,
+      "lastAccessed": 1783404733958,
+      "type": "file"
+    },
+    {
+      "path": "update_version/start_hot_analysis.bat",
+      "accessCount": 9,
+      "lastAccessed": 1785225398692,
+      "type": "file"
+    },
+    {
+      "path": "data_provider\\hot_lists.py",
+      "accessCount": 8,
+      "lastAccessed": 1783320087643,
+      "type": "file"
+    },
+    {
+      "path": "src\\core\\pipeline.py",
+      "accessCount": 7,
+      "lastAccessed": 1783064784435,
+      "type": "directory"
+    },
+    {
+      "path": "src\\analyzer.py",
+      "accessCount": 6,
+      "lastAccessed": 1783064666501,
+      "type": "directory"
+    },
+    {
+      "path": "update_version\\stop_hot_analysis.bat",
+      "accessCount": 6,
+      "lastAccessed": 1783067213164,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\README.md",
+      "accessCount": 6,
+      "lastAccessed": 1783069958176,
+      "type": "file"
+    },
+    {
+      "path": "stop_daily_stock.bat",
+      "accessCount": 6,
+      "lastAccessed": 1784021724475,
+      "type": "file"
+    },
+    {
+      "path": "api\\app.py",
+      "accessCount": 5,
+      "lastAccessed": 1783064645878,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\BACKEND_PATCH.md",
+      "accessCount": 5,
+      "lastAccessed": 1783069961861,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 5,
+      "lastAccessed": 1785228814373,
+      "type": "directory"
+    },
+    {
+      "path": "src\\config.py",
+      "accessCount": 4,
+      "lastAccessed": 1783064452123,
+      "type": "directory"
+    },
+    {
+      "path": "api\\v1\\router.py",
+      "accessCount": 4,
+      "lastAccessed": 1783064874105,
+      "type": "file"
+    },
+    {
+      "path": "api\\v1\\endpoints\\__init__.py",
+      "accessCount": 4,
+      "lastAccessed": 1783260594346,
+      "type": "file"
+    },
+    {
+      "path": "server.py",
+      "accessCount": 4,
+      "lastAccessed": 1784597856782,
+      "type": "file"
+    },
+    {
+      "path": "data_provider",
+      "accessCount": 4,
+      "lastAccessed": 1785228819261,
+      "type": "directory"
+    },
+    {
+      "path": "AGENTS.md",
+      "accessCount": 4,
+      "lastAccessed": 1785462085049,
+      "type": "file"
+    },
+    {
+      "path": "src\\stock_analyzer.py",
+      "accessCount": 3,
+      "lastAccessed": 1783064376125,
+      "type": "directory"
+    },
+    {
+      "path": "api\\v1\\endpoints\\analysis.py",
+      "accessCount": 3,
+      "lastAccessed": 1783064656373,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\src\\api\\hotAnalysis.ts",
+      "accessCount": 3,
+      "lastAccessed": 1783263868685,
+      "type": "file"
+    },
+    {
+      "path": "data_provider\\base.py",
+      "accessCount": 2,
+      "lastAccessed": 1783064366494,
+      "type": "file"
+    },
+    {
+      "path": "data_provider\\akshare_fetcher.py",
+      "accessCount": 2,
+      "lastAccessed": 1783064646926,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\index.html",
+      "accessCount": 2,
+      "lastAccessed": 1783326425464,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 2,
+      "lastAccessed": 1784260656318,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 2,
+      "lastAccessed": 1785462072557,
+      "type": "file"
+    },
+    {
+      "path": "C:\\Users\\jww\\AppData\\Local\\Temp\\claude\\F--daily-stock-analysis\\2cdacb94-49a4-4631-9e2f-3d36eb5e613d\\tasks\\bwoz1gntx.output",
+      "accessCount": 1,
+      "lastAccessed": 1782918272825,
+      "type": "file"
+    },
+    {
+      "path": "C:\\Users\\jww\\AppData\\Local\\Temp\\claude\\F--daily-stock-analysis\\2cdacb94-49a4-4631-9e2f-3d36eb5e613d\\tasks\\bq7bc5wrw.output",
+      "accessCount": 1,
+      "lastAccessed": 1782953766786,
+      "type": "file"
+    },
+    {
+      "path": "C:\\Users\\jww\\AppData\\Local\\Temp\\test_conda_run.bat",
+      "accessCount": 1,
+      "lastAccessed": 1782953993813,
+      "type": "file"
+    },
+    {
+      "path": "api\\v1\\endpoints",
+      "accessCount": 1,
+      "lastAccessed": 1783064358673,
+      "type": "directory"
+    },
+    {
+      "path": "data_provider\\__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1783064379678,
+      "type": "file"
+    },
+    {
+      "path": "apps\\dsa-web\\package.json",
+      "accessCount": 1,
+      "lastAccessed": 1783064379926,
+      "type": "file"
+    },
+    {
+      "path": "apps\\dsa-desktop\\package.json",
+      "accessCount": 1,
+      "lastAccessed": 1783064391095,
+      "type": "file"
+    },
+    {
+      "path": ".env.example",
+      "accessCount": 1,
+      "lastAccessed": 1783064453125,
+      "type": "directory"
+    },
+    {
+      "path": "api\\v1\\endpoints\\stocks.py",
+      "accessCount": 1,
+      "lastAccessed": 1783064465239,
+      "type": "directory"
+    },
+    {
+      "path": "api\\v1\\endpoints\\alphasift.py",
+      "accessCount": 1,
+      "lastAccessed": 1783064466664,
+      "type": "directory"
+    },
+    {
+      "path": "src\\core",
+      "accessCount": 1,
+      "lastAccessed": 1783064667722,
+      "type": "directory"
+    },
+    {
+      "path": "src\\enums.py",
+      "accessCount": 1,
+      "lastAccessed": 1783064671971,
+      "type": "directory"
+    },
+    {
+      "path": "update_version\\frontend\\package.json",
+      "accessCount": 1,
+      "lastAccessed": 1783064952503,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\tsconfig.json",
+      "accessCount": 1,
+      "lastAccessed": 1783064956194,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\vite.config.ts",
+      "accessCount": 1,
+      "lastAccessed": 1783064959931,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\src\\env.d.ts",
+      "accessCount": 1,
+      "lastAccessed": 1783064967168,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\src\\main.ts",
+      "accessCount": 1,
+      "lastAccessed": 1783064970078,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\frontend\\src\\styles\\global.css",
+      "accessCount": 1,
+      "lastAccessed": 1783064973808,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\start.bat",
+      "accessCount": 1,
+      "lastAccessed": 1783065125127,
+      "type": "file"
+    },
+    {
+      "path": "update_version\\start.sh",
+      "accessCount": 1,
+      "lastAccessed": 1783065128465,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

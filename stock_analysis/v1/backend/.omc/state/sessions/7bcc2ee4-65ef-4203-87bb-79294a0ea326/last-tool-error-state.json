@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"sleep 4 && agent-browser --session dogfood-v3 connect 9223 2>&1 | head -2; agent-browser --session dogfood-v3 open \\\"http://127.0.0.1:5179\\\" 2>&1 | head -2; sleep 3; echo \\\"---url---\\\"; ag...",
+  "error": "Exit code 143\nCommand timed out after 1m 0s",
+  "timestamp": "2026-08-06T07:21:32.010Z",
+  "retry_count": 1
+}

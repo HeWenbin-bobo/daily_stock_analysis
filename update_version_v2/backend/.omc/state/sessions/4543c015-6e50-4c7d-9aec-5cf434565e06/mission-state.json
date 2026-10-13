@@ -1,0 +1,79 @@
+{
+  "updatedAt": "2026-08-26T04:02:40.664Z",
+  "missions": [
+    {
+      "id": "session:4543c015-6e50-4c7d-9aec-5cf434565e06:none",
+      "source": "session",
+      "name": "none",
+      "objective": "Session mission",
+      "createdAt": "2026-08-26T03:11:33.085Z",
+      "updatedAt": "2026-08-26T04:02:40.664Z",
+      "status": "done",
+      "workerCount": 2,
+      "taskCounts": {
+        "total": 2,
+        "pending": 0,
+        "blocked": 0,
+        "inProgress": 0,
+        "completed": 2,
+        "failed": 0
+      },
+      "agents": [
+        {
+          "name": "iter1-auditfix:aiter1-",
+          "role": "iter1-auditfix",
+          "ownership": "aiter1-auditfix-03eb36d23070b29a",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-26T03:20:11.799Z"
+        },
+        {
+          "name": "reviewer-round47:areview",
+          "role": "reviewer-round47",
+          "ownership": "areviewer-round47-ae0e713f25bf1ade",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-26T04:02:40.664Z"
+        }
+      ],
+      "timeline": [
+        {
+          "id": "session-start:aiter1-auditfix-03eb36d23070b29a:2026-08-26T03:19:32.490Z",
+          "at": "2026-08-26T03:19:32.490Z",
+          "kind": "update",
+          "agent": "iter1-auditfix:aiter1-",
+          "detail": "started iter1-auditfix:aiter1-",
+          "sourceKey": "session-start:aiter1-auditfix-03eb36d23070b29a"
+        },
+        {
+          "id": "session-stop:aiter1-auditfix-03eb36d23070b29a:2026-08-26T03:20:11.799Z",
+          "at": "2026-08-26T03:20:11.799Z",
+          "kind": "completion",
+          "agent": "iter1-auditfix:aiter1-",
+          "detail": "completed",
+          "sourceKey": "session-stop:aiter1-auditfix-03eb36d23070b29a"
+        },
+        {
+          "id": "session-start:areviewer-round47-ae0e713f25bf1ade:2026-08-26T03:46:35.600Z",
+          "at": "2026-08-26T03:46:35.600Z",
+          "kind": "update",
+          "agent": "reviewer-round47:areview",
+          "detail": "started reviewer-round47:areview",
+          "sourceKey": "session-start:areviewer-round47-ae0e713f25bf1ade"
+        },
+        {
+          "id": "session-stop:areviewer-round47-ae0e713f25bf1ade:2026-08-26T04:02:40.664Z",
+          "at": "2026-08-26T04:02:40.664Z",
+          "kind": "completion",
+          "agent": "reviewer-round47:areview",
+          "detail": "completed",
+          "sourceKey": "session-stop:areviewer-round47-ae0e713f25bf1ade"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd \\\"F:/daily_stock_analysis_v2/update_version_v2/backend\\\" && python -c \\\"\\nimport sys\\nsys.path.insert(0, '.')\\nfrom modules.backtest_engine import _execute_backtest\\n\\n# 构造上涨后回落 K 线: 10...",
+  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<string>\", line 15, in <module>\r\nKeyError: 'pnl_pct'",
+  "timestamp": "2026-08-12T06:17:22.209Z",
+  "retry_count": 2
+}

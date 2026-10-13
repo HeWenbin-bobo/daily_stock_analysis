@@ -1,0 +1,57 @@
+- generic [ref=e5]:
+  - banner [ref=e6]:
+    - generic [ref=e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=e8]
+      - button "切换到暗色模式" [ref=e9] [cursor=pointer]:
+        - generic [ref=e10]: 🌙
+    - paragraph [ref=e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=e16]:
+        - generic [ref=e17]: 🕐
+        - text: 10:53:51
+  - generic [ref=e20]:
+    - generic [ref=e21]: 📊 分析
+    - generic [ref=e24]: 🔍 单股
+    - generic [ref=e27]: 📐 技术
+    - generic [ref=e30]: 🗞 大盘复盘
+    - generic [ref=e33]: 📈 可视化
+    - generic [ref=e36]: 📚 历史
+    - generic [ref=e39]: 🔄 对比
+    - generic [ref=e42]: ⭐ 自选
+    - generic [ref=e45]: 📋 模板
+    - generic [ref=e48]: ⏰ 定时
+  - generic [ref=e426]:
+    - generic [ref=e427]:
+      - generic [ref=e428]: 🔍 单股分析（并发） 输入 1 只或多只股票（代码或名称），自动并发（最多 3 只同时）。多种分隔符：逗号 / 空格 / 换行
+      - generic [ref=e430]:
+        - textbox "例如：600519, 000858, 002156（每行一只 / 逗号 / 空格分隔）" [ref=e431]
+        - generic: 例如：600519, 000858, 002156（每行一只 / 逗号 / 空格分隔）
+      - button "并发分析输入框中的股票（Ctrl+Enter 也可提交）" [disabled] [ref=e432]:
+        - generic [ref=e433]: 🚀 并发分析
+      - text: ⚡ 并发数
+      - generic [ref=e434]:
+        - generic [ref=e435] [cursor=pointer]:
+          - generic [ref=e436]:
+            - radio "1路"
+          - generic [ref=e438]: 1路
+        - generic [ref=e439] [cursor=pointer]:
+          - generic [ref=e440]:
+            - radio "2路"
+          - generic [ref=e442]: 2路
+        - generic [ref=e443] [cursor=pointer]:
+          - generic [ref=e444]:
+            - radio "3路" [checked]
+          - generic [ref=e446]: 3路
+        - generic [ref=e447] [cursor=pointer]:
+          - generic [ref=e448]:
+            - radio "4路"
+          - generic [ref=e450]: 4路
+        - generic [ref=e451] [cursor=pointer]:
+          - generic [ref=e452]:
+            - radio "5路"
+          - generic [ref=e454]: 5路
+      - text: 同时最多 3 只股票调用 LLM；修改后对下一次提交生效
+    - generic [ref=e455]: 尚未添加单股分析任务。输入代码或名称后点击「🚀 并发分析」

@@ -1,0 +1,7 @@
+{"t":0,"agent":"aiter1-","agent_type":"iter1-auditfix","event":"agent_stop","success":true,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}
+{"t":0,"agent":"aiter1-","agent_type":"iter1-auditfix","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"aiter1-","agent_type":"iter1-auditfix","event":"agent_stop","success":true,"duration_ms":17755,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}
+{"t":0,"agent":"aiter1-","agent_type":"iter1-auditfix","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"aiter1-","agent_type":"iter1-auditfix","event":"agent_stop","success":true,"duration_ms":39309,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}
+{"t":0,"agent":"areview","agent_type":"reviewer-round47","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"areview","agent_type":"reviewer-round47","event":"agent_stop","success":true,"duration_ms":965064}

@@ -1,0 +1,430 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1784276643258,
+  "projectRoot": "F:\\daily_stock_analysis\\update_version\\frontend",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "vue",
+        "version": "3.5.13",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "5.4.11",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "cd F:/daily_stock_analysis/update_version/frontend && npx vue-tsc --noEmit 2>&1 && echo \"TS: PASS\" || echo \"TS: FAIL\"",
+    "testCommand": null,
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "build": "vue-tsc --noEmit && vite build",
+      "preview": "vite preview",
+      "lint": "eslint . --ext .vue,.ts,.tsx --max-warnings 0 || true"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "src"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1784276643218,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1784276643219,
+      "keyFiles": [
+        "App.vue",
+        "env.d.ts",
+        "main.ts"
+      ]
+    },
+    "dist\\assets": {
+      "path": "dist\\assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1784276643228,
+      "keyFiles": [
+        "index-B_hNqASP.js",
+        "index-CFwSwRuH.css"
+      ]
+    },
+    "src\\api": {
+      "path": "src\\api",
+      "purpose": "API routes",
+      "fileCount": 1,
+      "lastAccessed": 1784276643229,
+      "keyFiles": [
+        "hotAnalysis.ts"
+      ]
+    },
+    "src\\components": {
+      "path": "src\\components",
+      "purpose": "UI components",
+      "fileCount": 4,
+      "lastAccessed": 1784276643229,
+      "keyFiles": [
+        "ConfigPanel.vue",
+        "PreviewCard.vue",
+        "ResultTable.vue"
+      ]
+    },
+    "src\\utils": {
+      "path": "src\\utils",
+      "purpose": "Utility functions",
+      "fileCount": 1,
+      "lastAccessed": 1784276643229,
+      "keyFiles": [
+        "formatters.ts"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src/composables/useHotAnalysis.ts",
+      "accessCount": 64,
+      "lastAccessed": 1787804459166,
+      "type": "file"
+    },
+    {
+      "path": "src/App.vue",
+      "accessCount": 38,
+      "lastAccessed": 1787822339019,
+      "type": "file"
+    },
+    {
+      "path": "src/components/AdvancedViz.vue",
+      "accessCount": 28,
+      "lastAccessed": 1787801926074,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ConfigPanel.vue",
+      "accessCount": 20,
+      "lastAccessed": 1786589071304,
+      "type": "file"
+    },
+    {
+      "path": "src/components/SingleStockInput.vue",
+      "accessCount": 16,
+      "lastAccessed": 1787821403083,
+      "type": "file"
+    },
+    {
+      "path": "src/api/hotAnalysis.ts",
+      "accessCount": 15,
+      "lastAccessed": 1787546294027,
+      "type": "file"
+    },
+    {
+      "path": "src/components/MarketReviewView.vue",
+      "accessCount": 15,
+      "lastAccessed": 1787804363464,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/exporters.ts",
+      "accessCount": 13,
+      "lastAccessed": 1787822310625,
+      "type": "file"
+    },
+    {
+      "path": "src/components/PreviewCard.vue",
+      "accessCount": 9,
+      "lastAccessed": 1786589180618,
+      "type": "file"
+    },
+    {
+      "path": "src/components/StatusBadges.vue",
+      "accessCount": 9,
+      "lastAccessed": 1787821305447,
+      "type": "file"
+    },
+    {
+      "path": "src/components/TemplatesView.vue",
+      "accessCount": 8,
+      "lastAccessed": 1787640526657,
+      "type": "file"
+    },
+    {
+      "path": "src/styles/global.css",
+      "accessCount": 7,
+      "lastAccessed": 1784534998216,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ResultTable.vue",
+      "accessCount": 7,
+      "lastAccessed": 1787555076640,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/formatters.ts",
+      "accessCount": 6,
+      "lastAccessed": 1786694974819,
+      "type": "file"
+    },
+    {
+      "path": "src/components/HistoryView.vue",
+      "accessCount": 5,
+      "lastAccessed": 1787555699096,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ScheduledTasksView.vue",
+      "accessCount": 5,
+      "lastAccessed": 1787729232189,
+      "type": "file"
+    },
+    {
+      "path": "src/components/CompareView.vue",
+      "accessCount": 4,
+      "lastAccessed": 1785399722496,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 3,
+      "lastAccessed": 1786694816048,
+      "type": "directory"
+    },
+    {
+      "path": "src/composables/useCountdown.ts",
+      "accessCount": 3,
+      "lastAccessed": 1787716744748,
+      "type": "file"
+    },
+    {
+      "path": "vite.config.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785399699477,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/05_viz_kline.png",
+      "accessCount": 2,
+      "lastAccessed": 1785400331250,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/config.ts",
+      "accessCount": 2,
+      "lastAccessed": 1786497968684,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 2,
+      "lastAccessed": 1786694825793,
+      "type": "file"
+    },
+    {
+      "path": "src/components/WatchlistView.vue",
+      "accessCount": 2,
+      "lastAccessed": 1787803013122,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/.claude/projects/F--daily-stock-analysis/memory/update-version-audit-and-fixes-2026-07-28-round3.md",
+      "accessCount": 1,
+      "lastAccessed": 1785223792399,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/.claude/projects/F--daily-stock-analysis/memory/MEMORY.md",
+      "accessCount": 1,
+      "lastAccessed": 1785223796482,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/01_home.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400088438,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/02_single_stock.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400106989,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/03_single_running.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400131166,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/04_market_review.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400143879,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/04b_market_review_after_fix.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400248336,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/04c_market_review.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400295550,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/05b_viz_after_fix.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400381494,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/05c_viz_heatmap.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400403228,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/05d_viz_heatmap_loaded.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400417758,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/05e_viz_heatmap.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400460503,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/06_history.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400482947,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07_compare.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400500373,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/08_watchlist.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400500819,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07b_compare.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400518977,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07c_compare_js.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400545953,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07d_compare_v2.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400584167,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07f_compare.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400606636,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07h.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400627794,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07i.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400640890,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/07k.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400661609,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/08_compare_works.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400824669,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/09_single.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400901955,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/10_compare.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400920429,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/e2e_screenshots/11_watchlist.png",
+      "accessCount": 1,
+      "lastAccessed": 1785400934863,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "jobId": "3874bf10-a18c-46ad-938d-8b0c544e436e",
+  "sessionId": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+  "scopeKey": "5745dd84462275cf35613046a4616b003fa68886038486e9c0770f41d4cd353f",
+  "revision": 1,
+  "createdAt": "2026-08-07T07:38:00.244Z",
+  "updatedAt": "2026-08-07T07:38:00.912Z",
+  "producerGraceExpiresAt": "2026-08-07T07:38:30.244Z",
+  "bestEffortDeadlineAt": "2026-08-07T07:39:21.244Z",
+  "producers": {
+    "core": {
+      "state": "sealed",
+      "intentKey": "4053ec5c196392dea9e9a62cab553ff858be486121fe559a3fbf1c87c790032c",
+      "payloadDigest": "4053ec5c196392dea9e9a62cab553ff858be486121fe559a3fbf1c87c790032c",
+      "sealedAt": "2026-08-07T07:38:00.912Z",
+      "sealedBy": "foreground"
+    },
+    "wiki": {
+      "state": "absent"
+    }
+  },
+  "actions": {
+    "foreground-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 0,
+      "idempotencyKey": "d568aed18cfa1957a9bb957bc1b17efac0f6b46298d424ce9da125480fd2f64f",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {},
+        "foregroundResult": {
+          "removedTransientFiles": 1,
+          "completedAt": "2026-08-07T07:38:00.911Z"
+        }
+      },
+      "budgetMs": 9000,
+      "completedAt": "2026-08-07T07:38:00.912Z",
+      "lastOutcomeCode": "completed"
+    },
+    "wiki-capture": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "8327bf28114798f60979d5338fb3b941364b40b435786edd579948638ce10ecf",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "team-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "00b9ffeb1f309f7c5e50fb3a76168b631f5ce4976e56709836034573a791fba7",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "python-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "a747e4b1c140f498ba71abdf86f088dd9fbaa1d81abb82b810a03277c619db4d",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "reply-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "898577c35ac9beaeb6e4a1e54a6555801eb74ce478b0f1d41f005bf9437b2f80",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000
+    },
+    "callback": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "230c48f4cae5ec22177e6fd200747e1e6d24ae1dc0fe2b7b0d7eb587017365a9",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000
+    },
+    "notification": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "b67927b6706d47a7a0d6f0f6944fe7c4e73bae73058ea1b6b749260283adb08d",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000
+    },
+    "openclaw": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "pending",
+      "attempts": 0,
+      "idempotencyKey": "eec34d80f7791fcfdaeddc03a0ce08d73804572477bc8246fc3d4f74ccbab35e",
+      "payload": {
+        "transcriptPath": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+        "cwd": "F:\\stock_analysis\\v1\\frontend",
+        "reason": "prompt_input_exit",
+        "input": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "transcript_path": "C:\\Users\\jww\\.claude\\projects\\F--stock-analysis-v1\\7bcc2ee4-65ef-4203-87bb-79294a0ea326.jsonl",
+          "cwd": "F:\\stock_analysis\\v1\\frontend",
+          "prompt_id": "f96260f5-9560-46a6-8557-268c47be7e35",
+          "hook_event_name": "SessionEnd",
+          "reason": "prompt_input_exit"
+        },
+        "metrics": {
+          "session_id": "7bcc2ee4-65ef-4203-87bb-79294a0ea326",
+          "ended_at": "2026-08-07T07:38:00.186Z",
+          "reason": "prompt_input_exit",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        },
+        "initialTeamNames": [],
+        "openClawEnabled": false,
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000
+    }
+  },
+  "owner": null,
+  "phase": "ready"
+}

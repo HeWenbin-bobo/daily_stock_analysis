@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd \\\"F:/daily_stock_analysis/update_version\\\" && echo \\\"=== Run start script ===\\\" && cmd.exe //c \\\".\\\\start_hot_analysis.bat\\\" > /tmp/start.log 2>&1 && echo \\\"  Start script exited\\\" && e...",
+  "error": "Exit code 255\n=== Run start script ===",
+  "timestamp": "2026-07-03T08:16:13.889Z",
+  "retry_count": 1
+}

@@ -1,0 +1,52 @@
+- generic [ref=f3e1]:
+  - generic [ref=f3e5]:
+    - banner [ref=f3e6]:
+      - generic [ref=f3e7]:
+        - heading "📈 四榜交集分析" [level=1] [ref=f3e8]
+        - button "切换到暗色模式" [ref=f3e9] [cursor=pointer]:
+          - generic [ref=f3e10]: 🌙
+      - paragraph [ref=f3e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+      - generic [ref=f3e12]:
+        - generic [ref=f3e13]:
+          - generic [ref=f3e14]: 📅
+          - text: 2026 年 8 月 27 日 · 周四
+        - generic [ref=f3e16]:
+          - generic [ref=f3e17]: 🕐
+          - text: 11:40:30
+    - generic [ref=f3e20]:
+      - generic [ref=f3e21]: 📊 分析
+      - generic [ref=f3e24]: 🔍 单股
+      - generic [ref=f3e27]: 📐 技术
+      - generic [ref=f3e30]: 🗞 大盘复盘
+      - generic [ref=f3e33]: 📈 可视化
+      - generic [ref=f3e36]: 📚 历史
+      - generic [ref=f3e39]: 🔄 对比
+      - generic [ref=f3e42]: ⭐ 自选
+      - generic [ref=f3e45]: 📋 模板
+      - generic [ref=f3e48]: ⏰ 定时
+    - generic [ref=f3e363]:
+      - heading [ref=f3e364]:
+        - heading "📊 数据可视化" [ref=f3e365]
+      - generic "选择图表类型" [ref=f3e366]:
+        - generic [active] [ref=f3e368] [cursor=pointer]:
+          - generic "📈 K 线" [ref=f3e369]
+          - img "loading" [ref=f3e371]
+      - generic "股票代码输入框" [ref=f3e378]:
+        - textbox "股票代码" [ref=f3e381]: "600519"
+      - generic "K 线天数" [ref=f3e382]:
+        - generic [ref=f3e384]:
+          - textbox "请输入" [ref=f3e386]: "120"
+          - generic [ref=f3e387]:
+            - button [ref=f3e388] [cursor=pointer]
+            - button [ref=f3e392] [cursor=pointer]
+      - generic "K 线周期选择" [ref=f3e397]:
+        - generic [ref=f3e399] [cursor=pointer]:
+          - generic "日 K" [ref=f3e400]
+          - img "loading" [ref=f3e402]
+      - button "刷新图表" [ref=f3e409] [cursor=pointer]:
+        - generic [ref=f3e410]: 刷新
+      - img "数据图表区域" [ref=f3e411]
+  - generic [ref=f3e417]:
+    - generic [ref=f3e418] [cursor=pointer]: 📈 K 线
+    - generic [ref=f3e424] [cursor=pointer]: 🔥 热力图
+    - generic [ref=f3e426] [cursor=pointer]: 💰 资金流向

@@ -1,0 +1,52 @@
+- generic [ref=e1]:
+  - generic [ref=e5]:
+    - banner [ref=e6]:
+      - generic [ref=e7]:
+        - heading "📈 四榜交集分析" [level=1] [ref=e8]
+        - button "切换到暗色模式" [ref=e9] [cursor=pointer]:
+          - generic [ref=e10]: 🌙
+      - paragraph [ref=e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - generic [ref=e14]: 📅
+          - text: 2026 年 8 月 27 日 · 周四
+        - generic [ref=e16]:
+          - generic [ref=e17]: 🕐
+          - text: 11:05:26
+    - generic [ref=e20]:
+      - generic [ref=e21]: 📊 分析
+      - generic [ref=e24]: 🔍 单股
+      - generic [ref=e27]: 📐 技术
+      - generic [ref=e30]: 🗞 大盘复盘
+      - generic [ref=e33]: 📈 可视化
+      - generic [ref=e36]: 📚 历史
+      - generic [ref=e39]: 🔄 对比
+      - generic [ref=e42]: ⭐ 自选
+      - generic [ref=e45]: 📋 模板
+      - generic [ref=e48]: ⏰ 定时
+    - generic [ref=e1039]:
+      - heading [ref=e1040]:
+        - heading "📊 数据可视化" [ref=e1041]
+      - generic "选择图表类型" [ref=e1042]:
+        - generic [active] [ref=e1044] [cursor=pointer]:
+          - generic "📈 K 线" [ref=e1045]
+          - img "loading" [ref=e1047]
+      - generic "股票代码输入框" [ref=e1054]:
+        - textbox "股票代码" [ref=e1057]: "600519"
+      - generic "K 线天数" [ref=e1058]:
+        - generic [ref=e1060]:
+          - textbox "请输入" [ref=e1062]: "120"
+          - generic [ref=e1063]:
+            - button [ref=e1064] [cursor=pointer]
+            - button [ref=e1068] [cursor=pointer]
+      - generic "K 线周期选择" [ref=e1073]:
+        - generic [ref=e1075] [cursor=pointer]:
+          - generic "日 K" [ref=e1076]
+          - img "loading" [ref=e1078]
+      - button "刷新图表" [ref=e1085] [cursor=pointer]:
+        - generic [ref=e1086]: 刷新
+      - img "数据图表区域" [ref=e1087]
+  - generic [ref=e1093]:
+    - generic [ref=e1094] [cursor=pointer]: 📈 K 线
+    - generic [ref=e1100] [cursor=pointer]: 🔥 热力图
+    - generic [ref=e1102] [cursor=pointer]: 💰 资金流向

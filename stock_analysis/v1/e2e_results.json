@@ -1,0 +1,31 @@
+{
+  "steps": [
+    "home loaded",
+    "search results shown",
+    "K-line chart rendered",
+    "weekly period",
+    "monthly period",
+    "back to daily",
+    "BOLL toggled",
+    "MACD toggled, KDJ/BOLL visible",
+    "KDJ toggled",
+    "peak-trough panel rendered",
+    "watchlist toggled",
+    "theme toggle"
+  ],
+  "pass": 12,
+  "fail": 0,
+  "screenshots": [
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\01_home.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\02_search.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\03_kline.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\04_weekly.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\05_monthly.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\06_daily.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\07_indicators.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\08_kdj.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\09_peak_trough.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\10_watchlist.png",
+    "F:\\stock_analysis\\v1\\_e2e_screenshots\\11_theme_light.png"
+  ]
+}

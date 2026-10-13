@@ -1,0 +1,90 @@
+[
+  {
+    "label": "GET /api/v1/stocks/600519/history?period=daily&days=180 (warm)",
+    "n": 50,
+    "ok": 50,
+    "err": 0,
+    "p50_ms": 15.47,
+    "p95_ms": 16.76,
+    "p99_ms": 26.19,
+    "max_ms": 28.37,
+    "avg_ms": 15.06
+  },
+  {
+    "label": "GET /api/v1/stocks/AAPL/history?period=weekly&days=365 (warm)",
+    "n": 50,
+    "ok": 50,
+    "err": 0,
+    "p50_ms": 15.53,
+    "p95_ms": 19.94,
+    "p99_ms": 25.32,
+    "max_ms": 27.18,
+    "avg_ms": 14.35
+  },
+  {
+    "label": "GET /api/v1/stocks/00700/history?period=monthly&days=730 (warm)",
+    "n": 50,
+    "ok": 50,
+    "err": 0,
+    "p50_ms": 15.53,
+    "p95_ms": 16.48,
+    "p99_ms": 22.63,
+    "max_ms": 27.48,
+    "avg_ms": 14.95
+  },
+  {
+    "label": "POST /api/v1/analysis/peak-trough (warm)",
+    "n": 50,
+    "ok": 50,
+    "err": 0,
+    "p50_ms": 15.52,
+    "p95_ms": 17.15,
+    "p99_ms": 26.41,
+    "max_ms": 28.73,
+    "avg_ms": 15.01
+  },
+  {
+    "label": "GET /api/v1/stocks/600519/indicators/MACD (warm)",
+    "n": 50,
+    "ok": 50,
+    "err": 0,
+    "p50_ms": 31.34,
+    "p95_ms": 34.77,
+    "p99_ms": 36.74,
+    "max_ms": 37.57,
+    "avg_ms": 30.17
+  },
+  {
+    "label": "GET /api/v1/stocks/search?q=600519 (warm)",
+    "n": 50,
+    "ok": 50,
+    "err": 0,
+    "p50_ms": 15.62,
+    "p95_ms": 17.06,
+    "p99_ms": 19.45,
+    "max_ms": 21.56,
+    "avg_ms": 14.82
+  },
+  {
+    "label": "GET /health",
+    "n": 50,
+    "ok": 50,
+    "err": 0,
+    "p50_ms": 15.56,
+    "p95_ms": 16.47,
+    "p99_ms": 21.91,
+    "max_ms": 26.9,
+    "avg_ms": 14.64
+  },
+  {
+    "label": "GET /history COLD-CACHE (cache reset each call)",
+    "n": 10,
+    "ok": 10,
+    "err": 0,
+    "p50_ms": 18.52,
+    "p95_ms": 19.72,
+    "p99_ms": 19.74,
+    "max_ms": 19.75,
+    "avg_ms": 18.66
+  }
+]

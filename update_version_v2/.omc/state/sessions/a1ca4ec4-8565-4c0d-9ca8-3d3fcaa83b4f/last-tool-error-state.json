@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd F:/daily_stock_analysis_v2/update_version_v2 && rm -rf backend/.e2e && echo \\\"e2e logs cleaned\\\"; echo \\\"=== 最终 jobs ===\\\"; python -c \\\"\\nimport sqlite3,datetime;c=sqlite3.connect('back...",
+  "error": "Exit code 128\ne2e logs cleaned\n=== 最终 jobs ===\n  builtin_alert_scan                 next=2026-08-14 15:20:00\r\n  builtin_community_rank             next=2026-08-14 15:35:00\r\n  builtin_market_review_evening      next=2026-08-14 18:00:00\r\n  builtin_market_review_morning      next=2026-08-17 10:00:00\r\n  builtin_paper_settle               next=2026-08-14 15:30:00\r\n=== git status ===\nfatal: not a git repository (or any of the parent directories): .git",
+  "timestamp": "2026-08-14T07:19:10.881Z",
+  "retry_count": 1
+}

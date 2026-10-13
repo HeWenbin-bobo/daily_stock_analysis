@@ -1,0 +1,5 @@
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"agent-browser"}
+{"t":0,"agent":"a8d5cf6","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a8d5cf6","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":535741}
+{"t":0,"agent":"a67d809","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a67d809","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":481341}

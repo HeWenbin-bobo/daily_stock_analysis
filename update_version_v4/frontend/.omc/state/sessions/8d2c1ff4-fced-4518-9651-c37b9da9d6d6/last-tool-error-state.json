@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd F:/daily_stock_analysis && python -c \\\"\\nimport sys\\nsys.path.insert(0, '.')\\n\\nprint('=== Test 4: API Route Registration ===')\\n\\n# Test router registration\\nfrom api.v1.router import ...",
+  "error": "Exit code 1\n\u001b[92m09:34:01 - LiteLLM:WARNING\u001b[0m: common_utils.py:979 - litellm: could not pre-load bedrock-runtime response stream shape �� Bedrock event-stream decoding will be unavailable. Error: No module named 'botocore'\r\n\u001b[92m09:34:02 - LiteLLM:WARNING\u001b[0m: common_utils.py:24 - litellm: could not pre-load sagemaker-runtime response stream shape �� SageMaker event-stream decoding will be unavailable. Error: No module named 'botocore'\r\nTraceback (most recent call last):\r\n  File \"<string>\", li...",
+  "timestamp": "2026-07-21T01:34:04.664Z",
+  "retry_count": 1
+}

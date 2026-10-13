@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"sleep 6 && echo \\\"=== v3 前端端口 5174 ===\\\" && netstat -ano 2>/dev/null | grep \\\":5174\\\" | grep LISTENING | head -3\\necho \\\"=== v3 前端 HTTP 状态 ===\\\" && curl -s -m 5 -o /dev/null -w \\\"%{http_co...",
+  "error": "Exit code 7\n=== v3 前端端口 5174 ===\n=== v3 前端 HTTP 状态 ===\n000\r\n\n=== v3 前端日志 ===\n    at #cachedDefaultResolve (node:internal/modules/esm/loader:691:20)\n    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:708:38)\n    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:740:52)\n    at #resolve (node:internal/modules/esm/loader:673:17)\n    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:593:35)\n    at ModuleJob.syncLink (node:internal/modules/esm...",
+  "timestamp": "2026-08-26T16:52:43.222Z",
+  "retry_count": 1
+}

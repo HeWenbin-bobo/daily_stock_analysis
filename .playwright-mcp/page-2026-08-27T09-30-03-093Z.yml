@@ -1,0 +1,170 @@
+- generic [ref=f10e5]:
+  - banner [ref=f10e6]:
+    - generic [ref=f10e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=f10e8]
+      - button "切换到暗色模式" [ref=f10e9] [cursor=pointer]:
+        - generic [ref=f10e10]: 🌙
+    - paragraph [ref=f10e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=f10e12]:
+      - generic [ref=f10e13]:
+        - generic [ref=f10e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=f10e16]:
+        - generic [ref=f10e17]: 🕐
+        - text: 17:30:02
+  - generic [ref=f10e20]:
+    - generic [ref=f10e21]: 📊 分析
+    - generic [ref=f10e24]: 🔍 单股
+    - generic [ref=f10e27]: 📐 技术
+    - generic [ref=f10e30]: 🗞 大盘复盘
+    - generic [ref=f10e33]: 📈 可视化
+    - generic [ref=f10e36]: 📚 历史
+    - generic [ref=f10e39]: 🔄 对比
+    - generic [ref=f10e42]: ⭐ 自选
+    - generic [ref=f10e45]: 📋 模板
+    - generic [ref=f10e48]: ⏰ 定时
+  - generic [ref=f10e317]:
+    - text: 📊 大盘复盘
+    - generic [ref=f10e318]: 每日报告
+    - button "生成今日大盘复盘" [ref=f10e320] [cursor=pointer]:
+      - generic [ref=f10e321]: 🚀 生成今日复盘
+    - button "对比两个日期的复盘" [ref=f10e322] [cursor=pointer]:
+      - generic [ref=f10e323]: 🔄 对比
+    - button "批量生成近 N 天复盘" [ref=f10e324] [cursor=pointer]:
+      - generic [ref=f10e325]: 📦 批量
+    - button "导出当前复盘为 Markdown" [ref=f10e326] [cursor=pointer]:
+      - generic [ref=f10e327]: 📥 .md
+    - button "导出当前复盘为 PDF" [ref=f10e328] [cursor=pointer]:
+      - generic [ref=f10e329]: 📄 PDF
+    - button "返回分析主页" [ref=f10e330] [cursor=pointer]:
+      - generic [ref=f10e331]: ← 返回
+    - status [ref=f10e332]:
+      - generic [ref=f10e333]:
+        - generic [ref=f10e334]:
+          - heading "📅 2026-08-27 大盘复盘 degraded 耗时 11.062s" [ref=f10e335]:
+            - heading "📅 2026-08-27 大盘复盘 degraded" [ref=f10e336]:
+              - text: 📅 2026-08-27 大盘复盘
+              - generic [ref=f10e337]: degraded
+            - generic [ref=f10e339]: 耗时 11.062s
+          - generic [ref=f10e341]:
+            - generic [ref=f10e342]: 🎯
+            - generic [ref=f10e343]:
+              - generic [ref=f10e344]: 盘面信号
+              - generic [ref=f10e345]: 30 / 100（弱势）
+              - generic [ref=f10e346]:
+                - strong [ref=f10e347]: 建议：
+                - text: 防守为主，降低风险敞口
+              - generic [ref=f10e348]: 上涨占比 0%, 涨跌停差 0
+            - generic [ref=f10e349]:
+              - generic [ref=f10e350]: 上涨 / 下跌
+              - generic [ref=f10e351]: 0 / 0
+              - generic [ref=f10e352]: 涨跌停差 0
+              - generic [ref=f10e353]: 成交额 0 亿
+          - generic [ref=f10e354]: 📈 指数结构
+          - generic [ref=f10e357]:
+            - table [ref=f10e358]:
+              - rowgroup [ref=f10e367]:
+                - row [ref=f10e368]:
+                  - columnheader "指数" [ref=f10e369]
+                  - columnheader "最新" [ref=f10e372]
+                  - columnheader "涨跌幅" [ref=f10e375]
+                  - columnheader "开盘" [ref=f10e378]
+                  - columnheader "最高" [ref=f10e381]
+                  - columnheader "最低" [ref=f10e384]
+                  - columnheader "成交额(亿)" [ref=f10e387]
+            - generic [ref=f10e390]: 无数据
+          - generic [ref=f10e398]: 🔥 行业板块 (0 个)
+          - generic [ref=f10e399]:
+            - generic [ref=f10e400]:
+              - generic [ref=f10e401]: 📈 领涨 Top 5
+              - generic [ref=f10e402]: 无数据
+            - generic [ref=f10e413]:
+              - generic [ref=f10e414]: 📉 领跌 Top 5
+              - generic [ref=f10e415]: 无数据
+          - generic [ref=f10e426]: 📄 完整 Markdown 报告
+        - generic [ref=f10e434]:
+          - heading [ref=f10e435]:
+            - heading "📚 历史复盘记录" [ref=f10e436]
+          - generic [ref=f10e437]:
+            - table [ref=f10e440]:
+              - rowgroup [ref=f10e446]:
+                - row [ref=f10e447]:
+                  - columnheader "日期" [ref=f10e448]
+                  - columnheader "状态" [ref=f10e451]
+                  - columnheader "摘要" [ref=f10e454]
+                  - columnheader "操作" [ref=f10e458]
+              - rowgroup [ref=f10e461]:
+                - row [ref=f10e462]:
+                  - cell "2026-08-27" [ref=f10e463]
+                  - cell "degraded" [ref=f10e464]
+                  - cell "弱势｜30.0/100｜上涨 0 / 下跌 0" [ref=f10e465]
+                  - cell [ref=f10e467]:
+                    - button "查看" [ref=f10e468] [cursor=pointer]
+                    - button "删除" [ref=f10e470] [cursor=pointer]
+                - row [ref=f10e472]:
+                  - cell "2026-08-26" [ref=f10e473]
+                  - cell "ok" [ref=f10e474]
+                  - cell "偏暖｜70.4/100｜上涨 2946 / 下跌 2447" [ref=f10e475]
+                  - cell [ref=f10e477]:
+                    - button "查看" [ref=f10e478] [cursor=pointer]
+                    - button "删除" [ref=f10e480] [cursor=pointer]
+                - row [ref=f10e482]:
+                  - cell "2026-08-25" [ref=f10e483]
+                  - cell "ok" [ref=f10e484]
+                  - cell "偏暖｜76.5/100｜上涨 4233 / 下跌 1246" [ref=f10e485]
+                  - cell [ref=f10e487]:
+                    - button "查看" [ref=f10e488] [cursor=pointer]
+                    - button "删除" [ref=f10e490] [cursor=pointer]
+                - row [ref=f10e492]:
+                  - cell "2026-08-24" [ref=f10e493]
+                  - cell "ok" [ref=f10e494]
+                  - cell "弱势｜12.2/100｜上涨 1460 / 下跌 3964" [ref=f10e495]
+                  - cell [ref=f10e497]:
+                    - button "查看" [ref=f10e498] [cursor=pointer]
+                    - button "删除" [ref=f10e500] [cursor=pointer]
+                - row [ref=f10e502]:
+                  - cell "2026-08-15" [ref=f10e503]
+                  - cell "ok" [ref=f10e504]
+                  - cell "偏弱｜54.7/100｜上涨 2400 / 下跌 2969" [ref=f10e505]
+                  - cell [ref=f10e507]:
+                    - button "查看" [ref=f10e508] [cursor=pointer]
+                    - button "删除" [ref=f10e510] [cursor=pointer]
+                - row [ref=f10e512]:
+                  - cell "2026-08-14" [ref=f10e513]
+                  - cell "ok" [ref=f10e514]
+                  - cell "偏弱｜54.7/100｜上涨 2400 / 下跌 2969" [ref=f10e515]
+                  - cell [ref=f10e517]:
+                    - button "查看" [ref=f10e518] [cursor=pointer]
+                    - button "删除" [ref=f10e520] [cursor=pointer]
+                - row [ref=f10e522]:
+                  - cell "2026-08-13" [ref=f10e523]
+                  - cell "ok" [ref=f10e524]
+                  - cell "弱势｜29.6/100｜上涨 1142 / 下跌 4317" [ref=f10e525]
+                  - cell [ref=f10e527]:
+                    - button "查看" [ref=f10e528] [cursor=pointer]
+                    - button "删除" [ref=f10e530] [cursor=pointer]
+                - row [ref=f10e532]:
+                  - cell "2026-08-12" [ref=f10e533]
+                  - cell "ok" [ref=f10e534]
+                  - cell "偏暖｜83.4/100｜上涨 4065 / 下跌 1254" [ref=f10e535]
+                  - cell [ref=f10e537]:
+                    - button "查看" [ref=f10e538] [cursor=pointer]
+                    - button "删除" [ref=f10e540] [cursor=pointer]
+                - row [ref=f10e542]:
+                  - cell "2026-08-11" [ref=f10e543]
+                  - cell "ok" [ref=f10e544]
+                  - cell "弱势｜32.4/100｜上涨 1614 / 下跌 3777" [ref=f10e545]
+                  - cell [ref=f10e547]:
+                    - button "查看" [ref=f10e548] [cursor=pointer]
+                    - button "删除" [ref=f10e550] [cursor=pointer]
+                - row [ref=f10e552]:
+                  - cell "2026-08-07" [ref=f10e553]
+                  - cell "ok" [ref=f10e554]
+                  - cell "弱势｜32.8/100｜上涨 1126 / 下跌 4309" [ref=f10e555]
+                  - cell [ref=f10e557]:
+                    - button "查看" [ref=f10e558] [cursor=pointer]
+                    - button "删除" [ref=f10e560] [cursor=pointer]
+            - generic [ref=f10e563]:
+              - generic [ref=f10e568] [cursor=pointer]: "1"
+              - generic [ref=f10e569] [cursor=pointer]: "2"
+              - generic [ref=f10e570] [cursor=pointer]

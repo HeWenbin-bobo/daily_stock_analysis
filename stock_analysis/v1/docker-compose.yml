@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    container_name: stock_backend
+    ports:
+      - "8100:8100"
+    environment:
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8100
+      - LOG_LEVEL=INFO
+      - FORCE_MOCK=${FORCE_MOCK:-1}
+      # 可选: LLM 兜底配置
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      # 如果要让容器读本地 CC switch 配置, 挂载它
+      - ${USERPROFILE:-/root}/.cc-switch:/root/.cc-switch:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    build: ./frontend
+    container_name: stock_frontend
+    ports:
+      - "5179:5179"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: stock_net

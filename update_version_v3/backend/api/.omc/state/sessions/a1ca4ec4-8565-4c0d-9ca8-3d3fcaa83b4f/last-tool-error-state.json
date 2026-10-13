@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd F:/daily_stock_analysis_v2/update_version_v2/backend && echo \\\"=== 去重写入点核实 ===\\\"; grep -n \\\"_market_review_inflight\\\" api/endpoints_hot.py; echo; echo \\\"=== 全量测试 ===\\\"; for f in test_ph...",
+  "error": "Exit code 143\nCommand timed out after 2m 0s\n=== 去重写入点核实 ===\n955:_market_review_inflight_lock = threading.Lock()\n956:_market_review_inflight: Dict[tuple, dict] = {}\n974:    with _market_review_inflight_lock:\n975:        if key in _market_review_inflight:\n979:        _market_review_inflight[key] = {\"started_at\": time.time()}\n997:        with _market_review_inflight_lock:\n998:            _market_review_inflight.pop(key, None)\n\n=== 全量测试 ===\ntest_phase13_fixes_and_features                      === Ph...",
+  "timestamp": "2026-08-14T09:02:45.904Z",
+  "retry_count": 1
+}

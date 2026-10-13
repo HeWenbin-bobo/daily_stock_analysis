@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"sleep 4 && curl -s -m 90 \\\"http://127.0.0.1:8100/api/v1/stocks/AAPL/history?period=daily&days=60\\\" 2>&1 | python -c \\\"import sys, json; d = json.load(sys.stdin); print('source:', d.get('so...",
+  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<string>\", line 1, in <module>\r\n    import sys, json; d = json.load(sys.stdin); print('source:', d.get('source')); print('len(data):', len(d.get('data', []))); print('first date:', d['data'][0]['date'] if d.get('data') else 'no data'); print('first close:', d['data'][0]['close'] if d.get('data') else 'no data')\r\n                          ~~~~~~~~~^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\stock-analysis\\Lib\\json\\__init__.py\", line 298, in load...",
+  "timestamp": "2026-08-04T03:46:21.855Z",
+  "retry_count": 1
+}

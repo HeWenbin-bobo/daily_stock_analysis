@@ -1,0 +1,35 @@
+{
+  "agents": [
+    {
+      "agent_id": "ae0cb86183e598d21",
+      "agent_type": "Explore",
+      "started_at": "2026-08-14T06:48:25.663Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-14T06:50:34.689Z",
+      "duration_ms": 129026
+    },
+    {
+      "agent_id": "afd7e1a35d9aab136",
+      "agent_type": "oh-my-claudecode:executor",
+      "started_at": "2026-08-14T06:55:20.815Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-14T07:03:34.071Z",
+      "duration_ms": 493256
+    },
+    {
+      "agent_id": "ad9e60dc84a09b6fc",
+      "agent_type": "oh-my-claudecode:code-reviewer",
+      "started_at": "2026-08-14T07:04:05.057Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-14T07:06:34.267Z",
+      "duration_ms": 149210
+    }
+  ],
+  "total_spawned": 3,
+  "total_completed": 3,
+  "total_failed": 0,
+  "last_updated": "2026-08-14T07:06:34.372Z"
+}

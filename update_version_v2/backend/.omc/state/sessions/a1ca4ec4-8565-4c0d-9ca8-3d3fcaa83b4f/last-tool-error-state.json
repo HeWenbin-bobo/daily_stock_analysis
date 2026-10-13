@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"D:/miniforge3/envs/daily_stock_analysis/python.exe -c \\\"\\nimport sys\\nsys.path.insert(0, '.')\\nfrom unittest.mock import patch, MagicMock\\nfrom modules import alerts_engine as ae\\nfrom db....",
+  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<string>\", line 31, in <module>\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\unittest\\mock.py\", line 1467, in __enter__\r\n    original, local = self.get_original()\r\n                      ^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\unittest\\mock.py\", line 1437, in get_original\r\n    raise AttributeError(\r\nAttributeError: <module 'modules.alerts_engine' from 'F:\\\\daily_stock_analysis_v2\\\\update_version_v2\\\\b...",
+  "timestamp": "2026-08-14T08:09:09.766Z",
+  "retry_count": 3
+}

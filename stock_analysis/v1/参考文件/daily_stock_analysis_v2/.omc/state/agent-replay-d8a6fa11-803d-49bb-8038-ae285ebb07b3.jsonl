@@ -1,0 +1,3 @@
+{"t":0,"agent":"ae6defd","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"agent-browser"}
+{"t":0,"agent":"ae6defd","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":2727789}

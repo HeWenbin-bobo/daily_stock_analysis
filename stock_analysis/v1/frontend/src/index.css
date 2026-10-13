@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* iter 70: 100dvh 兜底 iOS Safari 地址栏抖动; dvh 是 dynamic viewport height */
+.min-h-screen-dvh {
+  min-height: 100vh; /* 旧浏览器回退 */
+  min-height: 100dvh;
+}
+
+/* ========== 主题色 ========== */
+:root {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --border: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+}
+
+html.dark {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --border: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+/* A股惯例: 红涨绿跌 */
+.up { color: #ef4444; }
+.down { color: #10b981; }
+.bg-up { background-color: #ef4444; }
+.bg-down { background-color: #10b981; }
+
+/* 美股惯例: 绿涨红跌 */
+.us-up { color: #10b981; }
+.us-down { color: #ef4444; }
+
+/* 浅色主题下的文本/面板覆盖(对深色硬编码 Tailwind class 的元素) */
+html.light .bg-bg { background-color: #f8fafc !important; }
+html.light .bg-panel { background-color: #ffffff !important; }
+html.light .border-border { border-color: #e2e8f0 !important; }
+html.light .text-slate-100 { color: #0f172a !important; }
+html.light .text-slate-200 { color: #1e293b !important; }
+html.light .text-slate-300 { color: #334155 !important; }
+html.light .text-slate-400 { color: #475569 !important; }
+html.light .text-slate-500 { color: #64748b !important; }
+html.light .bg-slate-700\/30 { background-color: rgba(226, 232, 240, 0.5) !important; }
+html.light .bg-slate-700\/40 { background-color: rgba(226, 232, 240, 0.6) !important; }
+html.light .bg-slate-700\/50 { background-color: rgba(226, 232, 240, 0.7) !important; }
+html.light .bg-slate-700\/60 { background-color: rgba(226, 232, 240, 0.7) !important; }
+html.light .bg-slate-800\/30 { background-color: rgba(241, 245, 249, 0.5) !important; }
+html.light .bg-slate-800\/40 { background-color: rgba(241, 245, 249, 0.6) !important; }
+html.light .bg-slate-800\/50 { background-color: rgba(241, 245, 249, 0.7) !important; }
+html.light .bg-slate-900\/50 { background-color: rgba(255, 255, 255, 0.5) !important; }
+html.light .bg-slate-600 { background-color: #94a3b8 !important; }
+html.light .bg-slate-900\/40 { background-color: rgba(255, 255, 255, 0.4) !important; }
+html.light .hover\:bg-slate-700:hover { background-color: #cbd5e1 !important; }
+html.light .hover\:bg-slate-600:hover { background-color: #94a3b8 !important; }
+html.light .placeholder-slate-500::placeholder { color: #94a3b8 !important; }
+html.light .border-border\/50 { border-color: rgba(226, 232, 240, 0.7) !important; }
+html.light .border-slate-700\/50 { border-color: rgba(203, 213, 225, 0.7) !important; }
+
+/* K线图表容器 */
+.kline-chart {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+}
+
+/* ========== 滚动条 ========== */
+/* WebKit / Chromium */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+html.light ::-webkit-scrollbar-track { background: #f8fafc; }
+html.light ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+/* iter 82: scrollbar hover light override — 之前只有 dark 主题下 hover 变色 */
+html.light ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Firefox 64+ 标准滚动条 (iter 70) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #0f172a;
+}
+html.light * {
+  scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+/* ========== 可访问性: prefers-reduced-motion ========== */
+/* 用户在系统中启用"减少动态效果"时, 禁用所有 transition / animation (WCAG 2.3.3)
+   iter 70: 放在 light 模式覆盖之后, 让深/浅模式通吃 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

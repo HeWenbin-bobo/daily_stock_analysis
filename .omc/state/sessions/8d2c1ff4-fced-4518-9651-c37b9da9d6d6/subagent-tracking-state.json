@@ -1,0 +1,33 @@
+{
+  "agents": [
+    {
+      "agent_id": "abackend-test-647116ab3050fa64",
+      "agent_type": "backend-test",
+      "started_at": "2026-07-21T01:31:47.498Z",
+      "parent_mode": "none",
+      "status": "running"
+    },
+    {
+      "agent_id": "afrontend-review-bd12d31ff254c059",
+      "agent_type": "frontend-review",
+      "started_at": "2026-07-21T03:27:52.983Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-07-21T03:30:54.979Z",
+      "duration_ms": 181996
+    },
+    {
+      "agent_id": "abackend-review-b4d15d9fd8ffc4c8",
+      "agent_type": "backend-review",
+      "started_at": "2026-07-21T03:28:08.546Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-07-21T03:30:55.756Z",
+      "duration_ms": 167210
+    }
+  ],
+  "total_spawned": 3,
+  "total_completed": 1,
+  "total_failed": 0,
+  "last_updated": "2026-07-21T03:30:56.752Z"
+}

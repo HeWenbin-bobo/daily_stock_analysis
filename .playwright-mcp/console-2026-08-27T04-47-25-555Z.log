@@ -1,0 +1,35 @@
+[     341ms] [WARNING] [Vue warn]: Failed to resolve component: n-text
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <StatusBadges key=3 hot-lists-summary= {东方财富: 0, 雪球: 200, 同花顺: 200, 全市场活跃: 0, used_lists_count: 2} hot-lists-status= {东方财富: failed, 雪球: ok, 同花顺: fallback, 全市场活跃: failed}  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=d61db370:2225
+[     341ms] [WARNING] [Vue warn]: Failed to resolve component: n-tag
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <StatusBadges key=3 hot-lists-summary= {东方财富: 0, 雪球: 200, 同花顺: 200, 全市场活跃: 0, used_lists_count: 2} hot-lists-status= {东方财富: failed, 雪球: ok, 同花顺: fallback, 全市场活跃: failed}  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=d61db370:2225
+[     342ms] [WARNING] [Vue warn]: Failed to resolve component: n-tooltip
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <StatusBadges key=3 hot-lists-summary= {东方财富: 0, 雪球: 200, 同花顺: 200, 全市场活跃: 0, used_lists_count: 2} hot-lists-status= {东方财富: failed, 雪球: ok, 同花顺: fallback, 全市场活跃: failed}  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=d61db370:2225
+[     343ms] [WARNING] [Vue warn]: Failed to resolve component: n-space
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <StatusBadges key=3 hot-lists-summary= {东方财富: 0, 雪球: 200, 同花顺: 200, 全市场活跃: 0, used_lists_count: 2} hot-lists-status= {东方财富: failed, 雪球: ok, 同花顺: fallback, 全市场活跃: failed}  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=d61db370:2225
+[     343ms] [WARNING] [Vue warn]: Failed to resolve component: n-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <StatusBadges key=3 hot-lists-summary= {东方财富: 0, 雪球: 200, 同花顺: 200, 全市场活跃: 0, used_lists_count: 2} hot-lists-status= {东方财富: failed, 雪球: ok, 同花顺: fallback, 全市场活跃: failed}  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=d61db370:2225
+[     343ms] [WARNING] [Vue warn]: Failed to resolve component: n-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <StatusBadges key=3 hot-lists-summary= {东方财富: 0, 雪球: 200, 同花顺: 200, 全市场活跃: 0, used_lists_count: 2} hot-lists-status= {东方财富: failed, 雪球: ok, 同花顺: fallback, 全市场活跃: failed}  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=d61db370:2225
+[   63880ms] [WARNING] [Vue warn]: Failed to resolve component: n-alert
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <HistoryView onBack=fn onCompare=fn<onCompareFromHistory> > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=d61db370:2225

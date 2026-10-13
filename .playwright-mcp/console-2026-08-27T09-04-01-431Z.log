@@ -1,0 +1,30 @@
+[  145649ms] [WARNING] [Vue warn]: Failed to resolve component: n-button
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <PreviewCard key=2 preview= {status: ok, started_at: 2026-08-27T17:05:18.311869, finished_at: 2026-08-27T17:06:27.069265, duration_seconds: 68.76, hot_lists_summary: Object} onConfirm=fn  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=9a5ad448:2225
+[  145650ms] [WARNING] [Vue warn]: Failed to resolve component: n-space
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <PreviewCard key=2 preview= {status: ok, started_at: 2026-08-27T17:05:18.311869, finished_at: 2026-08-27T17:06:27.069265, duration_seconds: 68.76, hot_lists_summary: Object} onConfirm=fn  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=9a5ad448:2225
+[  145650ms] [WARNING] [Vue warn]: Failed to resolve component: n-data-table
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <PreviewCard key=2 preview= {status: ok, started_at: 2026-08-27T17:05:18.311869, finished_at: 2026-08-27T17:06:27.069265, duration_seconds: 68.76, hot_lists_summary: Object} onConfirm=fn  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=9a5ad448:2225
+[  145651ms] [WARNING] [Vue warn]: Failed to resolve component: n-collapse-item
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <PreviewCard key=2 preview= {status: ok, started_at: 2026-08-27T17:05:18.311869, finished_at: 2026-08-27T17:06:27.069265, duration_seconds: 68.76, hot_lists_summary: Object} onConfirm=fn  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=9a5ad448:2225
+[  145652ms] [WARNING] [Vue warn]: Failed to resolve component: n-collapse
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <PreviewCard key=2 preview= {status: ok, started_at: 2026-08-27T17:05:18.311869, finished_at: 2026-08-27T17:06:27.069265, duration_seconds: 68.76, hot_lists_summary: Object} onConfirm=fn  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=9a5ad448:2225
+[  145652ms] [WARNING] [Vue warn]: Failed to resolve component: n-card
+If this is a native custom element, make sure to exclude it from component resolution via compilerOptions.isCustomElement. 
+  at <PreviewCard key=2 preview= {status: ok, started_at: 2026-08-27T17:05:18.311869, finished_at: 2026-08-27T17:06:27.069265, duration_seconds: 68.76, hot_lists_summary: Object} onConfirm=fn  ... > 
+  at <ConfigProvider locale= {name: zh-CN, global: Object, Popconfirm: Object, Cascader: Object, Time: Object} date-locale= {name: zh-CN, locale: Object} theme=undefined > 
+  at <App> @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-ZK3RVVAP.js?v=9a5ad448:2225

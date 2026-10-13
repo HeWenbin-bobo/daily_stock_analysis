@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd \\\"F:/daily_stock_analysis_v2\\\" && python -X utf8 -c \\\"\\nimport sys, asyncio\\nsys.path.insert(0, '.')\\nfrom api.v1.endpoints.hot_analysis import DynamicAsyncLimiter, LLM_FAILURE_DEGRADE_...",
+  "error": "Exit code 1\n  File \"<string>\", line 34\r\n    pass\r\n    ^^^^\r\nIndentationError: expected an indented block after 'with' statement on line 33",
+  "timestamp": "2026-08-06T09:49:05.591Z",
+  "retry_count": 1
+}

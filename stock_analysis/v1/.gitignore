@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+env/
+ENV/
+backend/.env
+backend/.env.local
+*.db
+*.db-journal
+
+# Node
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.cache/
+*.tsbuildinfo
+frontend/coverage/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Runtime data
+data/
+.cache/
+
+# Claude Code
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# Coverage reports
+coverage/
+*.coverage
+htmlcov/
+
+# Lock files (保留 package-lock.json, 排除其他)
+yarn.lock
+pnpm-lock.yaml

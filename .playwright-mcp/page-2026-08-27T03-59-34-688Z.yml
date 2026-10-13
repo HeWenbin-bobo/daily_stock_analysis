@@ -1,0 +1,345 @@
+- generic [ref=f4e5]:
+  - banner [ref=f4e6]:
+    - generic [ref=f4e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=f4e8]
+      - button "切换到暗色模式" [ref=f4e9] [cursor=pointer]:
+        - generic [ref=f4e10]: 🌙
+    - paragraph [ref=f4e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=f4e12]:
+      - generic [ref=f4e13]:
+        - generic [ref=f4e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=f4e16]:
+        - generic [ref=f4e17]: 🕐
+        - text: 11:59:33
+  - generic [ref=f4e20]:
+    - generic [ref=f4e21]: 📊 分析
+    - generic [ref=f4e24]: 🔍 单股
+    - generic [ref=f4e27]: 📐 技术
+    - generic [ref=f4e30]: 🗞 大盘复盘
+    - generic [ref=f4e33]: 📈 可视化
+    - generic [ref=f4e36]: 📚 历史
+    - generic [ref=f4e39]: 🔄 对比
+    - generic [ref=f4e42]: ⭐ 自选
+    - generic [ref=f4e45]: 📋 模板
+    - generic [ref=f4e48]: ⏰ 定时
+  - generic [ref=f4e465]:
+    - generic [ref=f4e466]:
+      - button "返回分析主页" [ref=f4e467] [cursor=pointer]:
+        - generic [ref=f4e468]: ← 返回
+      - text: 📚 历史记录 共 146 条
+    - status [ref=f4e469]:
+      - generic [ref=f4e471]:
+        - table [ref=f4e474]:
+          - rowgroup [ref=f4e484]:
+            - row [ref=f4e485]:
+              - columnheader "ID" [ref=f4e486]
+              - columnheader "时间" [ref=f4e489]
+              - columnheader "状态" [ref=f4e492]
+              - columnheader "交集" [ref=f4e495]
+              - columnheader "分析" [ref=f4e498]
+              - columnheader "通过" [ref=f4e501]
+              - columnheader "耗时" [ref=f4e504]
+              - columnheader "操作" [ref=f4e507]
+          - rowgroup [ref=f4e510]:
+            - row [ref=f4e511]:
+              - cell "406" [ref=f4e512]
+              - cell "2026 年 8 月 27 日 10:49:18" [ref=f4e513]
+              - cell "ok" [ref=f4e514]
+              - cell "85" [ref=f4e517]
+              - cell "1" [ref=f4e518]
+              - cell "1" [ref=f4e519]
+              - cell "192s" [ref=f4e520]
+              - cell [ref=f4e521]:
+                - 'button "查看历史记录 #406 的详情" [ref=f4e522] [cursor=pointer]':
+                  - generic [ref=f4e523]: 📊 详情
+                - 'button "以历史记录 #406 作为对比基准" [ref=f4e524] [cursor=pointer]':
+                  - generic [ref=f4e525]: 🔄 对比
+                - 'button "删除历史记录 #406" [ref=f4e526] [cursor=pointer]':
+                  - generic [ref=f4e527]: 🗑 删除
+            - row [ref=f4e528]:
+              - cell "401" [ref=f4e529]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e530]
+              - cell "ok" [ref=f4e531]
+              - cell "10" [ref=f4e534]
+              - cell "5" [ref=f4e535]
+              - cell "3" [ref=f4e536]
+              - cell "60s" [ref=f4e537]
+              - cell [ref=f4e538]:
+                - 'button "查看历史记录 #401 的详情" [ref=f4e539] [cursor=pointer]':
+                  - generic [ref=f4e540]: 📊 详情
+                - 'button "以历史记录 #401 作为对比基准" [ref=f4e541] [cursor=pointer]':
+                  - generic [ref=f4e542]: 🔄 对比
+                - 'button "删除历史记录 #401" [ref=f4e543] [cursor=pointer]':
+                  - generic [ref=f4e544]: 🗑 删除
+            - row [ref=f4e545]:
+              - cell "400" [ref=f4e546]
+              - cell "2026 年 8 月 26 日 17:22:40" [ref=f4e547]
+              - cell "ok" [ref=f4e548]
+              - cell "87" [ref=f4e551]
+              - cell "10" [ref=f4e552]
+              - cell "2" [ref=f4e553]
+              - cell "1564s" [ref=f4e554]
+              - cell [ref=f4e555]:
+                - 'button "查看历史记录 #400 的详情" [ref=f4e556] [cursor=pointer]':
+                  - generic [ref=f4e557]: 📊 详情
+                - 'button "以历史记录 #400 作为对比基准" [ref=f4e558] [cursor=pointer]':
+                  - generic [ref=f4e559]: 🔄 对比
+                - 'button "删除历史记录 #400" [ref=f4e560] [cursor=pointer]':
+                  - generic [ref=f4e561]: 🗑 删除
+            - row [ref=f4e562]:
+              - cell "399" [ref=f4e563]
+              - cell "2026 年 8 月 26 日 15:43:31" [ref=f4e564]
+              - cell "ok" [ref=f4e565]
+              - cell "87" [ref=f4e568]
+              - cell "10" [ref=f4e569]
+              - cell "3" [ref=f4e570]
+              - cell "4028s" [ref=f4e571]
+              - cell [ref=f4e572]:
+                - 'button "查看历史记录 #399 的详情" [ref=f4e573] [cursor=pointer]':
+                  - generic [ref=f4e574]: 📊 详情
+                - 'button "以历史记录 #399 作为对比基准" [ref=f4e575] [cursor=pointer]':
+                  - generic [ref=f4e576]: 🔄 对比
+                - 'button "删除历史记录 #399" [ref=f4e577] [cursor=pointer]':
+                  - generic [ref=f4e578]: 🗑 删除
+            - row [ref=f4e579]:
+              - cell "398" [ref=f4e580]
+              - cell "2026 年 8 月 26 日 14:34:41" [ref=f4e581]
+              - cell "ok" [ref=f4e582]
+              - cell "146" [ref=f4e585]
+              - cell "10" [ref=f4e586]
+              - cell "2" [ref=f4e587]
+              - cell "2335s" [ref=f4e588]
+              - cell [ref=f4e589]:
+                - 'button "查看历史记录 #398 的详情" [ref=f4e590] [cursor=pointer]':
+                  - generic [ref=f4e591]: 📊 详情
+                - 'button "以历史记录 #398 作为对比基准" [ref=f4e592] [cursor=pointer]':
+                  - generic [ref=f4e593]: 🔄 对比
+                - 'button "删除历史记录 #398" [ref=f4e594] [cursor=pointer]':
+                  - generic [ref=f4e595]: 🗑 删除
+            - row [ref=f4e596]:
+              - cell "397" [ref=f4e597]
+              - cell "2026 年 8 月 26 日 12:42:57" [ref=f4e598]
+              - cell "ok" [ref=f4e599]
+              - cell "284" [ref=f4e602]
+              - cell "10" [ref=f4e603]
+              - cell "1" [ref=f4e604]
+              - cell "4282s" [ref=f4e605]
+              - cell [ref=f4e606]:
+                - 'button "查看历史记录 #397 的详情" [ref=f4e607] [cursor=pointer]':
+                  - generic [ref=f4e608]: 📊 详情
+                - 'button "以历史记录 #397 作为对比基准" [ref=f4e609] [cursor=pointer]':
+                  - generic [ref=f4e610]: 🔄 对比
+                - 'button "删除历史记录 #397" [ref=f4e611] [cursor=pointer]':
+                  - generic [ref=f4e612]: 🗑 删除
+            - row [ref=f4e613]:
+              - cell "392" [ref=f4e614]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e615]
+              - cell "ok" [ref=f4e616]
+              - cell "10" [ref=f4e619]
+              - cell "5" [ref=f4e620]
+              - cell "3" [ref=f4e621]
+              - cell "60s" [ref=f4e622]
+              - cell [ref=f4e623]:
+                - 'button "查看历史记录 #392 的详情" [ref=f4e624] [cursor=pointer]':
+                  - generic [ref=f4e625]: 📊 详情
+                - 'button "以历史记录 #392 作为对比基准" [ref=f4e626] [cursor=pointer]':
+                  - generic [ref=f4e627]: 🔄 对比
+                - 'button "删除历史记录 #392" [ref=f4e628] [cursor=pointer]':
+                  - generic [ref=f4e629]: 🗑 删除
+            - row [ref=f4e630]:
+              - cell "383" [ref=f4e631]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e632]
+              - cell "ok" [ref=f4e633]
+              - cell "10" [ref=f4e636]
+              - cell "5" [ref=f4e637]
+              - cell "3" [ref=f4e638]
+              - cell "60s" [ref=f4e639]
+              - cell [ref=f4e640]:
+                - 'button "查看历史记录 #383 的详情" [ref=f4e641] [cursor=pointer]':
+                  - generic [ref=f4e642]: 📊 详情
+                - 'button "以历史记录 #383 作为对比基准" [ref=f4e643] [cursor=pointer]':
+                  - generic [ref=f4e644]: 🔄 对比
+                - 'button "删除历史记录 #383" [ref=f4e645] [cursor=pointer]':
+                  - generic [ref=f4e646]: 🗑 删除
+            - row [ref=f4e647]:
+              - cell "378" [ref=f4e648]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e649]
+              - cell "ok" [ref=f4e650]
+              - cell "10" [ref=f4e653]
+              - cell "5" [ref=f4e654]
+              - cell "3" [ref=f4e655]
+              - cell "60s" [ref=f4e656]
+              - cell [ref=f4e657]:
+                - 'button "查看历史记录 #378 的详情" [ref=f4e658] [cursor=pointer]':
+                  - generic [ref=f4e659]: 📊 详情
+                - 'button "以历史记录 #378 作为对比基准" [ref=f4e660] [cursor=pointer]':
+                  - generic [ref=f4e661]: 🔄 对比
+                - 'button "删除历史记录 #378" [ref=f4e662] [cursor=pointer]':
+                  - generic [ref=f4e663]: 🗑 删除
+            - row [ref=f4e664]:
+              - cell "373" [ref=f4e665]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e666]
+              - cell "ok" [ref=f4e667]
+              - cell "10" [ref=f4e670]
+              - cell "5" [ref=f4e671]
+              - cell "3" [ref=f4e672]
+              - cell "60s" [ref=f4e673]
+              - cell [ref=f4e674]:
+                - 'button "查看历史记录 #373 的详情" [ref=f4e675] [cursor=pointer]':
+                  - generic [ref=f4e676]: 📊 详情
+                - 'button "以历史记录 #373 作为对比基准" [ref=f4e677] [cursor=pointer]':
+                  - generic [ref=f4e678]: 🔄 对比
+                - 'button "删除历史记录 #373" [ref=f4e679] [cursor=pointer]':
+                  - generic [ref=f4e680]: 🗑 删除
+            - row [ref=f4e681]:
+              - cell "368" [ref=f4e682]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e683]
+              - cell "ok" [ref=f4e684]
+              - cell "10" [ref=f4e687]
+              - cell "5" [ref=f4e688]
+              - cell "3" [ref=f4e689]
+              - cell "60s" [ref=f4e690]
+              - cell [ref=f4e691]:
+                - 'button "查看历史记录 #368 的详情" [ref=f4e692] [cursor=pointer]':
+                  - generic [ref=f4e693]: 📊 详情
+                - 'button "以历史记录 #368 作为对比基准" [ref=f4e694] [cursor=pointer]':
+                  - generic [ref=f4e695]: 🔄 对比
+                - 'button "删除历史记录 #368" [ref=f4e696] [cursor=pointer]':
+                  - generic [ref=f4e697]: 🗑 删除
+            - row [ref=f4e698]:
+              - cell "363" [ref=f4e699]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e700]
+              - cell "ok" [ref=f4e701]
+              - cell "10" [ref=f4e704]
+              - cell "5" [ref=f4e705]
+              - cell "3" [ref=f4e706]
+              - cell "60s" [ref=f4e707]
+              - cell [ref=f4e708]:
+                - 'button "查看历史记录 #363 的详情" [ref=f4e709] [cursor=pointer]':
+                  - generic [ref=f4e710]: 📊 详情
+                - 'button "以历史记录 #363 作为对比基准" [ref=f4e711] [cursor=pointer]':
+                  - generic [ref=f4e712]: 🔄 对比
+                - 'button "删除历史记录 #363" [ref=f4e713] [cursor=pointer]':
+                  - generic [ref=f4e714]: 🗑 删除
+            - row [ref=f4e715]:
+              - cell "362" [ref=f4e716]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e717]
+              - cell "ok" [ref=f4e718]
+              - cell "10" [ref=f4e721]
+              - cell "5" [ref=f4e722]
+              - cell "3" [ref=f4e723]
+              - cell "60s" [ref=f4e724]
+              - cell [ref=f4e725]:
+                - 'button "查看历史记录 #362 的详情" [ref=f4e726] [cursor=pointer]':
+                  - generic [ref=f4e727]: 📊 详情
+                - 'button "以历史记录 #362 作为对比基准" [ref=f4e728] [cursor=pointer]':
+                  - generic [ref=f4e729]: 🔄 对比
+                - 'button "删除历史记录 #362" [ref=f4e730] [cursor=pointer]':
+                  - generic [ref=f4e731]: 🗑 删除
+            - row [ref=f4e732]:
+              - cell "357" [ref=f4e733]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e734]
+              - cell "ok" [ref=f4e735]
+              - cell "10" [ref=f4e738]
+              - cell "5" [ref=f4e739]
+              - cell "3" [ref=f4e740]
+              - cell "60s" [ref=f4e741]
+              - cell [ref=f4e742]:
+                - 'button "查看历史记录 #357 的详情" [ref=f4e743] [cursor=pointer]':
+                  - generic [ref=f4e744]: 📊 详情
+                - 'button "以历史记录 #357 作为对比基准" [ref=f4e745] [cursor=pointer]':
+                  - generic [ref=f4e746]: 🔄 对比
+                - 'button "删除历史记录 #357" [ref=f4e747] [cursor=pointer]':
+                  - generic [ref=f4e748]: 🗑 删除
+            - row [ref=f4e749]:
+              - cell "336" [ref=f4e750]
+              - cell "2026 年 8 月 24 日 14:42:43" [ref=f4e751]
+              - cell "timeout" [ref=f4e752]
+              - cell "42" [ref=f4e755]
+              - cell "0" [ref=f4e756]
+              - cell "0" [ref=f4e757]
+              - cell "312s" [ref=f4e758]
+              - cell [ref=f4e759]:
+                - 'button "查看历史记录 #336 的详情" [ref=f4e760] [cursor=pointer]':
+                  - generic [ref=f4e761]: 📊 详情
+                - 'button "以历史记录 #336 作为对比基准" [ref=f4e762] [cursor=pointer]':
+                  - generic [ref=f4e763]: 🔄 对比
+                - 'button "删除历史记录 #336" [ref=f4e764] [cursor=pointer]':
+                  - generic [ref=f4e765]: 🗑 删除
+            - row [ref=f4e766]:
+              - cell "335" [ref=f4e767]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e768]
+              - cell "ok" [ref=f4e769]
+              - cell "10" [ref=f4e772]
+              - cell "5" [ref=f4e773]
+              - cell "3" [ref=f4e774]
+              - cell "60s" [ref=f4e775]
+              - cell [ref=f4e776]:
+                - 'button "查看历史记录 #335 的详情" [ref=f4e777] [cursor=pointer]':
+                  - generic [ref=f4e778]: 📊 详情
+                - 'button "以历史记录 #335 作为对比基准" [ref=f4e779] [cursor=pointer]':
+                  - generic [ref=f4e780]: 🔄 对比
+                - 'button "删除历史记录 #335" [ref=f4e781] [cursor=pointer]':
+                  - generic [ref=f4e782]: 🗑 删除
+            - row [ref=f4e783]:
+              - cell "334" [ref=f4e784]
+              - cell "2026 年 8 月 14 日 17:11:33" [ref=f4e785]
+              - cell "cancelled" [ref=f4e786]
+              - cell "283" [ref=f4e789]
+              - cell "0" [ref=f4e790]
+              - cell "0" [ref=f4e791]
+              - cell "200s" [ref=f4e792]
+              - cell [ref=f4e793]:
+                - 'button "查看历史记录 #334 的详情" [ref=f4e794] [cursor=pointer]':
+                  - generic [ref=f4e795]: 📊 详情
+                - 'button "以历史记录 #334 作为对比基准" [ref=f4e796] [cursor=pointer]':
+                  - generic [ref=f4e797]: 🔄 对比
+                - 'button "删除历史记录 #334" [ref=f4e798] [cursor=pointer]':
+                  - generic [ref=f4e799]: 🗑 删除
+            - row [ref=f4e800]:
+              - cell "329" [ref=f4e801]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e802]
+              - cell "ok" [ref=f4e803]
+              - cell "10" [ref=f4e806]
+              - cell "5" [ref=f4e807]
+              - cell "3" [ref=f4e808]
+              - cell "60s" [ref=f4e809]
+              - cell [ref=f4e810]:
+                - 'button "查看历史记录 #329 的详情" [ref=f4e811] [cursor=pointer]':
+                  - generic [ref=f4e812]: 📊 详情
+                - 'button "以历史记录 #329 作为对比基准" [ref=f4e813] [cursor=pointer]':
+                  - generic [ref=f4e814]: 🔄 对比
+                - 'button "删除历史记录 #329" [ref=f4e815] [cursor=pointer]':
+                  - generic [ref=f4e816]: 🗑 删除
+            - row [ref=f4e817]:
+              - cell "324" [ref=f4e818]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e819]
+              - cell "ok" [ref=f4e820]
+              - cell "10" [ref=f4e823]
+              - cell "5" [ref=f4e824]
+              - cell "3" [ref=f4e825]
+              - cell "60s" [ref=f4e826]
+              - cell [ref=f4e827]:
+                - 'button "查看历史记录 #324 的详情" [ref=f4e828] [cursor=pointer]':
+                  - generic [ref=f4e829]: 📊 详情
+                - 'button "以历史记录 #324 作为对比基准" [ref=f4e830] [cursor=pointer]':
+                  - generic [ref=f4e831]: 🔄 对比
+                - 'button "删除历史记录 #324" [ref=f4e832] [cursor=pointer]':
+                  - generic [ref=f4e833]: 🗑 删除
+            - row [ref=f4e834]:
+              - cell "319" [ref=f4e835]
+              - cell "2026 年 7 月 30 日 10:00:00" [ref=f4e836]
+              - cell "ok" [ref=f4e837]
+              - cell "10" [ref=f4e840]
+              - cell "5" [ref=f4e841]
+              - cell "3" [ref=f4e842]
+              - cell "60s" [ref=f4e843]
+              - cell [ref=f4e844]:
+                - 'button "查看历史记录 #319 的详情" [ref=f4e845] [cursor=pointer]':
+                  - generic [ref=f4e846]: 📊 详情
+                - 'button "以历史记录 #319 作为对比基准" [ref=f4e847] [cursor=pointer]':
+                  - generic [ref=f4e848]: 🔄 对比
+                - 'button "删除历史记录 #319" [ref=f4e849] [cursor=pointer]':
+                  - generic [ref=f4e850]: 🗑 删除
+        - generic [ref=f4e851]: "1"

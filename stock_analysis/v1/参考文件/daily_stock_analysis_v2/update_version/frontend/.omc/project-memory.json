@@ -1,0 +1,268 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1784276643258,
+  "projectRoot": "F:\\daily_stock_analysis\\update_version\\frontend",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "vue",
+        "version": "3.5.13",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "5.4.11",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "cd F:/daily_stock_analysis/update_version/frontend && npx vue-tsc --noEmit 2>&1 && echo \"TS: PASS\" || echo \"TS: FAIL\"",
+    "testCommand": null,
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "build": "vue-tsc --noEmit && vite build",
+      "preview": "vite preview",
+      "lint": "eslint . --ext .vue,.ts,.tsx --max-warnings 0 || true"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "src"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1784276643218,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 3,
+      "lastAccessed": 1784276643219,
+      "keyFiles": [
+        "App.vue",
+        "env.d.ts",
+        "main.ts"
+      ]
+    },
+    "dist\\assets": {
+      "path": "dist\\assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1784276643228,
+      "keyFiles": [
+        "index-B_hNqASP.js",
+        "index-CFwSwRuH.css"
+      ]
+    },
+    "src\\api": {
+      "path": "src\\api",
+      "purpose": "API routes",
+      "fileCount": 1,
+      "lastAccessed": 1784276643229,
+      "keyFiles": [
+        "hotAnalysis.ts"
+      ]
+    },
+    "src\\components": {
+      "path": "src\\components",
+      "purpose": "UI components",
+      "fileCount": 4,
+      "lastAccessed": 1784276643229,
+      "keyFiles": [
+        "ConfigPanel.vue",
+        "PreviewCard.vue",
+        "ResultTable.vue"
+      ]
+    },
+    "src\\utils": {
+      "path": "src\\utils",
+      "purpose": "Utility functions",
+      "fileCount": 1,
+      "lastAccessed": 1784276643229,
+      "keyFiles": [
+        "formatters.ts"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src/composables/useHotAnalysis.ts",
+      "accessCount": 18,
+      "lastAccessed": 1785204704337,
+      "type": "file"
+    },
+    {
+      "path": "src/App.vue",
+      "accessCount": 12,
+      "lastAccessed": 1784534978843,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/exporters.ts",
+      "accessCount": 10,
+      "lastAccessed": 1784534982404,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ConfigPanel.vue",
+      "accessCount": 8,
+      "lastAccessed": 1784534987989,
+      "type": "file"
+    },
+    {
+      "path": "src/styles/global.css",
+      "accessCount": 7,
+      "lastAccessed": 1784534998216,
+      "type": "file"
+    },
+    {
+      "path": "src/components/PreviewCard.vue",
+      "accessCount": 5,
+      "lastAccessed": 1784534988740,
+      "type": "file"
+    },
+    {
+      "path": "src/api/hotAnalysis.ts",
+      "accessCount": 5,
+      "lastAccessed": 1784876257072,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ResultTable.vue",
+      "accessCount": 4,
+      "lastAccessed": 1784534989378,
+      "type": "file"
+    },
+    {
+      "path": "src/components/StatusBadges.vue",
+      "accessCount": 4,
+      "lastAccessed": 1784534989997,
+      "type": "file"
+    },
+    {
+      "path": "src/components/SingleStockInput.vue",
+      "accessCount": 4,
+      "lastAccessed": 1784535281701,
+      "type": "file"
+    },
+    {
+      "path": "src/components/CompareView.vue",
+      "accessCount": 3,
+      "lastAccessed": 1784534991600,
+      "type": "file"
+    },
+    {
+      "path": "src/composables/useCountdown.ts",
+      "accessCount": 2,
+      "lastAccessed": 1784534980237,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/formatters.ts",
+      "accessCount": 2,
+      "lastAccessed": 1784534981624,
+      "type": "file"
+    },
+    {
+      "path": "src/components/HistoryView.vue",
+      "accessCount": 2,
+      "lastAccessed": 1784534990929,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 1,
+      "lastAccessed": 1784276672542,
+      "type": "file"
+    },
+    {
+      "path": "vite.config.ts",
+      "accessCount": 1,
+      "lastAccessed": 1784276673156,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/config.ts",
+      "accessCount": 1,
+      "lastAccessed": 1784534982007,
+      "type": "file"
+    },
+    {
+      "path": "src/components/WatchlistView.vue",
+      "accessCount": 1,
+      "lastAccessed": 1784534996094,
+      "type": "file"
+    },
+    {
+      "path": "src/components/TemplatesView.vue",
+      "accessCount": 1,
+      "lastAccessed": 1784534996765,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ScheduledTasksView.vue",
+      "accessCount": 1,
+      "lastAccessed": 1784534997566,
+      "type": "file"
+    },
+    {
+      "path": "src/components/MarketReviewView.vue",
+      "accessCount": 1,
+      "lastAccessed": 1785223214414,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/.claude/projects/F--daily-stock-analysis/memory/update-version-audit-and-fixes-2026-07-28-round3.md",
+      "accessCount": 1,
+      "lastAccessed": 1785223792399,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/.claude/projects/F--daily-stock-analysis/memory/MEMORY.md",
+      "accessCount": 1,
+      "lastAccessed": 1785223796482,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

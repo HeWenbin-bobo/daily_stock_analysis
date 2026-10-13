@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd \\\"F:/daily_stock_analysis/v2/update_version_v2/backend\\\" 2>/dev/null || cd \\\"F:/daily_stock_analysis/v2/update_version2/backend\\\" 2>/dev/null || cd \\\"F:/daily_stock_analysis/v2/update_v...",
+  "error": "Exit code 2\n/usr/bin/bash: line 1: cd: F:/daily_stock_analysis/v2/update_version2/backend: No such file or directory\n/f/daily_stock_analysis_v2/update_version_v2/backend",
+  "timestamp": "2026-08-14T02:32:54.294Z",
+  "retry_count": 1
+}

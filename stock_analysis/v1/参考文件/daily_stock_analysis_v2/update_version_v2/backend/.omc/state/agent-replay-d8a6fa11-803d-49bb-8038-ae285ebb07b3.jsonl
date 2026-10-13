@@ -1,0 +1,14 @@
+{"t":0,"agent":"ar5-syn","agent_type":"r5-sync-audit","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"ar5-aut","agent_type":"r5-auth-audit","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"ar5-a11","agent_type":"r5-a11y-audit","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"ar5-syn","agent_type":"r5-sync-audit","event":"agent_stop","success":true,"duration_ms":107068}
+{"t":0,"agent":"ar5-aut","agent_type":"r5-auth-audit","event":"agent_stop","success":true,"duration_ms":160340}
+{"t":0,"agent":"ar5-a11","agent_type":"r5-a11y-audit","event":"agent_stop","success":true,"duration_ms":230364}
+{"t":0,"agent":"ar5-a11","agent_type":"r5-a11y-audit","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"ar5-a11","agent_type":"r5-a11y-audit","event":"agent_stop","success":true,"duration_ms":15905}
+{"t":0,"agent":"a60e35e","agent_type":"untracked-native-fork","event":"agent_stop","success":true,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}
+{"t":0,"agent":"aafbb51","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"agent-browser"}
+{"t":0,"agent":"aafbb51","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":460282}
+{"t":0,"agent":"a530668","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"agent-browser"}

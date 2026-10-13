@@ -1,0 +1,81 @@
+- generic [ref=f3e5]:
+  - banner [ref=f3e6]:
+    - generic [ref=f3e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=f3e8]
+      - button "切换到暗色模式" [ref=f3e9] [cursor=pointer]:
+        - generic [ref=f3e10]: 🌙
+    - paragraph [ref=f3e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=f3e12]:
+      - generic [ref=f3e13]:
+        - generic [ref=f3e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=f3e16]:
+        - generic [ref=f3e17]: 🕐
+        - text: 11:47:46
+  - generic [ref=f3e20]:
+    - generic [ref=f3e21]: 📊 分析
+    - generic [ref=f3e24]: 🔍 单股
+    - generic [ref=f3e27]: 📐 技术
+    - generic [ref=f3e30]: 🗞 大盘复盘
+    - generic [ref=f3e33]: 📈 可视化
+    - generic [ref=f3e36]: 📚 历史
+    - generic [ref=f3e39]: 🔄 对比
+    - generic [ref=f3e42]: ⭐ 自选
+    - generic [ref=f3e45]: 📋 模板
+    - generic [ref=f3e48]: ⏰ 定时
+  - generic [ref=f3e741]:
+    - generic [ref=f3e742]:
+      - button "返回分析主页" [ref=f3e743] [cursor=pointer]:
+        - generic [ref=f3e744]: ← 返回
+      - generic [ref=f3e745]: ⭐ 自选股跟踪
+      - generic [ref=f3e746]: 共 2 只
+      - button "刷新自选股行情" [ref=f3e747]:
+        - img "loading" [ref=f3e749]
+        - generic [ref=f3e755]: 🔄 刷新行情
+    - generic "股票代码输入框" [ref=f3e756]:
+      - generic [ref=f3e758]:
+        - textbox "股票代码" [ref=f3e759]
+        - generic: 股票代码
+    - generic "股票名称输入框（可选）" [ref=f3e760]:
+      - generic [ref=f3e762]:
+        - textbox "名称（可选）" [ref=f3e763]
+        - generic: 名称（可选）
+    - button "添加自选股" [disabled] [ref=f3e764]:
+      - generic [ref=f3e765]: ⭐ 添加自选
+    - status [ref=f3e766]:
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - table:
+                - rowgroup:
+                  - row "代码 名称 现价 涨跌幅 备注 添加时间 操作":
+                    - columnheader "代码"
+                    - columnheader "名称"
+                    - columnheader "现价"
+                    - columnheader "涨跌幅"
+                    - columnheader "备注"
+                    - columnheader "添加时间"
+                    - columnheader "操作"
+                - rowgroup:
+                  - row "601318 中国平安 - - - 2026-07-30 17:52:05 移除自选股 601318":
+                    - cell "601318"
+                    - cell "中国平安"
+                    - cell "-"
+                    - cell "-"
+                    - cell "-"
+                    - cell "2026-07-30 17:52:05"
+                    - cell "移除自选股 601318":
+                      - button "移除自选股 601318":
+                        - generic: 🗑 移除
+                  - row "600519 贵州茅台 - - - 2026-07-30 16:42:27 移除自选股 600519":
+                    - cell "600519"
+                    - cell "贵州茅台"
+                    - cell "-"
+                    - cell "-"
+                    - cell "-"
+                    - cell "2026-07-30 16:42:27"
+                    - cell "移除自选股 600519":
+                      - button "移除自选股 600519":
+                        - generic: 🗑 移除
+      - img "loading" [ref=f3e768]

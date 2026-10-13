@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd F:/daily_stock_analysis_v2/backend && python -X utf8 -c \\\"import sys; sys.path.insert(0,'.'); from core import cron as cron_mod; cron_mod.APS_AVAILABLE=False; import uvicorn; from app i...",
+  "error": "Exit code 1\n/usr/bin/bash: line 1: cd: F:/daily_stock_analysis_v2/backend: No such file or directory\n=== generate ===\nTraceback (most recent call last):\r\n  File \"<string>\", line 3, in <module>\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\json\\__init__.py\", line 293, in load\r\n    return loads(fp.read(),\r\n           ^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\json\\__init__.py\", line 346, in loads\r\n    return _default_decoder.decode(s)\r\n           ^^^^^^^^^^^^^^^^^...",
+  "timestamp": "2026-07-31T08:01:43.834Z",
+  "retry_count": 2
+}

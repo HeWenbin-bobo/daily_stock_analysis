@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"echo \\\"Sleeping 10 min...\\\" && sleep 600 && date '+%H:%M:%S - woke up' && ACTIVE=\\\"C:/Users/jww/AppData/Local/Temp/claude/F--daily-stock-analysis/4f6a71aa-bd25-4b0c-bc35-e5db256e59ed/tasks...",
+  "error": "Exit code 143\nCommand timed out after 10m 0s\nSleeping 10 min...",
+  "timestamp": "2026-07-06T08:01:25.839Z",
+  "retry_count": 1
+}

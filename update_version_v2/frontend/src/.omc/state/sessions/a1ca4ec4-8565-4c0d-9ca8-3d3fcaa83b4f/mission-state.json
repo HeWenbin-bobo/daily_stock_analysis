@@ -1,0 +1,71 @@
+{
+  "updatedAt": "2026-08-14T09:07:47.815Z",
+  "missions": [
+    {
+      "id": "session:a1ca4ec4-8565-4c0d-9ca8-3d3fcaa83b4f:none",
+      "source": "session",
+      "name": "none",
+      "objective": "Session mission",
+      "createdAt": "2026-08-14T08:05:58.880Z",
+      "updatedAt": "2026-08-14T09:07:47.815Z",
+      "status": "running",
+      "workerCount": 2,
+      "taskCounts": {
+        "total": 2,
+        "pending": 0,
+        "blocked": 0,
+        "inProgress": 1,
+        "completed": 1,
+        "failed": 0
+      },
+      "agents": [
+        {
+          "name": "executor:abc10b1",
+          "role": "executor",
+          "ownership": "abc10b18c90379198",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-08-14T08:10:41.425Z"
+        },
+        {
+          "name": "general-purpose:ad8f4a7",
+          "role": "general-purpose",
+          "ownership": "ad8f4a7cb81c1a16e",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-08-14T09:07:47.815Z"
+        }
+      ],
+      "timeline": [
+        {
+          "id": "session-start:abc10b18c90379198:2026-08-14T08:05:58.880Z",
+          "at": "2026-08-14T08:05:58.880Z",
+          "kind": "update",
+          "agent": "executor:abc10b1",
+          "detail": "started executor:abc10b1",
+          "sourceKey": "session-start:abc10b18c90379198"
+        },
+        {
+          "id": "session-stop:abc10b18c90379198:2026-08-14T08:10:41.425Z",
+          "at": "2026-08-14T08:10:41.425Z",
+          "kind": "completion",
+          "agent": "executor:abc10b1",
+          "detail": "completed",
+          "sourceKey": "session-stop:abc10b18c90379198"
+        },
+        {
+          "id": "session-start:ad8f4a7cb81c1a16e:2026-08-14T09:07:47.815Z",
+          "at": "2026-08-14T09:07:47.815Z",
+          "kind": "update",
+          "agent": "general-purpose:ad8f4a7",
+          "detail": "started general-purpose:ad8f4a7",
+          "sourceKey": "session-start:ad8f4a7cb81c1a16e"
+        }
+      ]
+    }
+  ]
+}

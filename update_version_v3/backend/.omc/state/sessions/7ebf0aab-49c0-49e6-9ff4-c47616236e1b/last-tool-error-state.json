@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"ls ~/.agent-browser* 2>/dev/null; ls ~/.config/agent-browser* 2>/dev/null; echo \\\"--- env hints ---\\\"; agent-browser --help 2>&1 | grep -iE \\\"env|config|chrome|channel|browser\\\" | head; ec...",
+  "error": "Exit code 2\nbrowsers\ndefault.engine\ndefault.pid\ndefault.port\ndefault.stream\ndefault.version\ntmp\nupdate-version.engine\n--- env hints ---\nagent-browser - fast browser automation CLI for AI agents\nUsage: agent-browser <command> [args] [options]\n  agent-browser skills get core --full\n  apps, Slack, exploratory testing, and cloud browser providers.\n  connect <port|url>         Connect to browser via CDP\n  close [--all]              Close browser (--all closes every session)\nGet Info:  agent-browser g...",
+  "timestamp": "2026-08-05T07:34:01.111Z",
+  "retry_count": 1
+}

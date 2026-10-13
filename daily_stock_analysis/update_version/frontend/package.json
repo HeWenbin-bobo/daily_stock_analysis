@@ -1,0 +1,25 @@
+{
+  "name": "dsa-hot-analysis-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "三榜交集分析前端（Vue 3 + Vite + TypeScript）",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.ts,.tsx --max-warnings 0 || true"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "naive-ui": "^2.40.1",
+    "vfonts": "^0.0.3",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vue-tsc": "^2.1.10"
+  }
+}

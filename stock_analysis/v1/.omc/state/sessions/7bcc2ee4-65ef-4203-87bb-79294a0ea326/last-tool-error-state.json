@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"sleep 4 && curl -s -m 5 \\\"http://127.0.0.1:9222/json/version\\\" 2>&1 | head -c 150; echo \\\"\\\"; echo \\\"---connect---\\\"; agent-browser --session dogfood-v2 connect 9222 2>&1 | head -3; echo \\...",
+  "error": "Exit code 143\nCommand timed out after 2m 0s\n{\r\n   \"Browser\": \"Chrome/150.0.7871.187\",\r\n   \"Protocol-Version\": \"1.3\",\r\n   \"User-Agent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.\n---connect---",
+  "timestamp": "2026-08-06T03:26:06.833Z",
+  "retry_count": 1
+}

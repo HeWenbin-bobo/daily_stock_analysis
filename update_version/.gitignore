@@ -1,0 +1,29 @@
+# Dependencies
+frontend/node_modules/
+
+# Build output
+frontend/dist/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Runtime state
+.run_state/
+
+# Database
+data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

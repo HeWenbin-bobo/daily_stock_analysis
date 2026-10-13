@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"ls \\\"C:\\\\Users\\\\jww\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\F--stock-analysis-v1\\\\0a1a13e4-ee4e-4799-aeed-fe26d5ba443d\\\\tasks\\\\\\\" 2>&1 | head -20\",\"description\":\"Check for background task artifacts...",
+  "error": "Exit code 2\n/usr/bin/bash: eval: line 1: unexpected EOF while looking for matching `\"'",
+  "timestamp": "2026-08-04T02:03:53.280Z",
+  "retry_count": 1
+}

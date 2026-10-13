@@ -1,0 +1,4 @@
+{"t":0,"agent":"ad871f0","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"ad871f0","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":719351}
+{"t":0,"agent":"a00429a","agent_type":"untracked-native-fork","event":"agent_stop","success":true,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"design-taste-frontend"}

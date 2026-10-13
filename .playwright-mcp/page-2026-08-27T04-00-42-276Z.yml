@@ -1,0 +1,65 @@
+- generic [ref=f4e5]:
+  - banner [ref=f4e6]:
+    - generic [ref=f4e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=f4e8]
+      - button "切换到暗色模式" [ref=f4e9] [cursor=pointer]:
+        - generic [ref=f4e10]: 🌙
+    - paragraph [ref=f4e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=f4e12]:
+      - generic [ref=f4e13]:
+        - generic [ref=f4e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=f4e16]:
+        - generic [ref=f4e17]: 🕐
+        - text: 12:00:41
+  - generic [ref=f4e20]:
+    - generic [ref=f4e21]: 📊 分析
+    - generic [ref=f4e24]: 🔍 单股
+    - generic [ref=f4e27]: 📐 技术
+    - generic [ref=f4e30]: 🗞 大盘复盘
+    - generic [ref=f4e33]: 📈 可视化
+    - generic [ref=f4e36]: 📚 历史
+    - generic [ref=f4e39]: 🔄 对比
+    - generic [ref=f4e42]: ⭐ 自选
+    - generic [ref=f4e45]: 📋 模板
+    - generic [ref=f4e48]: ⏰ 定时
+  - generic [ref=f4e864]:
+    - generic [ref=f4e865]:
+      - button "返回分析主页" [ref=f4e866] [cursor=pointer]:
+        - generic [ref=f4e867]: ← 返回
+      - text: 📋 分析模板 保存/加载过滤规则预设
+      - button "新建分析模板" [ref=f4e868] [cursor=pointer]:
+        - generic [ref=f4e869]: + 新建模板
+    - status [ref=f4e870]:
+      - table [ref=f4e875]:
+        - rowgroup [ref=f4e881]:
+          - row [ref=f4e882]:
+            - columnheader "名称" [ref=f4e883]
+            - columnheader "说明" [ref=f4e886]
+            - columnheader "配置" [ref=f4e889]
+            - columnheader "操作" [ref=f4e892]
+        - rowgroup [ref=f4e895]:
+          - row [ref=f4e896]:
+            - cell [ref=f4e897]:
+              - strong [ref=f4e898]: 测试
+            - cell "-" [ref=f4e899]
+            - cell "评分≥70 多数轮通过" [ref=f4e900]:
+              - generic [ref=f4e901]: 评分≥70
+              - generic [ref=f4e903]: 多数轮通过
+            - cell [ref=f4e905]:
+              - button "应用模板 测试" [ref=f4e906] [cursor=pointer]:
+                - generic [ref=f4e907]: ⚡ 应用
+              - button "删除模板 测试" [ref=f4e908] [cursor=pointer]:
+                - generic [ref=f4e909]: 🗑 删除
+          - row [ref=f4e910]:
+            - cell [ref=f4e911]:
+              - strong [ref=f4e912]: 激进型
+            - cell "高风险高收益" [ref=f4e913]
+            - cell "评分≥70 多数轮通过" [ref=f4e914]:
+              - generic [ref=f4e915]: 评分≥70
+              - generic [ref=f4e917]: 多数轮通过
+            - cell [ref=f4e919]:
+              - button "应用模板 激进型" [ref=f4e920] [cursor=pointer]:
+                - generic [ref=f4e921]: ⚡ 应用
+              - button "删除模板 激进型" [ref=f4e922] [cursor=pointer]:
+                - generic [ref=f4e923]: 🗑 删除

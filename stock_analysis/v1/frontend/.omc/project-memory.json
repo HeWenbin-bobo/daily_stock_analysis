@@ -1,0 +1,455 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1785725243986,
+  "projectRoot": "F:\\stock_analysis\\v1\\frontend",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "vite",
+        "version": "6.0.7",
+        "category": "build"
+      },
+      {
+        "name": "vitest",
+        "version": "4.1.10",
+        "category": "testing"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": "npm test",
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "build": "tsc -b && vite build",
+      "preview": "vite preview",
+      "test": "vitest run",
+      "test:coverage": "vitest run --coverage"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": "type-based"
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "src"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "coverage": {
+      "path": "coverage",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1785725243917,
+      "keyFiles": [
+        "coverage-summary.json"
+      ]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1785725243917,
+      "keyFiles": [
+        "index.html"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 5,
+      "lastAccessed": 1785725243928,
+      "keyFiles": [
+        "App.test.tsx",
+        "App.tsx",
+        "index.css",
+        "main.tsx",
+        "types.ts"
+      ]
+    },
+    "dist\\assets": {
+      "path": "dist\\assets",
+      "purpose": "Static assets",
+      "fileCount": 2,
+      "lastAccessed": 1785725243930,
+      "keyFiles": [
+        "index-BWKtOi4S.css",
+        "index-kY5t9jH8.js"
+      ]
+    },
+    "src\\api": {
+      "path": "src\\api",
+      "purpose": "API routes",
+      "fileCount": 2,
+      "lastAccessed": 1785725243931,
+      "keyFiles": [
+        "client.test.ts",
+        "client.ts"
+      ]
+    },
+    "src\\components": {
+      "path": "src\\components",
+      "purpose": "UI components",
+      "fileCount": 18,
+      "lastAccessed": 1785725243931,
+      "keyFiles": [
+        "DaysSelector.test.tsx",
+        "DaysSelector.tsx",
+        "ErrorBoundary.test.tsx"
+      ]
+    },
+    "src\\utils": {
+      "path": "src\\utils",
+      "purpose": "Utility functions",
+      "fileCount": 8,
+      "lastAccessed": 1785725243932,
+      "keyFiles": [
+        "errors.test.ts",
+        "errors.ts",
+        "exportData.test.ts"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src",
+      "accessCount": 145,
+      "lastAccessed": 1785806151644,
+      "type": "directory"
+    },
+    {
+      "path": "src/App.tsx",
+      "accessCount": 78,
+      "lastAccessed": 1785917832921,
+      "type": "file"
+    },
+    {
+      "path": "src/components/KLineChart.tsx",
+      "accessCount": 70,
+      "lastAccessed": 1785801378205,
+      "type": "directory"
+    },
+    {
+      "path": "src/components/Watchlist.tsx",
+      "accessCount": 59,
+      "lastAccessed": 1785917499378,
+      "type": "file"
+    },
+    {
+      "path": "src/components/SearchBar.tsx",
+      "accessCount": 58,
+      "lastAccessed": 1785797735877,
+      "type": "file"
+    },
+    {
+      "path": "src/components/PeakTroughPanel.tsx",
+      "accessCount": 48,
+      "lastAccessed": 1785812928923,
+      "type": "directory"
+    },
+    {
+      "path": "src/components/IndicatorChart.tsx",
+      "accessCount": 43,
+      "lastAccessed": 1785803748282,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 37,
+      "lastAccessed": 1785797185977,
+      "type": "directory"
+    },
+    {
+      "path": "src/api/client.ts",
+      "accessCount": 36,
+      "lastAccessed": 1785807939493,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/errors.ts",
+      "accessCount": 30,
+      "lastAccessed": 1785797109840,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ErrorBoundary.tsx",
+      "accessCount": 30,
+      "lastAccessed": 1785797133856,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/markdown.ts",
+      "accessCount": 28,
+      "lastAccessed": 1785797117459,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useWatchlist.ts",
+      "accessCount": 25,
+      "lastAccessed": 1785806100706,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/exportData.ts",
+      "accessCount": 25,
+      "lastAccessed": 1785812928029,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useTheme.ts",
+      "accessCount": 23,
+      "lastAccessed": 1785806108846,
+      "type": "file"
+    },
+    {
+      "path": "src/components/PeakTroughPanel.test.tsx",
+      "accessCount": 22,
+      "lastAccessed": 1785789631435,
+      "type": "directory"
+    },
+    {
+      "path": "src/types.ts",
+      "accessCount": 20,
+      "lastAccessed": 1785807991573,
+      "type": "file"
+    },
+    {
+      "path": "src/components/PeriodSelector.tsx",
+      "accessCount": 18,
+      "lastAccessed": 1785797741918,
+      "type": "file"
+    },
+    {
+      "path": "src/components/DaysSelector.tsx",
+      "accessCount": 18,
+      "lastAccessed": 1785797743172,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/watchlistIO.ts",
+      "accessCount": 18,
+      "lastAccessed": 1785917332780,
+      "type": "file"
+    },
+    {
+      "path": "src/components/Skeletons.tsx",
+      "accessCount": 17,
+      "lastAccessed": 1785797134377,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useAppStore.ts",
+      "accessCount": 17,
+      "lastAccessed": 1785806094538,
+      "type": "file"
+    },
+    {
+      "path": "src/main.tsx",
+      "accessCount": 14,
+      "lastAccessed": 1785797732603,
+      "type": "file"
+    },
+    {
+      "path": "src/components/Watchlist.test.tsx",
+      "accessCount": 11,
+      "lastAccessed": 1785788157281,
+      "type": "file"
+    },
+    {
+      "path": "src/App.test.tsx",
+      "accessCount": 11,
+      "lastAccessed": 1785791199436,
+      "type": "file"
+    },
+    {
+      "path": "src/api/client.test.ts",
+      "accessCount": 11,
+      "lastAccessed": 1785795898589,
+      "type": "file"
+    },
+    {
+      "path": "package.json",
+      "accessCount": 11,
+      "lastAccessed": 1785797141653,
+      "type": "file"
+    },
+    {
+      "path": "src/components/ErrorBoundary.test.tsx",
+      "accessCount": 10,
+      "lastAccessed": 1785788132969,
+      "type": "file"
+    },
+    {
+      "path": "vite.config.ts",
+      "accessCount": 10,
+      "lastAccessed": 1785801360407,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useWatchlist.test.ts",
+      "accessCount": 8,
+      "lastAccessed": 1785789180034,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/markdown.test.ts",
+      "accessCount": 8,
+      "lastAccessed": 1785795358108,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/exportData.test.ts",
+      "accessCount": 8,
+      "lastAccessed": 1785812930410,
+      "type": "file"
+    },
+    {
+      "path": "src/components/KLineChart.test.tsx",
+      "accessCount": 7,
+      "lastAccessed": 1785754128460,
+      "type": "file"
+    },
+    {
+      "path": "src/components/Skeletons.test.tsx",
+      "accessCount": 5,
+      "lastAccessed": 1785762715947,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/errors.test.ts",
+      "accessCount": 5,
+      "lastAccessed": 1785793539946,
+      "type": "file"
+    },
+    {
+      "path": "tsconfig.json",
+      "accessCount": 5,
+      "lastAccessed": 1785794115372,
+      "type": "file"
+    },
+    {
+      "path": "Dockerfile",
+      "accessCount": 3,
+      "lastAccessed": 1785749735651,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useAppStore.test.ts",
+      "accessCount": 3,
+      "lastAccessed": 1785788215397,
+      "type": "file"
+    },
+    {
+      "path": "src/hooks/useTheme.test.ts",
+      "accessCount": 3,
+      "lastAccessed": 1785788236597,
+      "type": "file"
+    },
+    {
+      "path": "src/components/IndicatorChart.test.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1785807909841,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/claude/F--stock-analysis-v1/0a1a13e4-ee4e-4799-aeed-fe26d5ba443d/tasks/bfrfwji2m.output",
+      "accessCount": 2,
+      "lastAccessed": 1785735061633,
+      "type": "file"
+    },
+    {
+      "path": "nginx.conf",
+      "accessCount": 2,
+      "lastAccessed": 1785735523102,
+      "type": "file"
+    },
+    {
+      "path": "src/components/SearchBar.test.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1785735889753,
+      "type": "file"
+    },
+    {
+      "path": "src/utils/watchlistIO.test.ts",
+      "accessCount": 2,
+      "lastAccessed": 1785788138446,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/claude/F--stock-analysis-v1/0a1a13e4-ee4e-4799-aeed-fe26d5ba443d/tasks/b7dzra0pv.output",
+      "accessCount": 1,
+      "lastAccessed": 1785725665440,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/AppData/Local/Temp/claude/F--stock-analysis-v1/0a1a13e4-ee4e-4799-aeed-fe26d5ba443d/tasks",
+      "accessCount": 1,
+      "lastAccessed": 1785725709879,
+      "type": "directory"
+    },
+    {
+      "path": "C:/Users/jww/.claude/projects/F--stock-analysis-v1/memory/stock-analysis-v1-iteration-38-final.md",
+      "accessCount": 1,
+      "lastAccessed": 1785726350431,
+      "type": "file"
+    },
+    {
+      "path": "C:/Users/jww/.claude/projects/F--stock-analysis-v1/memory/stock-analysis-v1-iteration-49-e2e-smoke.md",
+      "accessCount": 1,
+      "lastAccessed": 1785734373838,
+      "type": "file"
+    },
+    {
+      "path": "src/components/DaysSelector.test.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1785734839448,
+      "type": "file"
+    },
+    {
+      "path": "src/components/PeriodSelector.test.tsx",
+      "accessCount": 1,
+      "lastAccessed": 1785734856442,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

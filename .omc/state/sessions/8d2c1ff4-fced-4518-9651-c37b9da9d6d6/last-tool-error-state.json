@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd F:/daily_stock_analysis && python -m uvicorn api.app:app --host 127.0.0.1 --port 8000 &\\nsleep 20 && curl -s -w \\\"\\\\nHTTP:%{http_code}\\\" http://localhost:8000/api/v1/hot-analysis/health...",
+  "error": "Exit code 7\n\nHTTP:000",
+  "timestamp": "2026-07-21T01:37:01.754Z",
+  "retry_count": 3
+}

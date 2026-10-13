@@ -1,0 +1,34 @@
+# Node
+node_modules/
+dist/
+build/
+.vite/
+.cache/
+*.tsbuildinfo
+.npm/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# 本地数据 / 测试产物
+data/
+.cache/
+coverage/
+_e2e_screenshots/
+e2e_results.json
+_perf_results.json
+
+# Env
+.env
+.env.local

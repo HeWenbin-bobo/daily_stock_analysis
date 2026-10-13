@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"curl -s -X POST http://127.0.0.1:5173/api/v2/hot-analysis/preview -H \\\"Content-Type: application/json\\\" -H \\\"X-Request-ID: client-supplied-rid-123\\\" -d \\\"{}\\\" --max-time 10 -i 2>&1\",\"timeo...",
+  "error": "Exit code 28",
+  "timestamp": "2026-08-02T15:13:44.361Z",
+  "retry_count": 1
+}

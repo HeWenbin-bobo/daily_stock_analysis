@@ -1,0 +1,64 @@
+{
+  "agents": [
+    {
+      "agent_id": "ar5-sync-audit-61a9b78d6d494888",
+      "agent_type": "r5-sync-audit",
+      "started_at": "2026-07-31T02:39:51.659Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-07-31T02:41:38.727Z",
+      "duration_ms": 107068
+    },
+    {
+      "agent_id": "ar5-auth-audit-d4732412d885e90d",
+      "agent_type": "r5-auth-audit",
+      "started_at": "2026-07-31T02:40:09.260Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-07-31T02:42:49.600Z",
+      "duration_ms": 160340
+    },
+    {
+      "agent_id": "ar5-a11y-audit-d5d473869f686fc3",
+      "agent_type": "r5-a11y-audit",
+      "started_at": "2026-07-31T02:44:15.345Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-07-31T02:44:31.250Z",
+      "duration_ms": 15905
+    },
+    {
+      "agent_id": "a60e35e3c168e0297",
+      "agent_type": "untracked-native-fork",
+      "started_at": "2026-07-31T07:26:47.024Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-07-31T07:26:47.024Z",
+      "synthetic": true,
+      "telemetry_status": "unmatched_stop",
+      "telemetry_note": "SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."
+    },
+    {
+      "agent_id": "aafbb51393b1b7735",
+      "agent_type": "general-purpose",
+      "started_at": "2026-07-31T07:35:26.366Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-07-31T07:43:06.648Z",
+      "duration_ms": 460282
+    },
+    {
+      "agent_id": "a530668c0044b48a6",
+      "agent_type": "general-purpose",
+      "started_at": "2026-08-02T15:01:07.695Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-08-02T15:14:03.171Z",
+      "duration_ms": 775476
+    }
+  ],
+  "total_spawned": 6,
+  "total_completed": 7,
+  "total_failed": 0,
+  "last_updated": "2026-08-02T15:14:03.290Z"
+}

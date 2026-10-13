@@ -1,0 +1,17 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+akshare>=1.12.0
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+litellm>=1.40.0
+httpx>=0.27.0
+
+# Dev / Test
+pytest>=8.0.0
+# iter 130: 移除 <8.0.0 上限 — pytest-cov 7.x 已发布且兼容 (pytest-cov 7.1.0 当前已安装)。
+# 原 <8.0.0 限制了 pytest-cov 主版本升级, 但 pytest 9.x + pytest-cov 7.x 配合良好,
+# 不再需要此约束。
+pytest-cov>=6.0.0

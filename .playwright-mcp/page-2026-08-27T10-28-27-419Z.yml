@@ -1,0 +1,306 @@
+- generic [ref=f13e5]:
+  - banner [ref=f13e6]:
+    - generic [ref=f13e7]:
+      - heading "📈 四榜交集分析" [level=1] [ref=f13e8]
+      - button "切换到暗色模式" [ref=f13e9] [cursor=pointer]:
+        - generic [ref=f13e10]: 🌙
+    - paragraph [ref=f13e11]: 东方财富 · 雪球 · 同花顺 · 全市场活跃 四榜求交，剔科创板，三轮 LLM 分析过滤
+    - generic [ref=f13e12]:
+      - generic [ref=f13e13]:
+        - generic [ref=f13e14]: 📅
+        - text: 2026 年 8 月 27 日 · 周四
+      - generic [ref=f13e16]:
+        - generic [ref=f13e17]: 🕐
+        - text: 18:28:27
+  - generic [ref=f13e20]:
+    - generic [ref=f13e21]: 📊 分析
+    - generic [ref=f13e24]: 🔍 单股
+    - generic [ref=f13e27]: 📐 技术
+    - generic [ref=f13e30]: 🗞 大盘复盘
+    - generic [ref=f13e33]: 📈 可视化
+    - generic [ref=f13e36]: 📚 历史
+    - generic [ref=f13e39]: 🔄 对比
+    - generic [ref=f13e42]: ⭐ 自选
+    - generic [ref=f13e45]: 📋 模板
+    - generic [ref=f13e48]: ⏰ 定时
+  - generic [ref=f13e317]:
+    - text: 📊 大盘复盘
+    - generic [ref=f13e318]: 每日报告
+    - button "生成今日大盘复盘" [ref=f13e320] [cursor=pointer]:
+      - generic [ref=f13e321]: 🚀 生成今日复盘
+    - button "对比两个日期的复盘" [ref=f13e322] [cursor=pointer]:
+      - generic [ref=f13e323]: 🔄 对比
+    - button "批量生成近 N 天复盘" [ref=f13e324] [cursor=pointer]:
+      - generic [ref=f13e325]: 📦 批量
+    - button "导出当前复盘为 Markdown" [ref=f13e326] [cursor=pointer]:
+      - generic [ref=f13e327]: 📥 .md
+    - button "导出当前复盘为 PDF" [ref=f13e328] [cursor=pointer]:
+      - generic [ref=f13e329]: 📄 PDF
+    - button "返回分析主页" [ref=f13e330] [cursor=pointer]:
+      - generic [ref=f13e331]: ← 返回
+    - status [ref=f13e332]:
+      - generic [ref=f13e333]:
+        - generic [ref=f13e334]:
+          - heading "📅 2026-08-27 大盘复盘 ok 耗时 20.67s" [ref=f13e335]:
+            - heading "📅 2026-08-27 大盘复盘 ok" [ref=f13e336]:
+              - text: 📅 2026-08-27 大盘复盘
+              - generic [ref=f13e337]: ok
+            - generic [ref=f13e339]: 耗时 20.67s
+          - generic [ref=f13e341]:
+            - generic [ref=f13e342]: 🎯
+            - generic [ref=f13e343]:
+              - generic [ref=f13e344]: 盘面信号
+              - generic [ref=f13e345]: 88 / 100（偏暖）
+              - generic [ref=f13e346]:
+                - strong [ref=f13e347]: 建议：
+                - text: 可进攻，关注主线
+              - generic [ref=f13e348]: 上涨占比 61.15%, 涨跌停差 120
+            - generic [ref=f13e349]:
+              - generic [ref=f13e350]: 上涨 / 下跌
+              - generic [ref=f13e351]: 3393 / 1944
+              - generic [ref=f13e352]: 涨跌停差 120
+              - generic [ref=f13e353]: 成交额 21,406 亿
+          - generic [ref=f13e354]: 📈 指数结构
+          - table [ref=f13e358]:
+            - rowgroup [ref=f13e367]:
+              - row [ref=f13e368]:
+                - columnheader "指数" [ref=f13e369]
+                - columnheader "最新" [ref=f13e372]
+                - columnheader "涨跌幅" [ref=f13e375]
+                - columnheader "开盘" [ref=f13e378]
+                - columnheader "最高" [ref=f13e381]
+                - columnheader "最低" [ref=f13e384]
+                - columnheader "成交额(亿)" [ref=f13e387]
+            - rowgroup [ref=f13e390]:
+              - row [ref=f13e391]:
+                - cell "上证指数" [ref=f13e392]
+                - cell "3956.57" [ref=f13e393]
+                - cell "+1.13%" [ref=f13e394]
+                - cell "3911.89" [ref=f13e395]
+                - cell "3958.03" [ref=f13e396]
+                - cell "3909.31" [ref=f13e397]
+                - cell "1,010,226,573,955" [ref=f13e398]
+              - row [ref=f13e399]:
+                - cell "深证成指" [ref=f13e400]
+                - cell "14048.88" [ref=f13e401]
+                - cell "+1.50%" [ref=f13e402]
+                - cell "13876.80" [ref=f13e403]
+                - cell "14049.99" [ref=f13e404]
+                - cell "13808.61" [ref=f13e405]
+                - cell "1,115,700,225,234" [ref=f13e406]
+              - row [ref=f13e407]:
+                - cell "创业板指" [ref=f13e408]
+                - cell "3473.36" [ref=f13e409]
+                - cell "+1.71%" [ref=f13e410]
+                - cell "3437.90" [ref=f13e411]
+                - cell "3474.07" [ref=f13e412]
+                - cell "3408.80" [ref=f13e413]
+                - cell "542,320,186,122" [ref=f13e414]
+              - row [ref=f13e415]:
+                - cell "科创50" [ref=f13e416]
+                - cell "1693.48" [ref=f13e417]
+                - cell "+3.77%" [ref=f13e418]
+                - cell "1646.84" [ref=f13e419]
+                - cell "1697.03" [ref=f13e420]
+                - cell "1637.33" [ref=f13e421]
+                - cell "101,783,285,788" [ref=f13e422]
+              - row [ref=f13e423]:
+                - cell "上证50" [ref=f13e424]
+                - cell "2930.31" [ref=f13e425]
+                - cell "+0.87%" [ref=f13e426]
+                - cell "2905.25" [ref=f13e427]
+                - cell "2931.11" [ref=f13e428]
+                - cell "2905.25" [ref=f13e429]
+                - cell "158,368,136,507" [ref=f13e430]
+              - row [ref=f13e431]:
+                - cell "沪深300" [ref=f13e432]
+                - cell "4630.28" [ref=f13e433]
+                - cell "+0.86%" [ref=f13e434]
+                - cell "4594.48" [ref=f13e435]
+                - cell "4631.35" [ref=f13e436]
+                - cell "4584.99" [ref=f13e437]
+                - cell "587,120,379,413" [ref=f13e438]
+          - generic [ref=f13e439]: 🔥 行业板块 (84 个)
+          - generic [ref=f13e440]:
+            - generic [ref=f13e441]:
+              - generic [ref=f13e442]: 📈 领涨 Top 5
+              - table [ref=f13e446]:
+                - rowgroup [ref=f13e450]:
+                  - row [ref=f13e451]:
+                    - columnheader "行业" [ref=f13e452]
+                    - columnheader "涨跌幅" [ref=f13e456]
+                - rowgroup [ref=f13e459]:
+                  - row [ref=f13e460]:
+                    - cell "计算机、通信和其他电子设备制造业" [ref=f13e461]
+                    - cell "+5.63%" [ref=f13e463]
+                  - row [ref=f13e464]:
+                    - cell "农业" [ref=f13e465]
+                    - cell "+4.38%" [ref=f13e467]
+                  - row [ref=f13e468]:
+                    - cell "水利管理业" [ref=f13e469]
+                    - cell "+4.33%" [ref=f13e471]
+                  - row [ref=f13e472]:
+                    - cell "有色金属冶炼和压延加工业" [ref=f13e473]
+                    - cell "+4.14%" [ref=f13e475]
+                  - row [ref=f13e476]:
+                    - cell "非金属矿物制品业" [ref=f13e477]
+                    - cell "+4.11%" [ref=f13e479]
+            - generic [ref=f13e480]:
+              - generic [ref=f13e481]: 📉 领跌 Top 5
+              - table [ref=f13e485]:
+                - rowgroup [ref=f13e489]:
+                  - row [ref=f13e490]:
+                    - columnheader "行业" [ref=f13e491]
+                    - columnheader "涨跌幅" [ref=f13e495]
+                - rowgroup [ref=f13e498]:
+                  - row [ref=f13e499]:
+                    - cell "餐饮业" [ref=f13e500]
+                    - cell "-1.02%" [ref=f13e502]
+                  - row [ref=f13e503]:
+                    - cell "广播、电视、电影和影视录音制作业" [ref=f13e504]
+                    - cell "-0.93%" [ref=f13e506]
+                  - row [ref=f13e507]:
+                    - cell "房屋建筑业" [ref=f13e508]
+                    - cell "-0.93%" [ref=f13e510]
+                  - row [ref=f13e511]:
+                    - cell "铁路运输业" [ref=f13e512]
+                    - cell "-0.90%" [ref=f13e514]
+                  - row [ref=f13e515]:
+                    - cell "道路运输业" [ref=f13e516]
+                    - cell "-0.88%" [ref=f13e518]
+          - generic [ref=f13e519]: 💡 概念板块 (175 个)
+          - generic [ref=f13e520]:
+            - generic [ref=f13e521]:
+              - generic [ref=f13e522]: 📈 领涨 Top 5
+              - table [ref=f13e526]:
+                - rowgroup [ref=f13e530]:
+                  - row [ref=f13e531]:
+                    - columnheader "概念" [ref=f13e532]
+                    - columnheader "涨跌幅" [ref=f13e536]
+                - rowgroup [ref=f13e539]:
+                  - row [ref=f13e540]:
+                    - cell "宽带提速" [ref=f13e541]
+                    - cell "+6.19%" [ref=f13e543]
+                  - row [ref=f13e544]:
+                    - cell "华为概念" [ref=f13e545]
+                    - cell "+4.54%" [ref=f13e547]
+                  - row [ref=f13e548]:
+                    - cell "超导概念" [ref=f13e549]
+                    - cell "+4.54%" [ref=f13e551]
+                  - row [ref=f13e552]:
+                    - cell "科创50" [ref=f13e553]
+                    - cell "+4.31%" [ref=f13e555]
+                  - row [ref=f13e556]:
+                    - cell "卫星导航" [ref=f13e557]
+                    - cell "+4.30%" [ref=f13e559]
+            - generic [ref=f13e560]:
+              - generic [ref=f13e561]: 📉 领跌 Top 5
+              - table [ref=f13e565]:
+                - rowgroup [ref=f13e569]:
+                  - row [ref=f13e570]:
+                    - columnheader "概念" [ref=f13e571]
+                    - columnheader "涨跌幅" [ref=f13e575]
+                - rowgroup [ref=f13e578]:
+                  - row [ref=f13e579]:
+                    - cell "充电桩" [ref=f13e580]
+                    - cell "-2.82%" [ref=f13e582]
+                  - row [ref=f13e583]:
+                    - cell "智能电网" [ref=f13e584]
+                    - cell "-2.58%" [ref=f13e586]
+                  - row [ref=f13e587]:
+                    - cell "皖江区域" [ref=f13e588]
+                    - cell "-1.34%" [ref=f13e590]
+                  - row [ref=f13e591]:
+                    - cell "风能" [ref=f13e592]
+                    - cell "-1.32%" [ref=f13e594]
+                  - row [ref=f13e595]:
+                    - cell "天津自贸" [ref=f13e596]
+                    - cell "-1.29%" [ref=f13e598]
+          - generic [ref=f13e599]: 📄 完整 Markdown 报告
+        - generic [ref=f13e607]:
+          - heading [ref=f13e608]:
+            - heading "📚 历史复盘记录" [ref=f13e609]
+          - generic [ref=f13e610]:
+            - table [ref=f13e613]:
+              - rowgroup [ref=f13e619]:
+                - row [ref=f13e620]:
+                  - columnheader "日期" [ref=f13e621]
+                  - columnheader "状态" [ref=f13e624]
+                  - columnheader "摘要" [ref=f13e627]
+                  - columnheader "操作" [ref=f13e631]
+              - rowgroup [ref=f13e634]:
+                - row [ref=f13e635]:
+                  - cell "2026-08-27" [ref=f13e636]
+                  - cell "ok" [ref=f13e637]
+                  - cell "偏暖｜88.0/100｜上涨 3393 / 下跌 1944" [ref=f13e638]
+                  - cell [ref=f13e640]:
+                    - button "查看" [ref=f13e641] [cursor=pointer]
+                    - button "删除" [ref=f13e643] [cursor=pointer]
+                - row [ref=f13e645]:
+                  - cell "2026-08-26" [ref=f13e646]
+                  - cell "ok" [ref=f13e647]
+                  - cell "偏暖｜70.4/100｜上涨 2946 / 下跌 2447" [ref=f13e648]
+                  - cell [ref=f13e650]:
+                    - button "查看" [ref=f13e651] [cursor=pointer]
+                    - button "删除" [ref=f13e653] [cursor=pointer]
+                - row [ref=f13e655]:
+                  - cell "2026-08-25" [ref=f13e656]
+                  - cell "ok" [ref=f13e657]
+                  - cell "偏暖｜76.5/100｜上涨 4233 / 下跌 1246" [ref=f13e658]
+                  - cell [ref=f13e660]:
+                    - button "查看" [ref=f13e661] [cursor=pointer]
+                    - button "删除" [ref=f13e663] [cursor=pointer]
+                - row [ref=f13e665]:
+                  - cell "2026-08-24" [ref=f13e666]
+                  - cell "ok" [ref=f13e667]
+                  - cell "弱势｜12.2/100｜上涨 1460 / 下跌 3964" [ref=f13e668]
+                  - cell [ref=f13e670]:
+                    - button "查看" [ref=f13e671] [cursor=pointer]
+                    - button "删除" [ref=f13e673] [cursor=pointer]
+                - row [ref=f13e675]:
+                  - cell "2026-08-15" [ref=f13e676]
+                  - cell "ok" [ref=f13e677]
+                  - cell "偏弱｜54.7/100｜上涨 2400 / 下跌 2969" [ref=f13e678]
+                  - cell [ref=f13e680]:
+                    - button "查看" [ref=f13e681] [cursor=pointer]
+                    - button "删除" [ref=f13e683] [cursor=pointer]
+                - row [ref=f13e685]:
+                  - cell "2026-08-14" [ref=f13e686]
+                  - cell "ok" [ref=f13e687]
+                  - cell "偏弱｜54.7/100｜上涨 2400 / 下跌 2969" [ref=f13e688]
+                  - cell [ref=f13e690]:
+                    - button "查看" [ref=f13e691] [cursor=pointer]
+                    - button "删除" [ref=f13e693] [cursor=pointer]
+                - row [ref=f13e695]:
+                  - cell "2026-08-13" [ref=f13e696]
+                  - cell "ok" [ref=f13e697]
+                  - cell "弱势｜29.6/100｜上涨 1142 / 下跌 4317" [ref=f13e698]
+                  - cell [ref=f13e700]:
+                    - button "查看" [ref=f13e701] [cursor=pointer]
+                    - button "删除" [ref=f13e703] [cursor=pointer]
+                - row [ref=f13e705]:
+                  - cell "2026-08-12" [ref=f13e706]
+                  - cell "ok" [ref=f13e707]
+                  - cell "偏暖｜83.4/100｜上涨 4065 / 下跌 1254" [ref=f13e708]
+                  - cell [ref=f13e710]:
+                    - button "查看" [ref=f13e711] [cursor=pointer]
+                    - button "删除" [ref=f13e713] [cursor=pointer]
+                - row [ref=f13e715]:
+                  - cell "2026-08-11" [ref=f13e716]
+                  - cell "ok" [ref=f13e717]
+                  - cell "弱势｜32.4/100｜上涨 1614 / 下跌 3777" [ref=f13e718]
+                  - cell [ref=f13e720]:
+                    - button "查看" [ref=f13e721] [cursor=pointer]
+                    - button "删除" [ref=f13e723] [cursor=pointer]
+                - row [ref=f13e725]:
+                  - cell "2026-08-07" [ref=f13e726]
+                  - cell "ok" [ref=f13e727]
+                  - cell "弱势｜32.8/100｜上涨 1126 / 下跌 4309" [ref=f13e728]
+                  - cell [ref=f13e730]:
+                    - button "查看" [ref=f13e731] [cursor=pointer]
+                    - button "删除" [ref=f13e733] [cursor=pointer]
+            - generic [ref=f13e736]:
+              - generic [ref=f13e741] [cursor=pointer]: "1"
+              - generic [ref=f13e742] [cursor=pointer]: "2"
+              - generic [ref=f13e743] [cursor=pointer]
+      - img "loading" [ref=f13e748]
