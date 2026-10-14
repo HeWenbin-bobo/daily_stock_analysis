@@ -60,6 +60,7 @@ def init_db() -> None:
                 analyzed_stock_count INTEGER DEFAULT 0,
                 passed_stock_count INTEGER DEFAULT 0,
                 filter_config TEXT DEFAULT '{}',
+                filtered_stocks TEXT DEFAULT '[]',
                 created_at TEXT DEFAULT (datetime('now', 'localtime'))
             );
 
@@ -134,6 +135,11 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_templates_name ON analysis_templates(name);
             CREATE INDEX IF NOT EXISTS idx_market_reviews_date ON market_reviews(review_date DESC);
         """)
+        # ★ 迭代1：为已存在的 analysis_runs 表补 filtered_stocks 列（CREATE IF NOT EXISTS 不改旧表）
+        try:
+            conn.execute("ALTER TABLE analysis_runs ADD COLUMN filtered_stocks TEXT DEFAULT '[]'")
+        except Exception:
+            pass  # 列已存在
     logger.info("数据库已初始化: %s", _DB_PATH)
 
 
@@ -152,6 +158,7 @@ def save_analysis_run(
     passed_stock_count: int,
     filter_config: Dict[str, Any],
     results: List[Dict[str, Any]],
+    filtered_stocks: Optional[List[Dict[str, Any]]] = None,
 ) -> int:
     """
     保存一次完整的分析记录到数据库。
@@ -166,8 +173,9 @@ def save_analysis_run(
                 started_at, finished_at, duration_seconds, status,
                 hot_lists_summary, hot_lists_status, hot_lists_notes,
                 raw_intersection_count, filtered_intersection_count,
-                analyzed_stock_count, passed_stock_count, filter_config
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                analyzed_stock_count, passed_stock_count, filter_config,
+                filtered_stocks
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 started_at,
@@ -182,6 +190,7 @@ def save_analysis_run(
                 analyzed_stock_count,
                 passed_stock_count,
                 json.dumps(filter_config, ensure_ascii=False),
+                json.dumps(filtered_stocks or [], ensure_ascii=False),
             ),
         )
         run_id = cursor.lastrowid
@@ -216,6 +225,10 @@ def save_analysis_run(
 
 def _row_to_run_dict(row: sqlite3.Row, results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """将 analysis_runs 行 + 该次 results 拼装为标准字典。"""
+    try:
+        filtered_stocks = json.loads(row["filtered_stocks"] or "[]")
+    except (KeyError, TypeError, json.JSONDecodeError):
+        filtered_stocks = []
     return {
         "id": row["id"],
         "started_at": row["started_at"],
@@ -231,6 +244,8 @@ def _row_to_run_dict(row: sqlite3.Row, results: List[Dict[str, Any]]) -> Dict[st
         "passed_stock_count": row["passed_stock_count"],
         "filter_config": json.loads(row["filter_config"] or "{}"),
         "results": results,
+        # ★ 迭代1：持久化"未通过过滤"股票，历史/对比/PDF 也能展示
+        "filtered_stocks": filtered_stocks,
     }
 
 
@@ -434,10 +449,13 @@ def get_scheduled_task(task_id: int) -> Optional[Dict[str, Any]]:
 def save_scheduled_task(name: str, cron_expr: str, config: Dict[str, Any], enabled: bool = True, task_id: Optional[int] = None) -> int:
     with _get_conn() as conn:
         if task_id:
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE scheduled_tasks SET name=?, cron_expr=?, config=?, enabled=?, updated_at=datetime('now','localtime') WHERE id=?",
                 (name, cron_expr, json.dumps(config, ensure_ascii=False), 1 if enabled else 0, task_id),
             )
+            # ★ Round 21 修复(L10)：UPDATE 0 行说明 task_id 不存在，不再静默"假成功"
+            if cur.rowcount == 0:
+                raise ValueError(f"定时任务 {task_id} 不存在，无法更新")
             return task_id
         else:
             cursor = conn.execute(
@@ -458,6 +476,21 @@ def update_task_run(task_id: int, status: str, result_id: Optional[int] = None) 
                 "UPDATE scheduled_tasks SET last_run_at=datetime('now','localtime'), last_status=?, updated_at=datetime('now','localtime') WHERE id=?",
                 (status, task_id),
             )
+
+def reset_stuck_running_tasks() -> int:
+    """把 last_status='running' 的定时任务重置为 'stale'。
+
+    ★ 修复(重启悬挂)：手动触发定时任务后，落库 watcher 是 _spawn_scheduled_watcher
+      启动的守护线程，随旧进程消失；后端重启后该任务 last_status 永远卡在 'running'
+      （无任何恢复机制，UI 显示"运行中"但实际早已中断）。
+      应用启动时调用本函数，把所有遗留 running 标记为 stale（中断/未完成），
+      让用户看到真实状态并可重新执行。
+    """
+    with _get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE scheduled_tasks SET last_status='stale', updated_at=datetime('now','localtime') WHERE last_status='running'"
+        )
+        return cur.rowcount
 
 def delete_scheduled_task(task_id: int) -> bool:
     with _get_conn() as conn:

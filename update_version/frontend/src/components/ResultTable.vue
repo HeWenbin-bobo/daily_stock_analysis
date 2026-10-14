@@ -44,7 +44,9 @@ const expandedRowKeys = ref<(string | number)[]>([])
 const columns = computed<DataTableColumns<HotAnalysisStockResult>>(() => [
   {
     type: 'expand',
-    expandable: () => true,
+    // ★ 修复(M2)：旧实现恒返回 true → analyses 为空的股票（async cancelled/timeout 部分结果）
+    //   展开后是空白卡片。改为仅当有 analyses 才可展开。
+    expandable: (row) => (row.analyses?.length ?? 0) > 0,
     renderExpand: (row) => renderExpandedRow(row),
   },
   {
@@ -53,7 +55,12 @@ const columns = computed<DataTableColumns<HotAnalysisStockResult>>(() => [
         'span',
         {
           onClick: () => emit('toggleSort', 'code'),
+          role: 'button',
+          tabindex: 0,
+          'aria-label': `按代码${props.sortKey === 'code' ? '（当前已排序）' : '排序'}`,
+          'aria-sort': props.sortKey === 'code' ? (props.sortOrder === 'asc' ? 'ascending' : 'descending') : 'none',
           style: 'cursor:pointer',
+          onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('toggleSort', 'code') } },
         },
         `代码 ${props.sortKey === 'code' ? (props.sortOrder === 'asc' ? '↑' : '↓') : ''}`,
       ),
@@ -67,7 +74,12 @@ const columns = computed<DataTableColumns<HotAnalysisStockResult>>(() => [
         'span',
         {
           onClick: () => emit('toggleSort', 'name'),
+          role: 'button',
+          tabindex: 0,
+          'aria-label': `按名称${props.sortKey === 'name' ? '（当前已排序）' : '排序'}`,
+          'aria-sort': props.sortKey === 'name' ? (props.sortOrder === 'asc' ? 'ascending' : 'descending') : 'none',
           style: 'cursor:pointer',
+          onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('toggleSort', 'name') } },
         },
         `名称 ${props.sortKey === 'name' ? (props.sortOrder === 'asc' ? '↑' : '↓') : ''}`,
       ),
@@ -80,13 +92,19 @@ const columns = computed<DataTableColumns<HotAnalysisStockResult>>(() => [
         'span',
         {
           onClick: () => emit('toggleSort', 'avg_score'),
+          role: 'button',
+          tabindex: 0,
+          'aria-label': `按平均分${props.sortKey === 'avg_score' ? '（当前已排序）' : '排序'}`,
+          'aria-sort': props.sortKey === 'avg_score' ? (props.sortOrder === 'asc' ? 'ascending' : 'descending') : 'none',
           style: 'cursor:pointer',
+          onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('toggleSort', 'avg_score') } },
         },
         `平均分 ${props.sortKey === 'avg_score' ? (props.sortOrder === 'asc' ? '↑' : '↓') : ''}`,
       ),
     key: 'avg_score',
     width: 100,
-    sorter: (a, b) => a.avg_score - b.avg_score,
+    // ★ Round 19 修复(M2)：删除 naive-ui sorter，避免与父级自定义排序(toggleSort)互争
+    //   点击表头会同时触发 naive 内部排序 + 父级排序，两个状态互相覆盖
     render: (r) =>
       h(
         'span',
@@ -102,7 +120,12 @@ const columns = computed<DataTableColumns<HotAnalysisStockResult>>(() => [
         'span',
         {
           onClick: () => emit('toggleSort', 'final_advice'),
+          role: 'button',
+          tabindex: 0,
+          'aria-label': `按最终建议${props.sortKey === 'final_advice' ? '（当前已排序）' : '排序'}`,
+          'aria-sort': props.sortKey === 'final_advice' ? (props.sortOrder === 'asc' ? 'ascending' : 'descending') : 'none',
           style: 'cursor:pointer',
+          onKeydown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('toggleSort', 'final_advice') } },
         },
         `最终建议 ${props.sortKey === 'final_advice' ? (props.sortOrder === 'asc' ? '↑' : '↓') : ''}`,
       ),

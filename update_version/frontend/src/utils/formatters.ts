@@ -39,8 +39,9 @@ export function passReasonText(reason: string): string {
 /** 通过原因标签类型 */
 export function passReasonType(
   reason: string,
-): 'success' | 'default' | 'warning' {
+): 'success' | 'default' | 'warning' | 'error' {
   if (['score', 'advice', 'score+advice'].includes(reason)) return 'success'
+  if (reason === 'rejected_sell') return 'error'
   return 'warning'
 }
 
@@ -56,11 +57,14 @@ export function statusType(
 
 /** 日期格式化 */
 export function formatDate(d: Date): string {
+  // ★ 迭代4 修复(L4)：无效日期（Invalid Date）输出 "-" 而非 "NaN 年 NaN 月 NaN 日"
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '-'
   return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`
 }
 
 /** 时间格式化 */
 export function formatTime(d: Date): string {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '-'
   const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`)
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
 }

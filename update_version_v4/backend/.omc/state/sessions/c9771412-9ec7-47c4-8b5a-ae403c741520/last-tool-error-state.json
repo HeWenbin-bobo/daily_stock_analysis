@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"ls C:/Users/jww/.claude/projects/F--daily-stock-analysis-v2/memory/ 2>&1\",\"description\":\"Check existing memory directory\"}",
-  "error": "Exit code 2\nls: cannot access 'C:/Users/jww/.claude/projects/F--daily-stock-analysis-v2/memory/': No such file or directory",
-  "timestamp": "2026-07-31T01:20:49.100Z",
-  "retry_count": 1
-}

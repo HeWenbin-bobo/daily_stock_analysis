@@ -30,6 +30,11 @@ const emit = defineEmits<{
   (e: 'back'): void
 }>()
 
+// ★ Round 19 修复(M6)：接收历史页"对比"入口传来的 runId，挂载后自动预选为第一次分析
+const props = withDefaults(defineProps<{ initialRunId?: number | null }>(), {
+  initialRunId: null,
+})
+
 const loading = ref(false)
 const comparing = ref(false)
 const error = ref<string | null>(null)
@@ -47,6 +52,10 @@ async function loadHistory() {
   try {
     const data = await getAnalysisHistory(1, 100)
     historyItems.value = data.items
+    // ★ Round 19 修复(M6)：若从历史记录"对比"入口进入，预选该记录为第一次分析
+    if (props.initialRunId && data.items.some((it) => it.id === props.initialRunId)) {
+      selectedRun1.value = props.initialRunId
+    }
   } catch (e: unknown) {
     error.value = extractErrorMessage(e, '加载历史记录失败')
   } finally {
@@ -143,7 +152,7 @@ loadHistory()
     style="border-radius: 14px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06)"
   >
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px">
-      <n-button class="btn-back" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
+      <n-button class="btn-back" aria-label="返回分析主页" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
       <n-text style="font-size: 16px; font-weight: 600">🔄 对比分析</n-text>
     </div>
 
@@ -155,6 +164,7 @@ loadHistory()
           v-model:value="selectedRun1"
           :options="historyOptions"
           placeholder="选择分析记录"
+          aria-label="选择第一次分析记录"
           style="width: 360px"
           :loading="loading"
           clearable
@@ -166,6 +176,7 @@ loadHistory()
           v-model:value="selectedRun2"
           :options="historyOptions"
           placeholder="选择分析记录"
+          aria-label="选择第二次分析记录"
           style="width: 360px"
           :loading="loading"
           clearable
@@ -176,17 +187,18 @@ loadHistory()
         :loading="comparing"
         :disabled="!selectedRun1 || !selectedRun2 || selectedRun1 === selectedRun2"
         @click="doCompare"
+        aria-label="开始对比两次分析记录"
         style="height: 38px; border-radius: 10px"
       >
         🔄 开始对比
       </n-button>
     </n-space>
 
-    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 16px">
+    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 16px" role="alert">
       {{ error }}
     </n-alert>
 
-    <n-spin :show="comparing">
+    <n-spin :show="comparing" role="status" aria-live="polite">
       <div v-if="compareResult">
         <!-- 摘要 -->
         <n-space style="margin-bottom: 16px" wrap>

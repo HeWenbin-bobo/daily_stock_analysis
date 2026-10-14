@@ -27,6 +27,8 @@ export function useCountdown() {
   })
 
   function startElapsed() {
+    // ★ Round 25 修复：先清理旧 interval，避免重复 start 泄漏双定时器（旧 interval 会用过期 start 覆盖 elapsedSec）
+    stopElapsed()
     const start = Date.now()
     elapsedSec.value = 0
     elapsedTimer = window.setInterval(() => {

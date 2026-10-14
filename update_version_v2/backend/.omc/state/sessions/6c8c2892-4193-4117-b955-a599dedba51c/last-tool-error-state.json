@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cat > /tmp/share_iter4.json << 'EOF'\\n{\\\"user_id\\\":\\\"e2e_iter4\\\",\\\"resource_type\\\":\\\"analysis_run\\\",\\\"resource_id\\\":406,\\\"title\\\":\\\"iter4 share\\\"}\\nEOF\\necho \\\"=== 创建分享（文件body）===\\\"; RESP=...",
-  "error": "Exit code 1\n=== 创建分享（文件body）===\n{\"share_token\":\"BVjFJmYltVvP\",\"share_url\":\"/s/BVjFJmYltVvP\",\"expires_at\":null,\"title\":\"iter4 share\"}\n\nTOKEN=BVjFJmYltVvP\n=== 公开页 /s/BVjFJmYltVvP ===\n<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">\n<title>iter4 share</title><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<style>body{font-family:'Segoe UI',system-ui,sans-serif;background:#f8fafc;margin:0}main{max-\n=== 解析 API ===",
-  "timestamp": "2026-08-27T10:06:08.790Z",
-  "retry_count": 1
-}

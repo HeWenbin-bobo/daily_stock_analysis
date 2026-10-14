@@ -16,32 +16,41 @@ const LINE_END = '\r\n'
  * 将分析结果导出为标准 CSV（逗号分隔 + UTF-8 BOM + CRLF）
  *
  * 适合：直接打开、命令行处理（awk/grep 等）、跨平台兼容。
+ *
+ * ★ Round 6：try/catch 包裹，避免 iOS 私有模式 / 老浏览器 Blob 异常静默
  */
 export function exportCSV(
   _result: HotAnalysisRunResponse,
   stocks: HotAnalysisStockResult[],
 ): void {
-  const headers = [
-    '代码', '名称', '平均分', '最终建议', '通过原因', '命中榜',
-    'R1评分', 'R1建议', 'R2评分', 'R2建议', 'R3评分', 'R3建议',
-  ]
+  try {
+    const headers = [
+      '代码', '名称', '平均分', '最终建议', '通过原因', '命中榜',
+      'R1评分', 'R1建议', 'R2评分', 'R2建议', 'R3评分', 'R3建议',
+    ]
 
-  const rows = stocks.map((s) => [
-    s.code,
-    s.name,
-    String(s.avg_score),
-    s.final_advice,
-    s.pass_reason,
-    s.in_sources.join('+'),
-    ...buildRoundCols(s.analyses),
-  ])
+    const rows = stocks.map((s) => [
+      s.code,
+      s.name,
+      String(s.avg_score),
+      s.final_advice,
+      s.pass_reason,
+      s.in_sources.join('+'),
+      ...buildRoundCols(s.analyses),
+    ])
 
-  const csvContent = [
-    headers.join(','),
-    ...rows.map((r) => r.map(escapeCSV).join(',')),
-  ].join(LINE_END)
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((r) => r.map(escapeCSV).join(',')),
+    ].join(LINE_END)
 
-  downloadBlob(csvContent, `hot-analysis-${timestamp()}.csv`, 'text/csv;charset=utf-8')
+    downloadBlob(csvContent, `hot-analysis-${timestamp()}.csv`, 'text/csv;charset=utf-8')
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (import.meta.env.DEV) console.warn('exportCSV failed:', e)
+    // 抛出由上层捕获并显示给用户
+    throw new Error(`CSV 导出失败：${msg}`)
+  }
 }
 
 /**
@@ -85,10 +94,11 @@ export async function exportCSVForExcel(
 
 /** 抓榜 + 过滤摘要（前 3 行作为 Excel 顶部元数据） */
 function buildSummaryBlock(result: HotAnalysisRunResponse): string {
+  // ★ 迭代1 修复(L6)：JSON/数值转义，防摘要行含 `;` 或 `=+-@` 前缀破坏 Excel 列/触发公式
   const lines = [
-    `# 抓榜;${JSON.stringify(result.hot_lists_summary ?? {})}`,
+    `# 抓榜;${escapeCSV(JSON.stringify(result.hot_lists_summary ?? {}))}`,
     `# 交集;raw=${result.raw_intersection_count};filtered=${result.filtered_intersection_count};通过=${result.passed_stock_count}`,
-    `# 用时;${result.duration_seconds}s;状态;${result.status}`,
+    `# 用时;${escapeCSV(String(result.duration_seconds))}s;状态;${escapeCSV(result.status || '')}`,
   ]
   return lines.join(LINE_END)
 }
@@ -110,6 +120,11 @@ function buildRoundCols(analyses: HotAnalysisStockResult['analyses']): string[] 
 }
 
 function escapeCSV(val: string): string {
+  // ★ Round 22 修复(CWE-1236 CSV 公式注入)：以 = + - @ \t 开头的单元格会被 Excel
+  //   当作公式执行（如 =cmd、=HYPERLINK）。前缀单引号强制按文本处理。
+  if (/^[=+\-@\t]/.test(val)) {
+    val = `'${val}`
+  }
   if (val.includes(';') || val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r')) {
     return `"${val.replace(/"/g, '""')}"`
   }
@@ -121,13 +136,17 @@ function timestamp(): string {
 }
 
 function downloadBlob(content: string, filename: string, mimeType: string): void {
+  // ★ Round 6：try/catch — 浏览器环境异常（无 createObjectURL）抛到上层
   const blob = new Blob([UTF8_BOM + content], { type: mimeType })
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }

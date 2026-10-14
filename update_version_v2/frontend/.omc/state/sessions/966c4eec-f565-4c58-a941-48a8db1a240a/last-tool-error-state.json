@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"# Check for known issues\\necho \\\"=== Known Issue Checks ===\\\"\\n\\necho \\\"[1] Double colon typo in SingleStockInput.vue:\\\"\\ngrep -n \\\"::bordered\\\" F:/daily_stock_analysis/update_version/fron...",
-  "error": "Exit code 1\n=== Known Issue Checks ===\n[1] Double colon typo in SingleStockInput.vue:\n73:    ::bordered=\"false\"\n[2] Check if os module is imported in hot_lists.py:\n24:import os\n[3] Check Config._instance reset in _cc_env_override:\n264:    old_instance = Config._instance\n265:    Config._instance = None\n271:        Config._instance = old_instance\n[4] Check DB path exists:\ntotal 56\ndrwxr-xr-x 1 jww 197121     0 Jul 20 16:10 .\ndrwxr-xr-x 1 jww 197121     0 Jul 20 09:40 ..\n[5] Check for missing __ini...",
-  "timestamp": "2026-07-20T08:11:17.079Z",
-  "retry_count": 1
-}

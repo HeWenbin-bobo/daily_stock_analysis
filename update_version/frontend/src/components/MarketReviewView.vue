@@ -7,10 +7,10 @@
  * - 查看历史报告列表
  * - round 6 新增：导出 .md 报告 / 对比两个日期 / 批量生成近 N 天
  */
-import { ref, computed, onMounted, h } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, h } from 'vue'
 import {
   NCard, NButton, NSpace, NText, NTag, NDataTable, NEmpty, NSpin, NAlert, NCollapse, NCollapseItem,
-  NModal, NInputNumber, NInput,
+  NModal, NInputNumber, NInput, NPopconfirm,
 } from 'naive-ui'
 import {
   generateMarketReview,
@@ -48,6 +48,10 @@ const batchDays = ref(5)
 const batchResult = ref<MarketReviewBatchResponse | null>(null)
 const batching = ref(false)
 
+// ★ Round 4 修复：unmount 后停止轮询，防止路由切走时仍在写 ref + 内存泄漏
+let pollingCancelled = false
+let pollingTimer: ReturnType<typeof setTimeout> | null = null
+
 async function loadAll() {
   loading.value = true
   error.value = null
@@ -57,14 +61,20 @@ async function loadAll() {
     } catch (e: unknown) {
       const anyE = e as { response?: { data?: { detail?: string } } }
       const detail = anyE.response?.data?.detail || ''
-      // ★ round 9：404 且提示"已自动触发" → 轮询等待后台生成完成
+      // ★ 修复(H3)：getLatestMarketReview 失败（限流 429/网络抖动）时不要清空已有 latest ——
+      //   旧实现无条件 latest.value = null，用户刚"生成成功"的复盘被随后 loadAll 清掉，
+      //   页面回到空态，用户以为生成失败。仅当确实没有旧数据时才置 null。
+      if (!latest.value) latest.value = null
       if (detail.includes('已自动触发')) {
-        error.value = '🕐 后台正在自动生成今日复盘，请稍候...'
-        latest.value = null
-        // 启动轮询：3s 一次，最长 60s
+        // 保留兼容：若未来后端改为后台生成，走轮询等待
         const start = Date.now()
         while (Date.now() - start < 60000) {
-          await new Promise((r) => setTimeout(r, 3000))
+          if (pollingCancelled) return
+          await new Promise<void>((r) => {
+            pollingTimer = setTimeout(r, 3000)
+          })
+          pollingTimer = null
+          if (pollingCancelled) return
           try {
             latest.value = await getLatestMarketReview()
             error.value = null
@@ -74,11 +84,11 @@ async function loadAll() {
           }
         }
         error.value = '后台生成超时，请稍后手动点击"生成今日复盘"'
-      } else {
-        latest.value = null
       }
     }
-    const list = await listMarketReviews(1, 50)
+    // ★ 修复(M5)：请求 page_size=50 但表格硬编码 pageSize:10 → 第 5 页后无数据。
+    //   统一为按后端最大分页 100 拉取，表格分页显示全部。
+    const list = await listMarketReviews(1, 100)
     history.value = list.items
   } catch (e: unknown) {
     error.value = extractErrorMessage(e, '加载大盘复盘失败')
@@ -86,6 +96,14 @@ async function loadAll() {
     loading.value = false
   }
 }
+
+onBeforeUnmount(() => {
+  pollingCancelled = true
+  if (pollingTimer) {
+    clearTimeout(pollingTimer)
+    pollingTimer = null
+  }
+})
 
 async function handleGenerate() {
   // ★ round 9：防双击 — generating 状态时直接拒掉
@@ -148,6 +166,12 @@ function openCompare() {
 }
 async function runCompare() {
   if (!compareDateA.value || !compareDateB.value) return
+  // ★ 修复(M4)：手动输入日期需校验 YYYY-MM-DD 格式（否则后端 404"其中一日不存在"）
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  if (!dateRe.test(compareDateA.value) || !dateRe.test(compareDateB.value)) {
+    error.value = '对比日期格式必须是 YYYY-MM-DD'
+    return
+  }
   if (compareDateA.value === compareDateB.value) {
     error.value = '对比的两个日期不能相同'
     return
@@ -284,9 +308,13 @@ function buildHistoryColumns() {
       key: 'actions',
       width: 180,
       render(row: MarketReviewItem) {
+        // ★ 修复(H4)：删除无确认 → 包 NPopconfirm，误删一天复盘不可恢复
         return h(NSpace, { size: 'small' }, () => [
           h(NButton, { size: 'tiny', secondary: true, onClick: () => viewItem(row.review_date) }, () => '查看'),
-          h(NButton, { size: 'tiny', type: 'error', secondary: true, onClick: () => handleDelete(row.review_date) }, () => '删除'),
+          h(NPopconfirm, { onPositiveClick: () => handleDelete(row.review_date) }, {
+            trigger: () => h(NButton, { size: 'tiny', type: 'error', secondary: true }, () => '删除'),
+            default: () => `确定删除 ${row.review_date} 复盘？此操作不可恢复。`,
+          }),
         ])
       },
     },
@@ -425,7 +453,7 @@ const conceptLoseColumns = buildSectorColumns(false, '概念')
       </n-space>
     </n-space>
 
-    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 16px" :title="error">
+    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 16px" role="alert" aria-live="assertive">
       {{ error }}
     </n-alert>
 
@@ -441,7 +469,7 @@ const conceptLoseColumns = buildSectorColumns(false, '概念')
       </ul>
     </n-alert>
 
-    <n-spin :show="loading">
+    <n-spin :show="loading" role="status" aria-live="polite">
       <!-- 详情卡 -->
       <n-card v-if="latest" size="small" style="border-radius: 12px; margin-bottom: 16px" :bordered="false">
         <template #header>
@@ -457,11 +485,11 @@ const conceptLoseColumns = buildSectorColumns(false, '概念')
         </template>
 
         <!-- 信号摘要 -->
-        <div style="display: flex; gap: 16px; align-items: center; padding: 12px; border-radius: 10px; background: linear-gradient(135deg, #eff6ff, #dbeafe); margin-bottom: 16px">
+        <div style="display: flex; gap: 16px; align-items: center; padding: 12px; border-radius: 10px; background: var(--accent-soft); border: 1px solid var(--accent-border); margin-bottom: 16px">
           <span style="font-size: 36px">🎯</span>
           <div style="flex: 1">
-            <div style="font-size: 12px; color: #64748b">盘面信号</div>
-            <div style="font-size: 22px; font-weight: bold; color: #2563eb">
+            <div style="font-size: 12px; color: var(--text-secondary)">盘面信号</div>
+            <div style="font-size: 22px; font-weight: bold; color: var(--accent)">
               {{ signalScore }} / 100（{{ signalTag }}）
             </div>
             <div style="font-size: 13px; color: #475569; margin-top: 4px">
@@ -587,10 +615,10 @@ const conceptLoseColumns = buildSectorColumns(false, '概念')
       <n-space vertical :size="[12, 12]">
         <n-space>
           <n-text>基期</n-text>
-          <n-input v-model:value="compareDateA" placeholder="YYYY-MM-DD" style="width: 160px" />
+          <n-input v-model:value="compareDateA" placeholder="YYYY-MM-DD" aria-label="基期日期" style="width: 160px" />
           <n-text>目标期</n-text>
-          <n-input v-model:value="compareDateB" placeholder="YYYY-MM-DD" style="width: 160px" />
-          <n-button type="primary" :loading="comparing" @click="runCompare">开始对比</n-button>
+          <n-input v-model:value="compareDateB" placeholder="YYYY-MM-DD" aria-label="目标期日期" style="width: 160px" />
+          <n-button type="primary" :loading="comparing" @click="runCompare" aria-label="执行对比分析">开始对比</n-button>
         </n-space>
         <div v-if="compareResult">
           <n-alert type="info" :show-icon="true" style="margin-bottom: 12px">
@@ -624,15 +652,15 @@ const conceptLoseColumns = buildSectorColumns(false, '概念')
       <n-space vertical :size="[12, 12]">
         <n-space align="center">
           <n-text>回溯天数（不含今天）</n-text>
-          <n-input-number v-model:value="batchDays" :min="1" :max="30" style="width: 120px" />
-          <n-button type="primary" :loading="batching" @click="runBatch">开始生成</n-button>
+          <n-input-number v-model:value="batchDays" :min="1" :max="30" aria-label="回溯天数" style="width: 120px" />
+          <n-button type="primary" :loading="batching" @click="runBatch" aria-label="开始批量生成复盘">开始生成</n-button>
         </n-space>
         <n-text depth="3" style="font-size: 12px">
           提示：每天约 15-25s；5 天 ≈ 2 分钟。已有记录自动跳过。
         </n-text>
-        <div v-if="batchResult">
-          <n-alert :type="batchResult.failed > 0 ? 'warning' : 'success'" :show-icon="true" style="margin-bottom: 12px">
-            请求 {{ batchResult.requested_days }} 天：完成 {{ batchResult.completed }} 天，失败 {{ batchResult.failed }} 天
+        <div v-if="batchResult && batchResult.length">
+          <n-alert :type="batchResult.some(r => r.status === 'failed') ? 'warning' : 'success'" :show-icon="true" style="margin-bottom: 12px">
+            请求 {{ batchResult.length }} 天：完成 {{ batchResult.filter(r => r.status === 'ok').length }} 天，失败 {{ batchResult.filter(r => r.status === 'failed').length }} 天
           </n-alert>
           <n-data-table
             :columns="[
@@ -645,7 +673,7 @@ const conceptLoseColumns = buildSectorColumns(false, '概念')
               },
               { title: '摘要', key: 'summary' },
             ]"
-            :data="batchResult.results"
+            :data="batchResult"
             :bordered="false"
             size="small"
           />

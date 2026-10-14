@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"curl -s -o /dev/null -w \\\"frontend dev:%{http_code} \\\" http://127.0.0.1:5173/ 2>/dev/null; curl -s -o /dev/null -w \\\"| proxy api:%{http_code}\\\\n\\\" http://127.0.0.1:5173/api/v2/health 2>/de...",
-  "error": "Exit code 2\n/usr/bin/bash: eval: line 1: unexpected EOF while looking for matching `\"'",
-  "timestamp": "2026-08-27T07:55:11.734Z",
-  "retry_count": 1
-}

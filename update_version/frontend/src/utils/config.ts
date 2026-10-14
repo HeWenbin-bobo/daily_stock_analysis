@@ -21,6 +21,8 @@ export interface AppConfig {
   rounds: number
   interRoundSleep: number
   singleConcurrency: number
+  /** ★ Round 16：市场分析并发分析股票数（1=串行） */
+  maxConcurrency: number
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -35,6 +37,7 @@ const DEFAULT_CONFIG: AppConfig = {
   rounds: 3,
   interRoundSleep: 0.6,
   singleConcurrency: 3,
+  maxConcurrency: 2,
 }
 
 /**

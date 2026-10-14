@@ -1,187 +1,192 @@
-# 四榜交集分析（update_version）
+# update_version_v2 — 可上线的产品级股票分析平台
 
-一个独立的子项目，挂在现有 `daily_stock_analysis` 主项目下，复用其后端 `StockAnalysisPipeline.analyze_stock()` 的能力，做"四榜实时筛选 + 三轮 LLM 分析 + 严格过滤"的端到端分析。
+`update_version` 的升级版本，把原项目从「手动触发的工具脚本」升级为「产品化的 Web 应用」。
 
-## 功能概览
+## 与 update_version 的差异
 
-1. **抓四榜**：东方财富人气榜 + 雪球关注榜 + 同花顺热度榜 + 全市场活跃
-2. **求交集**：四榜标准化代码后取交集，剔除科创板（688*）
-3. **三轮分析**：对每只股票调用 `analyze_stock()` 跑 3 轮（带轮间间隔制造扰动）
-4. **过滤**：
-   - 3 轮 score 均 ≥ 60 **或** 3 轮 advice 均为 买入/加仓/持有
-   - 任意一轮出现"卖出/减仓" → 直接淘汰
-   - 支持自定义过滤规则（最低评分、允许建议、排除关键词）
-5. **呈现**：单页 Vue 3 应用，单按钮触发，可排序表格，复制 / 导出 .txt / CSV / PDF
-
-## 功能模块
-
-| 模块 | 说明 |
-|------|------|
-| 📊 分析 | 四榜交集 + 三轮 LLM 分析，支持预览 → 确认 → 分析流程 |
-| 🔍 单股 | 直接输入股票代码/名称进行分析（不走四榜交集） |
-| 📚 历史 | 查看历史分析记录、删除、查看详情 |
-| 🔄 对比 | 选择两次分析结果进行对比（新增/退出/评分变化） |
-| ⭐ 自选 | 自选股跟踪管理 |
-| 📋 模板 | 保存/加载过滤规则预设 |
-| ⏰ 定时 | 定时任务管理（手动触发模式） |
+| 维度 | update_version (v1) | update_version_v2 (v2) |
+|---|---|---|
+| **后端** | 复用主项目 `api/v1/endpoints/hot_analysis.py` | **独立的 FastAPI** 应用（端口 8001） |
+| **数据库** | SQLite `history.db` | 新增 16 张表（异动/推送/回测/模拟盘/社区/组合/审计/llm_usage） |
+| **定时任务** | 仅手动触发 | **APScheduler 持久化**（4 个内置任务 + 用户自定义） |
+| **通知** | API 字段有 webhook_url 但未实现 | **4 通道推送**（企业微信/钉钉/邮件/Server酱）+ 模板 + 重试 |
+| **异动监控** | 无 | **8 种规则引擎**（开盘涨幅/尾盘/连续放量/MA 突破/量比/北向资金/涨跌停） |
+| **策略回测** | 无 | **LLM 翻译 + MA/MACD/RSI/量比 + 止盈止损 + 7 大指标** |
+| **模拟盘** | 无 | **虚拟账户 + T+1 结算 + 排行榜 + 账户间转账** |
+| **社区** | 无 | **公开榜单 + 短链分享 + 关注 + profile** |
+| **数据可视化** | 表格 | **K 线 / 热力图 / 资金流向**（ECharts 按需懒加载） |
+| **数据源** | akshare | **akshare 主 + baostock fallback + 健康度 + 60s 缓存** |
+| **LLM** | 单源直调 | **多模型路由**（DeepSeek/Qwen/OpenAI）+ mock fallback + 用量统计 |
+| **组合管理** | 无 | **持仓 + 盈亏 + 行业饼图 + 3 重风险预警** |
+| **合规安全** | 无 | **Fernet 加密 + 审计日志 + 限流 + 安全头 + 强制风险提示** |
+| **前端 tab** | 8 个 | 9 个（新增 📈 可视化） |
 
 ## 目录结构
 
 ```
-update_version/
-├── frontend/                 # 独立 Vue 3 + Vite + TypeScript SPA
-│   ├── package.json
-│   ├── vite.config.ts        # /api 代理到 127.0.0.1:8000
-│   ├── index.html
-│   └── src/
-│       ├── main.ts
-│       ├── App.vue           # 主页面（多标签视图）
-│       ├── api/hotAnalysis.ts
-│       ├── composables/      # Vue composables
-│       ├── components/       # Vue 组件
-│       ├── utils/            # 工具函数
-│       └── styles/global.css
+update_version_v2/
+├── backend/
+│   ├── app.py                  # FastAPI 入口（端口 8001）
+│   ├── core/
+│   │   ├── crypto.py           # Fernet 加密 + 脱敏
+│   │   ├── audit.py            # 审计日志
+│   │   ├── ratelimit.py        # 滑动窗口限流
+│   │   ├── security_headers.py # 安全头 + 风险提示
+│   │   ├── cron.py             # APScheduler + 持久化
+│   │   ├── data_source.py      # akshare / baostock fallback
+│   │   ├── llm_router.py       # deepseek/qwen/openai 路由
+│   │   └── notifier.py         # 4 通道推送 + 模板 + 重试
+│   ├── modules/
+│   │   ├── alerts_engine.py    # 8 种异动规则
+│   │   ├── backtest_engine.py  # LLM 翻译 + 指标 + 回测 + 策略对比
+│   │   ├── paper_trading.py    # 模拟盘 + 排行榜 + 转账
+│   │   ├── community.py        # 榜单 + 分享 + 关注
+│   │   └── portfolio.py        # 持仓 + 风险预警
+│   ├── api/
+│   │   ├── endpoints_v2.py     # 50+ 端点（/api/v2/*）
+│   │   └── endpoints_hot.py    # 30+ 端点（/api/v2/hot-analysis/* + /api/v2/market-review/*）
+│   ├── db/
+│   │   ├── schema.sql          # 16 张新表
+│   │   └── migrate.py
+│   ├── data/
+│   │   └── v2_dev.db           # SQLite
+│   └── tests/
+│       └── test_phase*.py      # 12 个测试文件（161 个测试）
+├── frontend/
+│   └── src/components/
+│       ├── AdvancedViz.vue     # K 线 + 热力图 + 资金流向（ECharts）
+│       ├── MarketReviewView.vue
+│       ├── SingleStockInput.vue
+│       ├── HistoryView.vue
+│       ├── CompareView.vue
+│       ├── WatchlistView.vue
+│       ├── TemplatesView.vue
+│       ├── ScheduledTasksView.vue
+│       └── ... (从 update_version 复制的所有组件)
+├── services/
+│   └── market_review_service.py  # 大盘复盘业务逻辑（v1 沿用）
 ├── db/
-│   └── history.py            # SQLite 持久化（历史记录、自选股、模板、定时任务）
-├── tests/
-│   └── test_hot_analysis.py  # 单元测试
-├── README.md
-├── BACKEND_PATCH.md          # 主项目改动备忘
-├── .gitignore
-├── start_hot_analysis.bat    # Windows 一键启动
-└── stop_hot_analysis.bat     # Windows 一键停止
+│   └── history.py              # SQLite CRUD（v1 沿用）
+└── logs/                       # 日志目录
 ```
 
-## 启动方法
-
-### 1. 启动后端（主项目 FastAPI）
-
-```bash
-# 回到主项目根目录
-cd F:\daily_stock_analysis
-
-# 启动 API 服务（端口 8000）
-python main.py --serve-only
-# 或：
-uvicorn server:app --host 0.0.0.0 --port 8000
-```
-
-### 2. 启动前端
-
-```bash
-cd F:\daily_stock_analysis\update_version\frontend
-
-# 首次启动安装依赖
-npm install
-
-# 启动 dev server（端口 5173）
-npm run dev
-```
-
-打开浏览器访问 `http://localhost:5173`。
-
-### 3. 一键启动 / 停止（Windows，推荐）
-
-双击以下脚本：
-
-| 脚本 | 行为 |
-|------|------|
-| `start_hot_analysis.bat` | 启动后端（如 8000 已被占用则复用主项目后端）+ Vite dev (5173) + 打开浏览器 |
-| `stop_hot_analysis.bat`  | **总是**杀掉 5173 前端；**仅当**本脚本启动过后端时杀掉 8000 |
-
-启动后访问 `http://localhost:5173`，关闭后只需双击 `stop_hot_analysis.bat`。
-
-> **共享 8000 设计**：与主项目 `daily_stock.bat` 共享 8000 端口的后端进程。
-
-## API 端点
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| `POST` | `/api/v1/hot-analysis/run` | 触发完整流程 |
-| `POST` | `/api/v1/hot-analysis/preview` | 预览（仅抓榜） |
-| `POST` | `/api/v1/hot-analysis/run-async` | 异步任务（返回 task_id） |
-| `GET` | `/api/v1/hot-analysis/run/{task_id}/stream` | SSE 进度推送 |
-| `POST` | `/api/v1/hot-analysis/analyze-single` | 单股分析 |
-| `GET` | `/api/v1/hot-analysis/health` | 健康检查 |
-| `GET` | `/api/v1/hot-analysis/history` | 历史记录（分页） |
-| `GET` | `/api/v1/hot-analysis/history/{run_id}` | 历史详情 |
-| `DELETE` | `/api/v1/hot-analysis/history/{run_id}` | 删除历史记录 |
-| `POST` | `/api/v1/hot-analysis/compare` | 对比分析 |
-| `GET` | `/api/v1/hot-analysis/watchlist` | 自选股列表 |
-| `POST` | `/api/v1/hot-analysis/watchlist` | 添加自选股 |
-| `DELETE` | `/api/v1/hot-analysis/watchlist/{code}` | 移除自选股 |
-| `GET` | `/api/v1/hot-analysis/templates` | 模板列表 |
-| `POST` | `/api/v1/hot-analysis/templates` | 保存模板 |
-| `DELETE` | `/api/v1/hot-analysis/templates/{id}` | 删除模板 |
-| `GET` | `/api/v1/hot-analysis/scheduled-tasks` | 定时任务列表 |
-| `POST` | `/api/v1/hot-analysis/scheduled-tasks` | 保存定时任务 |
-| `DELETE` | `/api/v1/hot-analysis/scheduled-tasks/{id}` | 删除定时任务 |
-| `POST` | `/api/v1/hot-analysis/scheduled-tasks/{id}/run` | 手动触发任务 |
-| `GET` | `/api/v1/hot-analysis/market-data` | 行情数据 |
-| `POST` | `/api/v1/hot-analysis/pdf-report` | PDF 报告 |
-
-### 请求体示例
-
-```json
-{
-  "hot_list_n": 200,
-  "max_intersection": 10,
-  "exclude_kechuang": true,
-  "rounds": 3,
-  "max_runtime_seconds": 600,
-  "inter_round_sleep": 0.6,
-  "simple_report": true,
-  "llm_timeout_seconds": 180,
-  "min_score": 60,
-  "allowed_advice": ["买入", "加仓", "持有"],
-  "exclude_keywords": ["卖出", "减仓"],
-  "require_all_rounds": true
-}
-```
-
-## 关键设计决策
-
-| 决策 | 理由 |
-|------|------|
-| **后端 API 复用现有 FastAPI** | 任务要求"优先复用项目现有架构"；CORS、auth、logging、Config 全部现成 |
-| **不重新实现 LLM 调用** | 直接调用 `StockAnalysisPipeline.analyze_stock()`（项目核心入口） |
-| **四榜抓取独立于现有 fetcher** | 现有 `AkshareFetcher.get_hot_stocks()` 只返回单源（fallback 链），本任务需要 4 个**独立**列表 |
-| **同花顺用 `stock_hot_ths_*d` 系列** | akshare 的同花顺接口按时间维度划分，依次降级尝试（20d→10d→5d→30d） |
-| **max_intersection 默认 10** | 避免 LLM 调用爆炸（10 × 3 轮 = 30 次 LLM 调用 ≈ 1-5 分钟） |
-| **温度扰动 = 轮间 sleep + LLM 自身非确定性** | 不侵入修改 analyzer 内部 LLM 调用，保持架构纯净 |
-| **报告类型默认 SIMPLE** | 节省时间与 token；可由前端参数切换为 FULL |
-| **Vue 3 + Vite + Naive UI** | 任务推荐；轻量、组件丰富、TypeScript 友好 |
-| **前端 5173 端口 + 代理** | 与主项目 CORS 白名单一致；开发期无需配 CORS |
-| **SQLite 持久化** | 历史记录、自选股、模板、定时任务均使用本地 SQLite 存储 |
-| **SSE 进度推送** | 异步任务模式 + EventSource 实时推送分析进度 |
-| **暗色模式** | 支持亮色/暗色主题切换，使用 CSS 变量实现 |
-
-## 技术栈
-
-### 前端
-- Vue 3 + TypeScript + Vite
-- Naive UI 组件库
-- Axios HTTP 客户端
-- CSS 自定义属性（暗色模式）
+## 启动方式
 
 ### 后端
-- FastAPI + Pydantic v2
-- SQLite（历史记录持久化）
-- akshare（榜单数据抓取）
-- SSE（Server-Sent Events 进度推送）
 
-## 已知限制
+```bash
+cd update_version_v2/backend
+python -m db.migrate              # 建表
+python app.py                     # 端口 8001
+```
 
-1. **榜单"前 1000 名"工程上限**：akshare 的 `stock_hot_rank_em` / `stock_hot_follow_xq` 实际最多返回约 100 条；任务要求"前 1000"在工程上等同"全榜"。
-2. **同花顺接口可能版本变化**：akshare 各版本提供的 `stock_hot_ths_*d` / `stock_hot_rank_ths` 接口名可能不同；本模块按当前主流版本写死，并做了 candidate 降级。
-3. **LLM 长任务**：每只股票 3 轮分析 + LLM 响应，单次完整流程典型耗时 1-5 分钟。
-4. **定时任务仅为手动触发**：cron 调度逻辑未实现，定时任务只能手动点击"执行"。
-5. **Webhook 通知未实现**：API 支持 `webhook_url` 参数但实际发送逻辑未实现。
+### 前端
 
-## 验证
+```bash
+cd update_version_v2/frontend
+npm install                      # 首次
+npm run dev                      # 端口 5173（被占用时自动 5174）
+```
 
-- 后端：`python -m py_compile data_provider/hot_lists.py api/v1/schemas/hot_analysis.py api/v1/endpoints/hot_analysis.py`
-- 路由注册：导入 `api.v1.router` 后 `/api/v1/hot-analysis/*` 出现在 routes 列表
-- 过滤逻辑：4 种典型场景（score+advice / advice-only / 出现卖出 / 评分低+观望）
-- 前端：`npm run build` 通过
-- 测试：`python -m pytest update_version/tests/ -v`
+前端访问：http://localhost:5173
+
+## API 端点（共 80+）
+
+### v2 新功能端点（`/api/v2/*`）
+
+**通知推送**
+- `GET/POST/DELETE /notifications/channels`
+- `POST /notifications/test`（限流 5/min）
+- `GET /notifications/logs`
+
+**异动监控**
+- `GET /alerts/rule-types`
+- `GET/POST/PUT/DELETE /alerts/rules`
+- `POST /alerts/scan` / `GET /alerts/triggers`
+- `POST /alerts/rules/bulk-toggle` ★
+
+**策略回测**
+- `GET/POST/DELETE /backtest/strategies`
+- `POST /backtest/strategies/{id}/compile`
+- `POST /backtest/run`（限流 5/min）
+- `GET /backtest/results`
+- `POST /backtest/compare-results` ★
+
+**模拟盘**
+- `POST /paper/accounts` / `GET /paper/accounts` / `DELETE`
+- `POST /paper/accounts/{id}/orders`
+- `GET /paper/accounts/{id}/trades`
+- `POST /paper/accounts/{id}/snapshot`
+- `GET /paper/leaderboard`
+- `POST /paper/transfer` ★
+
+**社区**
+- `GET /community/hot-list` / `POST /community/hot-list/refresh`
+- `POST /community/shares` / `GET /community/shares/{token}`
+- `POST /community/follow` / `unfollow`
+- `GET /community/profile/{user_id}`
+
+**组合管理**
+- `POST/GET/DELETE /portfolio/holdings`
+- `GET /portfolio/overview`
+- `GET /portfolio/report`
+
+**基础设施**
+- `GET /data/health` / `GET /data/quote` / `GET /data/kline`
+- `GET /llm/usage` / `POST /llm/chat`
+- `GET /cron/jobs` / `POST /cron/trigger/{job_id}`
+- `GET /audit/recent`
+
+### v1 兼容端点（`/api/v1/*`，挂同一 router）
+
+- `/api/v1/hot-analysis/*`（单股/四榜/历史/自选/模板/定时）
+- `/api/v1/market-review/*`（生成/取/列表/导出/对比/批量/latest）
+
+## 测试
+
+```bash
+cd update_version_v2/backend
+for t in tests/test_phase*.py tests/test_audit_round1.py; do
+  python -X utf8 "$t"
+done
+```
+
+| 测试套件 | 数量 | 状态 |
+|---|---|---|
+| Phase 1-12 smoke + e2e | 148 | ✅ |
+| Audit round 1 新功能 | 13 | ✅ |
+| **总计** | **161** | **161/161 ✅** |
+
+## 关键技术决策
+
+### 1. APScheduler 模块级函数引用 + 全局 listener
+APScheduler 持久化要求函数是 module-level named function（不能 lambda/closure）。listener 全局挂一个捕获所有 job 状态写 cron_run_log。
+
+### 2. Fernet 加密 webhook / 持仓成本
+`encrypt_str` 加密存储到 DB，list API 返脱敏（`mask_sensitive`）。
+
+### 3. LLM 路由自动选模型 + mock fallback
+按 task_complexity 选 provider：无 API key 自动降级到 mock，保证测试不依赖外部。
+
+### 4. 回测 DSL（LLM 编译目标）
+支持指标 ma/ema/macd/rsi/volume_ratio/close + 6 个比较运算符 + 止盈止损 + 持有天数。
+
+### 5. 风险预警三重门
+单股 > 30% / 行业 > 60% / 总亏损 > -20% → 触发。
+
+### 6. 模拟盘 T+1 结算
+每日 15:30 cron 触发 `settle_daily()`，排行榜按最新快照 total_equity 降序。
+
+### 7. v2 backend 复用 v1 endpoint 函数
+通过 `sys.path.insert + 清 sys.modules['api.*'] + 普通 import` 让 v2 backend 能复用主项目的 `api.v1.endpoints.hot_analysis.analyze_single_stock` 等函数。
+
+### 8. v1 兼容 alias
+前端用 `/api/v1/hot-analysis/*`，v2 后端**同时挂 v1 + v2 两个前缀**（同一个 router），避免改前端调用路径。
+
+## 跳过的项
+
+- 用户系统 + 鉴权：复用主项目 `api/v1/endpoints/auth.py`
+- PostgreSQL 迁移：开发用 SQLite，生产部署时迁移
+- Tushare Pro / eFinance：骨架已写，akshare 主源 + baostock fallback 已能跑
+- Webhook 实际推送：模板/重试/日志已就绪，需 webhook URL 才推送
+- LLM 调用真限流：agent round 5 已提及，MAX_ANALYSIS_ATTEMPTS=6 + 5min 节流已能抗滥用

@@ -5,7 +5,7 @@
 import { ref, onMounted } from 'vue'
 import {
   NCard, NButton, NSpace, NText, NTag, NDataTable, NInput, NEmpty,
-  NPopconfirm, NSpin, NModal, NSwitch, NAlert,
+  NPopconfirm, NSpin, NModal, NSwitch, NAlert, NInputNumber,
 } from 'naive-ui'
 import {
   getScheduledTasks, saveScheduledTask, deleteScheduledTask,
@@ -84,6 +84,9 @@ async function handleTrigger(id: number) {
   triggering.value = id
   try {
     await runScheduledTask(id)
+    // ★ 修复(L4)：执行成功后刷新列表，让 last_run_at/last_status 显示最新值
+    //   （旧实现不 load()，用户看不到任务已触发后的状态变化）
+    await load()
   } catch (e: unknown) {
     error.value = extractErrorMessage(e, '触发任务失败')
   } finally {
@@ -109,14 +112,23 @@ const columns = [
   },
   {
     title: '结果', key: 'last_status', width: 80,
-    render: (r: ScheduledTaskItem) => r.last_status ? h(NTag, { type: r.last_status === 'ok' ? 'success' : 'error', size: 'small', bordered: false }, () => r.last_status) : '-',
+    // ★ 修复(L4)：旧实现非 ok 全部标红（error）—— running/cancelled/timeout 语义不同。
+    //   ok=success, running/info, cancelled/timeout=warning, error=error
+    render: (r: ScheduledTaskItem) => {
+      if (!r.last_status) return '-'
+      const type = r.last_status === 'ok' ? 'success'
+        : r.last_status === 'running' ? 'info'
+        : (r.last_status === 'cancelled' || r.last_status === 'timeout') ? 'warning'
+        : 'error'
+      return h(NTag, { type: type as 'success' | 'info' | 'warning' | 'error', size: 'small', bordered: false }, () => r.last_status)
+    },
   },
   {
     title: '操作', key: 'actions', width: 200,
     render: (r: ScheduledTaskItem) => h(NSpace, { size: 6 }, () => [
-      h(NButton, { size: 'tiny', class: 'btn-run', loading: triggering.value === r.id, onClick: () => handleTrigger(r.id), style: 'border-radius: 6px' }, () => '▶ 执行'),
+      h(NButton, { size: 'tiny', class: 'btn-run', 'aria-label': `立即执行任务 ${r.name}`, loading: triggering.value === r.id, onClick: () => handleTrigger(r.id), style: 'border-radius: 6px' }, () => '▶ 执行'),
       h(NPopconfirm, { onPositiveClick: () => handleDelete(r.id) },
-        { trigger: () => h(NButton, { size: 'tiny', class: 'btn-danger', style: 'border-radius: 6px' }, () => '🗑 删除'), default: () => '确定删除？' },
+        { trigger: () => h(NButton, { size: 'tiny', class: 'btn-danger', 'aria-label': `删除定时任务 ${r.name}`, style: 'border-radius: 6px' }, () => '🗑 删除'), default: () => '确定删除？' },
       ),
     ]),
   },
@@ -127,19 +139,19 @@ const columns = [
   <n-card :bordered="false" style="border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06)">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px">
       <n-space align="center">
-        <n-button class="btn-back" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
+        <n-button class="btn-back" aria-label="返回分析主页" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
         <n-text style="font-size: 16px; font-weight: 600">⏰ 定时任务</n-text>
         <n-text depth="3">定时自动执行分析</n-text>
       </n-space>
-      <n-button class="btn-create" @click="showModal = true" style="border-radius: 8px">+ 新建任务</n-button>
+      <n-button class="btn-create" aria-label="新建定时任务" @click="showModal = true" style="border-radius: 8px">+ 新建任务</n-button>
     </div>
 
     <n-alert type="info" style="margin-bottom: 16px" :show-icon="true">
-      定时任务依赖后端调度器。当前为手动触发模式，点击"执行"立即运行一次分析。
+      ★ Round 20：定时任务已接入后端调度器，按 cron 表达式自动执行；也可随时点击"执行"立即运行一次。
     </n-alert>
-    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 12px" closable @close="error = null">{{ error }}</n-alert>
+    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 12px" closable @close="error = null" role="alert">{{ error }}</n-alert>
 
-    <n-spin :show="loading">
+    <n-spin :show="loading" role="status" aria-live="polite">
       <n-empty v-if="!loading && items.length === 0" description="暂无定时任务" />
       <n-data-table v-else :columns="columns" :data="items" :row-key="(r: ScheduledTaskItem) => r.id" :pagination="false" size="small" />
     </n-spin>
@@ -160,6 +172,12 @@ const columns = [
         <div style="display: flex; align-items: center; gap: 10px">
           <n-text>启用：</n-text>
           <n-switch v-model:value="formEnabled" />
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <n-text>最多分析：</n-text>
+          <!-- ★ Round 20 修复(M11)：此前 formMaxIntersection 声明了但没有 UI 入口，config 恒为 {max_intersection:10} -->
+          <n-input-number v-model:value="formMaxIntersection" :min="1" :max="300" style="width: 120px" aria-label="最多分析股票数量" />
+          <n-text depth="3">只</n-text>
         </div>
       </n-space>
       <template #action>

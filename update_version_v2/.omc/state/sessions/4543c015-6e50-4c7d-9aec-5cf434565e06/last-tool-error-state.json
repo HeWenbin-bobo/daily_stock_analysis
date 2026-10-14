@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd F:/daily_stock_analysis_v2/update_version_v2 && echo \\\"=== 各目录大小 ===\\\" && du -sh backend frontend/data frontend/node_modules frontend/dist data db services tests .omc .run_state logs sc...",
-  "error": "Exit code 1\n=== 各目录大小 ===\n79M\tbackend\n247M\tfrontend/node_modules\n2.0M\tfrontend/dist\n336K\tdata\n58K\tdb\n72K\tservices\n481K\ttests\n126K\t.omc\n1.4M\t.run_state\n0\tlogs\n1.9M\tscreenshots",
-  "timestamp": "2026-08-26T16:43:32.535Z",
-  "retry_count": 1
-}

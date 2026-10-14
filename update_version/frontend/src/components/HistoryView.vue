@@ -92,7 +92,11 @@ const columns: DataTableColumns<AnalysisHistoryItem> = [
     key: 'status',
     width: 80,
     render: (row) => {
-      const type = row.status === 'ok' ? 'success' : row.status === 'timeout' ? 'warning' : 'error'
+      // ★ 修复(H6)：cancelled 是用户主动触发的正常终态，不应标红（旧实现落入 error）。
+      //   timeout 是超时（warning）；cancelled 用 warning 与"已取消"黄色警示一致。
+      const type = row.status === 'ok' ? 'success'
+        : (row.status === 'timeout' || row.status === 'cancelled') ? 'warning'
+        : 'error'
       return h(NTag, { type, size: 'small', bordered: false }, () => row.status)
     },
   },
@@ -131,12 +135,12 @@ const columns: DataTableColumns<AnalysisHistoryItem> = [
       h(NSpace, { size: 4 }, () => [
         h(
           NButton,
-          { size: 'tiny', class: 'btn-apply', onClick: () => viewDetail(row), style: 'border-radius: 6px' },
+          { size: 'tiny', class: 'btn-apply', 'aria-label': `查看历史记录 #${row.id} 的详情`, onClick: () => viewDetail(row), style: 'border-radius: 6px' },
           () => '📊 详情',
         ),
         h(
           NButton,
-          { size: 'tiny', class: 'btn-compare', onClick: () => emit('compare', row.id), style: 'border-radius: 6px' },
+          { size: 'tiny', class: 'btn-compare', 'aria-label': `以历史记录 #${row.id} 作为对比基准`, onClick: () => emit('compare', row.id), style: 'border-radius: 6px' },
           () => '🔄 对比',
         ),
         h(
@@ -144,7 +148,7 @@ const columns: DataTableColumns<AnalysisHistoryItem> = [
           { onPositiveClick: () => handleDelete(row.id) },
           {
             trigger: () =>
-              h(NButton, { size: 'tiny', class: 'btn-danger', style: 'border-radius: 6px' }, () => '🗑 删除'),
+              h(NButton, { size: 'tiny', class: 'btn-danger', 'aria-label': `删除历史记录 #${row.id}`, style: 'border-radius: 6px' }, () => '🗑 删除'),
             default: () => '确定删除此记录？',
           },
         ),
@@ -189,14 +193,14 @@ const detailColumns: DataTableColumns<HotAnalysisStockResult> = [
   >
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px">
       <n-space align="center">
-        <n-button class="btn-back" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
+        <n-button class="btn-back" aria-label="返回分析主页" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
         <n-text style="font-size: 16px; font-weight: 600">📚 历史记录</n-text>
         <n-text depth="3">共 {{ total }} 条</n-text>
       </n-space>
     </div>
 
-    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 12px" closable @close="error = null">{{ error }}</n-alert>
-    <n-spin :show="loading">
+    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 12px" closable @close="error = null" role="alert">{{ error }}</n-alert>
+    <n-spin :show="loading" role="status" aria-live="polite">
       <n-empty v-if="!loading && items.length === 0" description="暂无历史记录" />
 
       <n-data-table
@@ -220,7 +224,7 @@ const detailColumns: DataTableColumns<HotAnalysisStockResult> = [
         <n-space>
           <n-text>ID: {{ detailItem.id }}</n-text>
           <n-text>状态: {{ detailItem.status }}</n-text>
-          <n-text>耗时: {{ Math.round(detailItem.duration_seconds) }}s</n-text>
+          <n-text>耗时: {{ detailItem.duration_seconds != null ? Math.round(detailItem.duration_seconds) : '-' }}s</n-text>
           <n-text>通过: {{ detailItem.passed_stock_count }}/{{ detailItem.analyzed_stock_count }}</n-text>
         </n-space>
       </div>

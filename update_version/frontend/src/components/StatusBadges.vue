@@ -11,7 +11,9 @@ const props = defineProps<{
   hotListsNotes?: Record<string, string>
 }>()
 
-const SOURCES = ['东方财富', '雪球', '同花顺']
+// ★ 迭代4 修复(L3)：后端 hot_lists_status 有 4 个源（含"全市场活跃"），此前只显示 3 个，
+//   第 4 源成功无徽标、失败却计入 failedSources 告警 → 计数与徽标不一致
+const SOURCES = ['东方财富', '雪球', '同花顺', '全市场活跃']
 
 const failedSources = computed(() =>
   Object.entries(props.hotListsStatus ?? {})
@@ -36,8 +38,8 @@ function badgeStyle(src: string) {
     style="
       margin-top: 18px;
       border-radius: 12px;
-      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-      border: 1px solid rgba(226,232,240,0.5);
+      background: var(--color-elevated);
+      border: 1px solid var(--color-border);
     "
   >
     <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 14px">

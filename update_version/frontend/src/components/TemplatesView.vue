@@ -32,6 +32,11 @@ const formAllowedAdvice = ref(['买入', '加仓', '持有', 'BUY', 'HOLD', 'ADD
 const formExcludeKeywords = ref(['卖出', '减仓', 'SELL', 'REDUCE'])
 const formRequireAll = ref(true)
 const formIsDefault = ref(false)
+// ★ 功能升级(L2)：模板覆盖更多配置（此前只存 5 项，rounds/llmTimeout/maxConcurrency/maxRuntime 缺失）
+const formRounds = ref(3)
+const formLlmTimeout = ref(180)
+const formMaxConcurrency = ref(2)
+const formMaxRuntime = ref(180)
 
 const ADVICE_OPTIONS = ['买入', '加仓', '持有', 'BUY', 'HOLD', 'ADD']
 const KEYWORD_OPTIONS = ['卖出', '减仓', 'SELL', 'REDUCE']
@@ -64,6 +69,11 @@ async function handleSave() {
         allowed_advice: formAllowedAdvice.value,
         exclude_keywords: formExcludeKeywords.value,
         require_all_rounds: formRequireAll.value,
+        // ★ 功能升级(L2)：模板覆盖更多配置
+        rounds: formRounds.value,
+        llm_timeout: formLlmTimeout.value,
+        max_concurrency: formMaxConcurrency.value,
+        max_runtime: formMaxRuntime.value,
       },
     })
     showModal.value = false
@@ -107,9 +117,9 @@ const columns = [
   {
     title: '操作', key: 'actions', width: 180,
     render: (r: AnalysisTemplate) => h(NSpace, { size: 6 }, () => [
-      h(NButton, { size: 'tiny', class: 'btn-apply', onClick: () => handleApply(r), style: 'border-radius: 6px' }, () => '⚡ 应用'),
+      h(NButton, { size: 'tiny', class: 'btn-apply', 'aria-label': `应用模板 ${r.name}`, onClick: () => handleApply(r), style: 'border-radius: 6px' }, () => '⚡ 应用'),
       h(NPopconfirm, { onPositiveClick: () => handleDelete(r.id) },
-        { trigger: () => h(NButton, { size: 'tiny', class: 'btn-danger', style: 'border-radius: 6px' }, () => '🗑 删除'), default: () => '确定删除？' },
+        { trigger: () => h(NButton, { size: 'tiny', class: 'btn-danger', 'aria-label': `删除模板 ${r.name}`, style: 'border-radius: 6px' }, () => '🗑 删除'), default: () => '确定删除？' },
       ),
     ]),
   },
@@ -120,15 +130,15 @@ const columns = [
   <n-card :bordered="false" style="border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06)">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px">
       <n-space align="center">
-        <n-button class="btn-back" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
+        <n-button class="btn-back" aria-label="返回分析主页" @click="$emit('back')" style="border-radius: 8px">← 返回</n-button>
         <n-text style="font-size: 16px; font-weight: 600">📋 分析模板</n-text>
         <n-text depth="3">保存/加载过滤规则预设</n-text>
       </n-space>
-      <n-button class="btn-create" @click="showModal = true" style="border-radius: 8px">+ 新建模板</n-button>
+      <n-button class="btn-create" aria-label="新建分析模板" @click="showModal = true" style="border-radius: 8px">+ 新建模板</n-button>
     </div>
 
-    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 12px" closable @close="error = null">{{ error }}</n-alert>
-    <n-spin :show="loading">
+    <n-alert v-if="error" type="error" :show-icon="true" style="margin-bottom: 12px" closable @close="error = null" role="alert">{{ error }}</n-alert>
+    <n-spin :show="loading" role="status" aria-live="polite">
       <n-empty v-if="!loading && items.length === 0" description="暂无模板，点击右上角新建" />
       <n-data-table v-else :columns="columns" :data="items" :row-key="(r: AnalysisTemplate) => r.id" :pagination="false" size="small" />
     </n-spin>
@@ -161,6 +171,23 @@ const columns = [
         <div style="display: flex; align-items: center; gap: 10px">
           <n-text>要求所有轮通过：</n-text>
           <n-switch v-model:value="formRequireAll" />
+        </div>
+        <!-- ★ 功能升级(L2)：模板覆盖更多配置 -->
+        <div style="display: flex; align-items: center; gap: 10px">
+          <n-text style="min-width: 90px">分析轮数：</n-text>
+          <n-input-number v-model:value="formRounds" :min="1" :max="5" :step="1" style="width: 100px" size="small" />
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <n-text style="min-width: 90px">LLM 超时(s)：</n-text>
+          <n-input-number v-model:value="formLlmTimeout" :min="30" :max="600" :step="30" style="width: 100px" size="small" />
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <n-text style="min-width: 90px">并发数：</n-text>
+          <n-input-number v-model:value="formMaxConcurrency" :min="1" :max="5" :step="1" style="width: 100px" size="small" />
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <n-text style="min-width: 90px">最大运行(分)：</n-text>
+          <n-input-number v-model:value="formMaxRuntime" :min="30" :max="1800" :step="30" style="width: 100px" size="small" />
         </div>
         <div style="display: flex; align-items: center; gap: 10px">
           <n-text>设为默认模板：</n-text>

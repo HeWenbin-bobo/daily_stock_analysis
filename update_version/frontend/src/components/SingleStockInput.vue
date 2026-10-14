@@ -22,6 +22,8 @@ import {
   NSpin,
   NIcon,
   NEmpty,
+  NRadio,
+  NRadioGroup,
 } from 'naive-ui'
 import type { AnalysisRunItem, SingleStockResponse } from '../api/hotAnalysis'
 import { scoreColor, adviceType } from '../utils/formatters'
@@ -38,7 +40,11 @@ const emit = defineEmits<{
   (e: 'cancelAll'): void
   (e: 'remove', id: string): void
   (e: 'clearFinished'): void
+  (e: 'update:concurrency', v: number): void
 }>()
+
+// ★ Round 16：单股并发数选项
+const CONCURRENCY_OPTIONS: number[] = [1, 2, 3, 4, 5]
 
 const inputText = ref('')
 
@@ -142,6 +148,7 @@ function statusLabel(status: SingleTask['status']) {
             class="btn-primary-action"
             :disabled="!inputText.trim()"
             @click="onSubmit"
+            aria-label="并发分析输入框中的股票（Ctrl+Enter 也可提交）"
             style="height: 38px; border-radius: 10px; min-width: 140px"
           >
             🚀 并发分析
@@ -151,6 +158,7 @@ function statusLabel(status: SingleTask['status']) {
             class="btn-danger"
             :disabled="!hasActive"
             @click="emit('cancelAll')"
+            aria-label="取消所有正在执行或排队的单股任务"
             style="height: 32px; border-radius: 8px; min-width: 140px"
           >
             ✕ 全部取消
@@ -159,11 +167,31 @@ function statusLabel(status: SingleTask['status']) {
             v-if="doneCount + failedCount + cancelledCount > 0"
             quaternary
             @click="emit('clearFinished')"
+            aria-label="清除已完成、失败或已取消的任务"
             style="height: 32px; border-radius: 8px; min-width: 140px; font-size: 12px"
           >
             🧹 清空已完成
           </n-button>
         </n-space>
+      </n-space>
+
+      <!-- ★ Round 16：并发数设置（原在首页配置面板，移到单股 tab 更合理） -->
+      <n-space align="center" wrap style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(148,163,184,0.25)">
+        <span style="font-size: 16px">⚡</span>
+        <n-text strong style="font-size: 14px; color: var(--color-label)">并发数</n-text>
+        <n-radio-group
+          :value="concurrency"
+          @update:value="$emit('update:concurrency', $event)"
+          size="small"
+        >
+          <n-radio
+            v-for="opt in CONCURRENCY_OPTIONS"
+            :key="opt"
+            :value="opt"
+            :label="`${opt}路`"
+          />
+        </n-radio-group>
+        <n-text depth="3" style="font-size: 12px">同时最多 {{ concurrency }} 只股票调用 LLM；修改后对下一次提交生效</n-text>
       </n-space>
 
       <!-- 概览计数 -->
@@ -201,12 +229,40 @@ function statusLabel(status: SingleTask['status']) {
           border-bottom: 1px dashed rgba(148,163,184,0.25);
         "
       >
-        <n-text style="font-size: 18px; font-weight: 600; min-width: 130px">
-          {{ task.result?.name || task.code }}
-        </n-text>
-        <n-text v-if="task.result && task.result.code !== task.code" depth="3" style="font-family: monospace; font-size: 12px">
-          {{ task.result.code }}
-        </n-text>
+        <div style="min-width: 200px">
+          <!-- ★ Round 26：显示真实股票名称 + 行业 + 代码（不再只显示代码串） -->
+          <n-text style="font-size: 18px; font-weight: 600">
+            {{ task.result?.name || task.code }}
+          </n-text>
+          <n-text v-if="task.result?.industry" depth="3" style="font-size: 12px; margin-left: 8px">
+            {{ task.result.industry }}
+          </n-text>
+          <n-text v-if="task.result && task.result.code !== task.code" depth="3" style="font-family: monospace; font-size: 12px; margin-left: 8px">
+            {{ task.result.code }}
+          </n-text>
+        </div>
+        <!-- ★ Round 27：最近股价 + 最新涨跌幅（红涨绿跌，中国市场习惯） -->
+        <div
+          v-if="task.status === 'done' && task.result && task.result.price != null"
+          style="
+            display: inline-flex; align-items: baseline; gap: 8px;
+            padding: 5px 12px; border-radius: 8px;
+            background: var(--color-elevated); border: 1px solid var(--color-border);
+            font-variant-numeric: tabular-nums;
+          "
+        >
+          <span style="font-weight: 700; font-size: 17px; color: var(--text-primary)">
+            ¥{{ task.result.price.toFixed(2) }}
+          </span>
+          <span
+            v-if="task.result.change_pct != null"
+            :style="`font-weight: 600; font-size: 13px; color: ${
+              (task.result.change_pct ?? 0) >= 0 ? 'var(--up)' : 'var(--down)'
+            }`"
+          >
+            {{ (task.result.change_pct ?? 0) >= 0 ? '+' : '' }}{{ task.result.change_pct.toFixed(2) }}%
+          </span>
+        </div>
         <n-tag :type="statusTagType(task.status)" :bordered="false" round size="medium">
           <template v-if="task.status === 'running'">
             <NSpin size="small" style="margin-right: 4px" />
@@ -231,6 +287,7 @@ function statusLabel(status: SingleTask['status']) {
             size="tiny"
             class="btn-danger"
             @click="emit('cancel', task.id)"
+            :aria-label="`取消单股任务 ${task.code}`"
           >
             取消
           </n-button>
@@ -239,6 +296,7 @@ function statusLabel(status: SingleTask['status']) {
             size="tiny"
             quaternary
             @click="emit('remove', task.id)"
+            :aria-label="`从列表移除任务 ${task.code}`"
           >
             移除
           </n-button>
@@ -265,6 +323,15 @@ function statusLabel(status: SingleTask['status']) {
           :pagination="false"
           size="small"
         />
+        <!-- ★ Round 26：汇总操作建议（告诉用户怎么操作，不只是分数） -->
+        <n-alert
+          v-if="task.result.summary"
+          type="info"
+          :show-icon="true"
+          style="margin-top: 12px; white-space: pre-wrap; line-height: 1.7"
+        >
+          {{ task.result.summary }}
+        </n-alert>
       </div>
 
       <!-- 跑中占位 -->

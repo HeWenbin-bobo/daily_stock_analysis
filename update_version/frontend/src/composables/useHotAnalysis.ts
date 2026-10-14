@@ -5,7 +5,7 @@
  * Phase 2: SSE 进度推送、CSV/Excel 导出
  * Phase 3: 后台任务模式
  */
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import {
   runHotAnalysis,
   previewHotAnalysis,
@@ -13,16 +13,26 @@ import {
   startAsyncAnalysis,
   createProgressStream,
   cancelTask,
+  getTaskStatus,
   type HotAnalysisRunResponse,
   type HotAnalysisPreviewResponse,
   type HotAnalysisStockResult,
   type FilterConfig,
   type TaskProgress,
+  type TaskStatusResponse,
   type SingleStockResponse,
 } from '../api/hotAnalysis'
 import { buildPlainText, extractErrorMessage } from '../utils/formatters'
 import { exportCSV, exportCSVForExcel } from '../utils/exporters'
-import { loadConfig } from '../utils/config'
+import { loadConfig, saveConfig } from '../utils/config'
+
+// ★ 迭代3 修复(M1)：统一判断"用户取消"（axios abort 抛 CanceledError 而非 DOMException AbortError，
+//   此前取消同步分析会误报"后端未启动"）
+function _isAbortError(e: unknown): boolean {
+  if (e instanceof DOMException && e.name === 'AbortError') return true
+  const anyE = e as { name?: string; code?: string; message?: string }
+  return anyE?.code === 'ERR_CANCELED' || anyE?.name === 'CanceledError' || anyE?.name === 'AbortError'
+}
 
 // 阶段类型
 export type Phase = 'idle' | 'previewing' | 'previewed' | 'analyzing' | 'done'
@@ -31,7 +41,7 @@ export type Phase = 'idle' | 'previewing' | 'previewed' | 'analyzing' | 'done'
 export type SortKey = 'code' | 'name' | 'avg_score' | 'final_advice'
 
 // 视图模式
-export type ViewMode = 'analysis' | 'history' | 'compare' | 'single' | 'watchlist' | 'templates' | 'scheduled' | 'review'
+export type ViewMode = 'analysis' | 'history' | 'compare' | 'single' | 'watchlist' | 'templates' | 'scheduled' | 'review' | 'viz' | 'technical' | 'deepresearch' | 'hyperopt' | 'etf' | 'portfolio' | 'intent' | 'settings'
 
 /** 单股分析任务（并发） */
 export interface SingleTask {
@@ -84,6 +94,9 @@ export function useHotAnalysis() {
   // LLM 超时
   const llmTimeout = ref<number>(180)
 
+  // ★ Round 16：市场分析并发分析股票数（1=串行）
+  const maxConcurrency = ref<number>(2)
+
   // SSE 进度
   const taskProgress = ref<TaskProgress | null>(null)
   const taskId = ref<string | null>(null)
@@ -117,13 +130,25 @@ export function useHotAnalysis() {
   }
 
   async function runSingleWorker() {
+    // ★ 迭代1 修复(M2)：队列空超过 3s → worker 自行退出（runningWorkers 由调用方 .finally 递减），
+    //   下次 submitSingle 会自动补齐。此前空闲 worker 每 200ms 无限空转轮询，且降低并发不回收多余 worker。
+    let idleSince = 0
     // worker 检查 workersStopped：true 时立刻退出循环（HMR / 卸载时不留 phantom worker）
     while (!workersStopped) {
+      // ★ 修复(M3)：用户把并发调小（如 3→1）时，现存 worker 在空闲状态应提前退出，
+      //   否则继续 3 路并发直到 3s 空闲超时，可能触发 LLM 限流。
+      //   注意只在队列空时检查（运行中的任务不打断，避免任务被丢弃）。
+      if (singleQueue.length === 0 && runningWorkers > Math.max(1, singleConcurrency.value)) {
+        return
+      }
       const next = singleQueue.shift()
       if (!next) {
+        if (!idleSince) idleSince = Date.now()
+        if (Date.now() - idleSince > 3000) return
         await new Promise<void>((resolve) => setTimeout(resolve, 200))
         continue
       }
+      idleSince = 0
       // 拿到任务后也再 check 一次：避免已卸载后还跑了 LLM
       if (workersStopped) return
       await runSingleTask(next)
@@ -148,41 +173,60 @@ export function useHotAnalysis() {
     }
   }
 
+  // ★ Round 5 a11y/响应式：单股任务用不可变 map() 替换数组，保证 Vue3 响应式
+  //   一定触发（过去直接 live.status = ... 在某些时序下不更新）
+  function getSingleTask(id: string): SingleTask | undefined {
+    return singleTasks.value.find((t) => t.id === id)
+  }
+  function patchSingleTask(id: string, patch: Partial<SingleTask>): void {
+    if (!singleTasks.value.some((t) => t.id === id)) return
+    singleTasks.value = singleTasks.value.map((t) =>
+      t.id === id ? { ...t, ...patch } : t,
+    )
+  }
+
   async function runSingleTask(task: SingleTask) {
     // 防御：进入函数时再查一次，防止 cancelAll / removeSingle 在 push 之后已经把它清掉
-    const live = singleTasks.value.find((t) => t.id === task.id)
-    if (!live) return  // 已被移除，跳过
-    live.status = 'running'
+    const initial = getSingleTask(task.id)
+    if (!initial) return  // 已被移除，跳过
+    patchSingleTask(task.id, { status: 'running' })
     try {
       const data = await analyzeSingleStock(
         {
-          code: live.code,
+          code: initial.code,
           rounds: rounds.value,
           simple_report: true,
+          // ★ 修复(H5)：旧实现只传 code/rounds/simple_report，后端默认 llm_timeout=180、
+          //   无 inter_round_sleep → 用户把 LLM 超时调成 300s 对单股完全不生效。
+          llm_timeout_seconds: llmTimeout.value,
+          inter_round_sleep: interRoundSleep.value,
         },
-        live.controller.signal,
+        initial.controller.signal,
       )
-      // 取消可能在请求过程中触发；如已取消，丢弃结果
-      if (live.controller.signal.aborted) {
-        live.status = 'cancelled'
+      // 取消可能在请求过程中触发；如已取消，丢弃结果（用 initial 锁住 signal 引用）
+      if (initial.controller.signal.aborted) {
+        patchSingleTask(task.id, { status: 'cancelled' })
         return
       }
-      live.result = data
-      live.status = data.status === 'failed' ? 'failed' : 'done'
-      if (data.status === 'failed') {
-        live.error = data.error || '分析失败'
-      }
+      const okStatus = data.status === 'failed' ? 'failed' : 'done'
+      patchSingleTask(task.id, {
+        result: data,
+        status: okStatus,
+        error: data.status === 'failed' ? data.error || '分析失败' : null,
+      })
     } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') {
-        live.status = 'cancelled'
+      if (_isAbortError(e)) {
+        patchSingleTask(task.id, { status: 'cancelled' })
         return
       }
       const err = e as { message?: string; response?: { data?: { detail?: string } } }
-      live.error =
-        err?.response?.data?.detail ||
-        err?.message ||
-        '请求失败，请确认后端已启动（端口 8000）'
-      live.status = 'failed'
+      patchSingleTask(task.id, {
+        status: 'failed',
+        error:
+          err?.response?.data?.detail ||
+          err?.message ||
+          '请求失败，请确认后端已启动（端口 8001）',
+      })
     }
   }
 
@@ -207,11 +251,11 @@ export function useHotAnalysis() {
   }
 
   function cancelSingleTask(id: string) {
-    const t = singleTasks.value.find((x) => x.id === id)
+    const t = getSingleTask(id)
     if (!t) return
     if (t.status === 'pending' || t.status === 'running') {
       t.controller.abort()
-      t.status = 'cancelled'
+      patchSingleTask(id, { status: 'cancelled' })
     }
   }
 
@@ -221,12 +265,17 @@ export function useHotAnalysis() {
   }
 
   function cancelAllSingle() {
-    singleTasks.value.forEach((t) => {
+    // 不可变 map：保证列表内每个 pending/running 都翻成 cancelled，触发表格刷新
+    let touched = false
+    const next = singleTasks.value.map((t) => {
       if (t.status === 'pending' || t.status === 'running') {
         t.controller.abort()
-        t.status = 'cancelled'
+        touched = true
+        return { ...t, status: 'cancelled' as const }
       }
+      return t
     })
+    if (touched) singleTasks.value = next
   }
 
   function clearFinishedSingle() {
@@ -239,6 +288,31 @@ export function useHotAnalysis() {
   let abortController: AbortController | null = null
   // 缓存最近一次启动的 stopTimer，使 onCancelAnalysis 的 5s 兜底也能关闭计时器
   let currentStopTimer: (() => void) | null = null
+
+  // ★ 迭代6 修复：持久化最近一次市场分析结果到 localStorage，刷新后自动恢复。
+  //   否则 Vite HMR 全量刷新 / 浏览器标签页内存回收等会导致结果丢失（用户"没及时查看就没了"）。
+  const LAST_RESULT_KEY = 'hot-analysis-last-result'
+  const LAST_RESULT_TTL_MS = 24 * 60 * 60 * 1000  // 24h 内可恢复
+  // ★ 迭代7：运行中任务的 taskId 持久化 key（刷新后恢复进度用）
+  const RUNNING_TASK_KEY = 'hot-analysis-running-task'
+
+  function _saveLastResult(data: HotAnalysisRunResponse): void {
+    try {
+      localStorage.setItem(LAST_RESULT_KEY, JSON.stringify({ result: data, savedAt: Date.now() }))
+    } catch { /* 隐私模式 / 配额满时忽略 */ }
+  }
+  function _loadLastResult(): { result: HotAnalysisRunResponse; savedAt: number } | null {
+    try {
+      const raw = localStorage.getItem(LAST_RESULT_KEY)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (!parsed?.result || Date.now() - (parsed.savedAt || 0) > LAST_RESULT_TTL_MS) return null
+      return parsed
+    } catch { return null }
+  }
+  function _clearLastResult(): void {
+    try { localStorage.removeItem(LAST_RESULT_KEY) } catch { /* ignore */ }
+  }
 
   // ---- 初始化：从 localStorage 加载配置 ----
   onMounted(() => {
@@ -254,8 +328,110 @@ export function useHotAnalysis() {
       if (saved.rounds) rounds.value = saved.rounds
       if (saved.interRoundSleep != null) interRoundSleep.value = saved.interRoundSleep
       if (saved.singleConcurrency) singleConcurrency.value = saved.singleConcurrency
+      if (saved.maxConcurrency) maxConcurrency.value = saved.maxConcurrency
     }
+    // ★ 迭代6：恢复上次持久化的市场分析结果（Vite HMR / 标签页回收等刷新后不丢）
+    const savedResult = _loadLastResult()
+    if (savedResult && savedResult.result && savedResult.result.status !== 'failed') {
+      result.value = savedResult.result
+      phase.value = 'done'
+      hasFinalized = true
+      const savedTime = new Date(savedResult.savedAt)
+      const timeStr = `${String(savedTime.getHours()).padStart(2, '0')}:${String(savedTime.getMinutes()).padStart(2, '0')}`
+      progressTip.value =
+        savedResult.result.passed_stock_count > 0
+          ? `上次分析结果（${timeStr}）：${savedResult.result.passed_stock_count} 只股票通过`
+          : `上次分析结果（${timeStr}）：本轮未发现符合条件的股票`
+    }
+    // ★ 迭代7：恢复运行中任务 —— 刷新页面后前端内存丢失，但后端任务仍在跑。
+    //   从 localStorage 取 taskId → 查后端状态 → running 则恢复进度 UI 并重连 SSE。
+    void restoreRunningTask()
   })
+
+  // ---- 迭代7：刷新后恢复运行中的市场分析任务 ----
+  async function restoreRunningTask(): Promise<void> {
+    let savedTaskId: string | null = null
+    try { savedTaskId = localStorage.getItem(RUNNING_TASK_KEY) } catch { /* ignore */ }
+    if (!savedTaskId || loading.value || phase.value === 'analyzing') return
+    let st: TaskStatusResponse
+    try {
+      st = await getTaskStatus(savedTaskId)
+    } catch {
+      // 404（后端重启过 / 任务被清理）或其他错误 → 清 key，不阻塞页面
+      try { localStorage.removeItem(RUNNING_TASK_KEY) } catch { /* ignore */ }
+      return
+    }
+    const status = String(st.status || '')
+    if (status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'timeout') {
+      // 任务已结束（刷新期间完成）：直接应用结果
+      try { localStorage.removeItem(RUNNING_TASK_KEY) } catch { /* ignore */ }
+      if (st.result) {
+        const isPartial = status === 'cancelled' || status === 'timeout'
+        applyAnalysisResult(st.result, isPartial)
+      }
+      return
+    }
+    if (status !== 'running' && status !== 'pending') return
+    // 任务仍在跑 → 恢复进度 UI 并重连 SSE
+    taskId.value = savedTaskId
+    phase.value = 'analyzing'
+    loading.value = true
+    hasFinalized = false
+    resetFinalizedFlag()
+    progressTip.value = st.current_stock
+      ? `恢复进度：正在分析 ${st.current_stock}（${st.completed_stocks}/${st.total_stocks}）`
+      : '检测到进行中的分析任务，正在恢复进度…'
+    currentStopTimer = () => undefined  // 恢复路径无计时器可停（no-op 兜底）
+    const sseTimeoutMs = 5 * 60 * 1000
+    let lastProgressTime = Date.now()
+    const timeoutTimer = setInterval(() => {
+      if (Date.now() - lastProgressTime > sseTimeoutMs) {
+        clearInterval(timeoutTimer)
+        if (eventSource) { eventSource.close(); eventSource = null }
+        // 恢复路径 SSE 断连：不回退同步（会二次分析），只提示用户可重试
+        loading.value = false
+        phase.value = 'idle'
+        taskProgress.value = null
+        taskId.value = null
+        try { localStorage.removeItem(RUNNING_TASK_KEY) } catch { /* ignore */ }
+        progressTip.value = '恢复进度失败（SSE 超时）。任务仍在后台运行，稍后可在历史记录中查看结果。'
+      }
+    }, 1000)
+    eventSource = createProgressStream(
+      savedTaskId,
+      (progress) => {
+        lastProgressTime = Date.now()
+        taskProgress.value = progress
+        if (hasFinalized) return
+        if (progress.phase === 'analyzing') {
+          progressTip.value = `正在分析 ${progress.current_stock}（${progress.completed_stocks}/${progress.total_stocks}）`
+        } else if (progress.phase === 'fetching') {
+          progressTip.value = '正在抓取四榜数据…'
+        }
+      },
+      () => {
+        clearInterval(timeoutTimer)
+        // 恢复路径连接错误：不触发二次分析，降级为提示
+        if (eventSource) { eventSource.close(); eventSource = null }
+        loading.value = false
+        phase.value = 'idle'
+        progressTip.value = '恢复进度失败（连接断开）。任务仍在后台运行，稍后可在历史记录中查看结果。'
+      },
+      (completeResult, isPartial) => {
+        clearInterval(timeoutTimer)
+        applyAnalysisResult(completeResult, isPartial)
+        loading.value = false
+        phase.value = 'done'
+        hasFinalized = true
+        taskId.value = null
+        try { localStorage.removeItem(RUNNING_TASK_KEY) } catch { /* ignore */ }
+        if (eventSource) { eventSource.close(); eventSource = null }
+      },
+    )
+  }
+
+  // ★ Round 16：单股并发设置移到单股 tab 后，在此持久化到 localStorage
+  watch(singleConcurrency, (v) => saveConfig({ singleConcurrency: v }))
 
   // ---- 过滤配置 ----
   const filterConfig = computed<FilterConfig>(() => ({
@@ -319,7 +495,13 @@ export function useHotAnalysis() {
     partialResult.value = null
     cancelledWithPartial.value = false
     error.value = null
+    _clearLastResult()  // ★ 迭代6：开始新预览时清掉上次持久化结果
     progressTip.value = '正在抓取四榜（东方财富 / 雪球 / 同花顺 / 全市场活跃）…'
+
+    // ★ Round 19 修复(H1)：预览请求支持取消 + 硬超时（四榜抓取慢时最坏 180s 兜底），
+    //   避免 loading 无限锁死配置面板且无法中断
+    abortController = new AbortController()
+    const previewTimeout = setTimeout(() => abortController?.abort(), 180000)
 
     try {
       const data = await previewHotAnalysis({
@@ -328,8 +510,9 @@ export function useHotAnalysis() {
         rounds: rounds.value,
         inter_round_sleep: interRoundSleep.value,
         simple_report: true,
+        max_concurrency: maxConcurrency.value,
         ...filterConfig.value,
-      })
+      }, abortController.signal)
       if (data.status === 'failed') {
         error.value = data.error || '预览失败'
         progressTip.value = '抓榜失败'
@@ -340,17 +523,28 @@ export function useHotAnalysis() {
       phase.value = 'previewed'
       progressTip.value = `准备分析 ${data.target_count} 只股票`
     } catch (e: unknown) {
-      error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8000）')
-      progressTip.value = '抓榜失败'
+      if (_isAbortError(e)) {
+        error.value = '预览已取消或超时（180s），请重试'
+        progressTip.value = '抓榜已取消'
+      } else {
+        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8001）')
+        progressTip.value = '抓榜失败'
+      }
       phase.value = 'idle'
     } finally {
+      clearTimeout(previewTimeout)
       loading.value = false
+      abortController = null
     }
   }
 
   const cancelled = ref(false)
   let cancelFallbackTimer: ReturnType<typeof setTimeout> | null = null
   let hasFinalized = false  // 防止 partial / complete / catch / finally 重复覆盖已显示结果
+  // ★ Round 18：代数计数器。每次启动新任务 +1，SSE 回调捕获启动时的 gen；
+  //   gen 变了说明已有新任务，旧任务的 progress/partial/complete 一律忽略，
+  //   避免"取消后再次开始"时旧任务 partial 覆盖新任务 UI（续着上一次任务）。
+  let runGeneration = 0
 
   function resetFinalizedFlag() {
     hasFinalized = false
@@ -372,6 +566,7 @@ export function useHotAnalysis() {
       cancelledWithPartial.value = true
       // 用 partial 覆盖 result，模板中 v-if="result" 即可渲染（保持向后兼容）
       result.value = data
+      _saveLastResult(data)  // ★ 迭代6：持久化，刷新后恢复
       // ★ 清掉 onProgress 留下的"正在分析 通富微电(...)" 文案，避免用户看到冲突信息
       progressTip.value =
         data.passed_stock_count > 0
@@ -382,6 +577,7 @@ export function useHotAnalysis() {
       partialResult.value = null
       cancelledWithPartial.value = false
       result.value = data
+      _saveLastResult(data)  // ★ 迭代6：持久化，刷新后恢复
       if (data.status === 'failed') {
         error.value = data.error || '后端返回 failed 状态'
       }
@@ -412,6 +608,13 @@ export function useHotAnalysis() {
   ): Promise<void> {
     // ★ 去重：避免重复连点"确认开始分析"启多个后台任务
     if (loading.value || phase.value === 'analyzing' || !preview.value) return
+    // ★ Round 18：再次开始时废弃上一次的 SSE 连接与回调——取消后旧任务仍在后台跑，
+    //   若不隔离，其 partial 会覆盖新任务 UI（续着上一次任务继续）。
+    runGeneration += 1
+    const gen = runGeneration
+    if (eventSource) {
+      eventSource.close()  // close 幂等；置 null 交给 finally 统一处理（避免 TS 窄化成 never）
+    }
     // 容错：模板里如果没传 timer，使用 no-op
     const safeStart = startTimer ?? (() => undefined)
     const safeStop = stopTimer ?? (() => undefined)
@@ -424,6 +627,7 @@ export function useHotAnalysis() {
     result.value = null
     error.value = null
     loading.value = true
+    _clearLastResult()  // ★ 迭代6：开始新分析时清掉上次持久化结果
     safeStart()
     currentStopTimer = safeStop
     progressTip.value = `正在对 ${preview.value.target_count} 只股票做三轮 LLM 分析…`
@@ -437,17 +641,27 @@ export function useHotAnalysis() {
         inter_round_sleep: interRoundSleep.value,
         simple_report: true,
         llm_timeout_seconds: llmTimeout.value,
+        max_concurrency: maxConcurrency.value,
         ...filterConfig.value,
       })
 
       taskId.value = taskResp.task_id
+      // ★ 迭代7 修复：持久化 taskId —— 刷新页面后可恢复运行中任务（后端任务不因前端刷新而停）
+      try { localStorage.setItem(RUNNING_TASK_KEY, taskResp.task_id) } catch { /* ignore */ }
       progressTip.value = '后台任务已启动，实时推送进度…'
 
       // 监听 SSE 进度（带超时保护）
-      const sseTimeoutMs = selectedMaxRuntime.value * 60 * 1000
+      // ★ 迭代5 修复：无进展超时改为固定 5 分钟（此前 = maxRuntime 分钟，最高 30h → 兜底实际失效）。
+      //   正常分析每只股票/每轮都会推 progress，5 分钟无进展说明 SSE 卡死/后端异常。
+      const sseTimeoutMs = 5 * 60 * 1000
       let lastProgressTime = Date.now()
       const runResult = await new Promise<HotAnalysisRunResponse>((resolve, reject) => {
         const timeoutTimer = setInterval(() => {
+          if (gen !== runGeneration) {
+            // 已有新任务，旧 timer 退出（不再关掉新任务的 eventSource / reject 旧 Promise）
+            clearInterval(timeoutTimer)
+            return
+          }
           if (Date.now() - lastProgressTime > sseTimeoutMs) {
             clearInterval(timeoutTimer)
             if (eventSource) { eventSource.close(); eventSource = null }
@@ -458,6 +672,7 @@ export function useHotAnalysis() {
         eventSource = createProgressStream(
           taskResp.task_id,
           (progress) => {
+            if (gen !== runGeneration) return
             lastProgressTime = Date.now()
             taskProgress.value = progress
             if (hasFinalized) return  // 防止 partial/complete 之后 progress 事件再覆盖 progressTip
@@ -468,6 +683,7 @@ export function useHotAnalysis() {
             }
           },
           (err) => {
+            if (gen !== runGeneration) return
             clearInterval(timeoutTimer)
             // ★ round 6 audit：保留 warn 用于本地排障，但生产无 devtools 时用户不可见；
             //   SSE 失败回退到同步模式是设计行为，不需要弹窗
@@ -475,6 +691,7 @@ export function useHotAnalysis() {
             reject(new Error('SSE_FALLBACK'))
           },
           (completeResult, isPartial) => {
+            if (gen !== runGeneration) return
             clearInterval(timeoutTimer)
             if (isPartial) {
               applyAnalysisResult(completeResult, true)
@@ -510,7 +727,7 @@ export function useHotAnalysis() {
         await runSyncAnalysis(safeStart, safeStop)
         return
       }
-      if (e instanceof DOMException && e.name === 'AbortError') {
+      if (_isAbortError(e)) {
         // 同步 abort 模式：后端不会推 partial，只能拿到已抓取的 progressTip
         if (!hasFinalized) {
           progressTip.value = '已取消分析'
@@ -530,7 +747,7 @@ export function useHotAnalysis() {
           phase.value = 'idle'
         }
       } else {
-        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8000）')
+        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8001）')
         progressTip.value = '分析失败'
       }
     } finally {
@@ -538,6 +755,8 @@ export function useHotAnalysis() {
       abortController = null
       taskProgress.value = null
       taskId.value = null
+      // ★ 迭代7：任务结束（完成/失败/取消/超时）清除持久化的 taskId
+      try { localStorage.removeItem(RUNNING_TASK_KEY) } catch { /* ignore */ }
       if (eventSource) {
         eventSource.close()
         eventSource = null
@@ -562,6 +781,7 @@ export function useHotAnalysis() {
           inter_round_sleep: interRoundSleep.value,
           simple_report: true,
           llm_timeout_seconds: llmTimeout.value,
+          max_concurrency: maxConcurrency.value,
           ...filterConfig.value,
         },
         abortController.signal,
@@ -569,13 +789,16 @@ export function useHotAnalysis() {
       applyAnalysisResult(data, false)
       stopTimer()
     } catch (e: unknown) {
-      if (e instanceof DOMException && e.name === 'AbortError') {
+      if (_isAbortError(e)) {
         if (!hasFinalized) {
+          // ★ 修复(M1)：同步模式取消后旧实现只置 progressTip + phase=idle，
+          //   无"已取消"提示条（与 SSE 取消的 UX 不一致）。补 cancelledWithPartial。
           progressTip.value = '已取消分析'
+          cancelledWithPartial.value = true
           phase.value = 'idle'
         }
       } else {
-        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8000）')
+        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8001）')
         progressTip.value = '分析失败'
       }
     } finally {
@@ -590,6 +813,17 @@ export function useHotAnalysis() {
 
   // ---- 取消分析 ----
   async function onCancelAnalysis() {
+    // ★ 重要：取消时绝对不能递增 runGeneration。后端 _run_analysis_background
+    //   在循环边界 break 后会专门推一条 partial 事件给前端，SSE 监听者
+    //   onComplete(_, isPartial=true) → applyAnalysisResult(data, true) →
+    //   cancelledWithPartial=true → 模板渲染"分析已取消"警告条 + 已完成结果卡片。
+    //   若在此递增 runGeneration，SSE onComplete 开头的
+    //   `if (gen !== runGeneration) return` 会把后端的 partial 静默丢弃，
+    //   用户等待数分钟的成果不可见。防"晚到 partial 覆盖已 finalize 结果"
+    //   靠的是 applyAnalysisResult 开头的 `if (hasFinalized) return` 守卫，
+    //   与 runGeneration 无关。
+    //   "取消后立刻重启新分析"场景下，旧任务晚到 partial 不污染新任务 UI
+    //   靠 onConfirmAnalysis 中的 runGeneration += 1（gen 变了 → 旧回调丢弃）。
     cancelled.value = true
     if (abortController) {
       // 同步模式：把请求 abort；后端会忽略但客户端不会等
@@ -618,9 +852,26 @@ export function useHotAnalysis() {
 
   // ---- 取消预览 ----
   function onCancelPreview() {
+    // ★ Round 19 修复(H1)：真正 abort 预览请求，否则后端四榜抓取仍继续、前端 loading 卡住
+    if (abortController) {
+      abortController.abort()
+      abortController = null
+    }
     preview.value = null
     phase.value = 'idle'
+    loading.value = false
     progressTip.value = '点击下方按钮开始全流程分析'
+  }
+
+  // ★ Round 6：收集所有 setTimeout feedback id 用于 unmount 清理
+  let _feedbackTimers: ReturnType<typeof setTimeout>[] = []
+  function _flashFeedback(ref: { value: boolean }, ms = 1800): void {
+    ref.value = true
+    const t = setTimeout(() => {
+      ref.value = false
+      _feedbackTimers = _feedbackTimers.filter((x) => x !== t)
+    }, ms)
+    _feedbackTimers.push(t)
   }
 
   // ---- 复制 ----
@@ -628,19 +879,27 @@ export function useHotAnalysis() {
     if (!result.value) return
     const text = buildPlainText(result.value, sortedResults.value)
     if (!text) return
+    let ok = false
     try {
       await navigator.clipboard.writeText(text)
-      copyOk.value = true
-      setTimeout(() => (copyOk.value = false), 1800)
+      ok = true
     } catch {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      document.body.appendChild(ta)
-      ta.select()
-      document.execCommand('copy')
-      document.body.removeChild(ta)
-      copyOk.value = true
-      setTimeout(() => (copyOk.value = false), 1800)
+      // 兜底：execCommand（iOS 私有模式可能也失败 → catch 到这里）
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        document.body.appendChild(ta)
+        ta.select()
+        ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+      } catch (e: unknown) {
+        if (import.meta.env.DEV) console.warn('Copy fallback failed:', e)
+      }
+    }
+    if (ok) {
+      _flashFeedback(copyOk)
+    } else {
+      error.value = '复制失败：浏览器拒绝访问剪贴板'
     }
   }
 
@@ -649,33 +908,51 @@ export function useHotAnalysis() {
     if (!result.value) return
     const text = buildPlainText(result.value, sortedResults.value)
     if (!text) return
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `hot-analysis-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    exportOk.value = true
-    setTimeout(() => (exportOk.value = false), 1800)
+    try {
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      try {
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `hot-analysis-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      } finally {
+        URL.revokeObjectURL(url)
+      }
+      _flashFeedback(exportOk)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (import.meta.env.DEV) console.warn('onExport failed:', e)
+      error.value = `TXT 导出失败：${msg}`
+    }
   }
 
   // ---- 导出 CSV ----
   function onExportCSV() {
     if (!result.value) return
-    exportCSV(result.value, sortedResults.value)
-    csvOk.value = true
-    setTimeout(() => (csvOk.value = false), 1800)
+    try {
+      exportCSV(result.value, sortedResults.value)
+      _flashFeedback(csvOk)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (import.meta.env.DEV) console.warn('onExportCSV failed:', e)
+      error.value = `CSV 导出失败：${msg}`
+    }
   }
 
   // ---- 导出 CSV (Excel 兼容) ----
   async function onExportExcel() {
     if (!result.value) return
-    await exportCSVForExcel(result.value, sortedResults.value)
-    excelOk.value = true
-    setTimeout(() => (excelOk.value = false), 1800)
+    try {
+      await exportCSVForExcel(result.value, sortedResults.value)
+      _flashFeedback(excelOk)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (import.meta.env.DEV) console.warn('onExportExcel failed:', e)
+      error.value = `Excel CSV 导出失败：${msg}`
+    }
   }
 
   // ---- 切换视图 ----
@@ -704,15 +981,21 @@ export function useHotAnalysis() {
       clearTimeout(cancelFallbackTimer)
       cancelFallbackTimer = null
     }
+    // ★ Round 6：清理 export feedback timers（避免 unmount 后 setTimeout 写已 unmount ref）
+    _feedbackTimers.forEach((t) => clearTimeout(t))
+    _feedbackTimers = []
     currentStopTimer = null
     // ★ round 5 audit：翻停止标志让所有 runSingleWorker 退出；同时取消未完成任务
     workersStopped = true
     singleTasks.value.forEach((t) => {
-      if (t.status === 'pending' || t.status === 'running') {
-        t.controller.abort()
-        t.status = 'cancelled'
-      }
+      try { t.controller.abort() } catch { /* ignore */ }
     })
+    // ★ Round 5：immutable update 触发响应式
+    singleTasks.value = singleTasks.value.map((t) =>
+      t.status === 'pending' || t.status === 'running'
+        ? { ...t, status: 'cancelled' as const }
+        : t,
+    )
     // 清空闭包内队列，避免新挂载实例意外消费旧任务
     singleQueue.length = 0
   })
@@ -749,6 +1032,8 @@ export function useHotAnalysis() {
     filterConfig,
     // LLM 超时
     llmTimeout,
+    // ★ Round 16：市场分析并发分析股票数
+    maxConcurrency,
     // SSE 进度
     taskProgress,
     taskId,

@@ -6,6 +6,7 @@
  * 配置自动保存到 localStorage
  */
 import { watch } from 'vue'
+import { debounce } from '../utils/debounce'
 import {
   NText,
   NRadioGroup,
@@ -34,8 +35,8 @@ const props = defineProps<{
   requireAllRounds: boolean
   // LLM 超时
   llmTimeout: number
-  // 单股并发
-  singleConcurrency: number
+  // ★ Round 16：市场分析并发分析股票数
+  maxConcurrency: number
 }>()
 
 const emit = defineEmits<{
@@ -48,7 +49,7 @@ const emit = defineEmits<{
   (e: 'update:excludeKeywords', v: string[]): void
   (e: 'update:requireAllRounds', v: boolean): void
   (e: 'update:llmTimeout', v: number): void
-  (e: 'update:singleConcurrency', v: number): void
+  (e: 'update:maxConcurrency', v: number): void
 }>()
 
 const MAX_RUNTIME_OPTIONS: number[] = [60, 120, 180, 240, 300, 600, 1200, 1800]
@@ -56,7 +57,8 @@ const INTERSECTION_OPTIONS: number[] = [1, 5, 10, 30, 50, 100, 200, 300]
 const LLM_TIMEOUT_OPTIONS: number[] = [60, 120, 180, 300, 600]
 const ROUNDS_OPTIONS: number[] = [1, 2, 3, 4, 5]
 const INTER_ROUND_SLEEP_OPTIONS: number[] = [0, 0.3, 0.6, 1.0, 2.0, 5.0]
-const SINGLE_CONCURRENCY_OPTIONS: number[] = [1, 2, 3, 5, 8]
+// ★ Round 16：市场分析并发分析股票数
+const MARKET_CONCURRENCY_OPTIONS: number[] = [1, 2, 3, 4, 5]
 
 const ADVICE_OPTIONS = [
   { label: '买入', value: '买入' },
@@ -74,7 +76,19 @@ const KEYWORD_OPTIONS = [
   { label: 'REDUCE', value: 'REDUCE' },
 ]
 
-// 监听所有配置变化自动保存到 localStorage
+// 监听所有配置变化自动保存到 localStorage（debounce 300ms 避免连续写）
+const _saveConfigDebounced = debounce(() => saveConfig({
+  maxRuntime: props.selectedMaxRuntime,
+  maxIntersection: props.selectedMaxIntersection,
+  rounds: props.rounds,
+  interRoundSleep: props.interRoundSleep,
+  minScore: props.minScore,
+  allowedAdvice: props.allowedAdvice,
+  excludeKeywords: props.excludeKeywords,
+  requireAllRounds: props.requireAllRounds,
+  llmTimeout: props.llmTimeout,
+  maxConcurrency: props.maxConcurrency,
+}), 300)
 watch(
   () => [
     props.selectedMaxRuntime,
@@ -86,20 +100,9 @@ watch(
     props.excludeKeywords,
     props.requireAllRounds,
     props.llmTimeout,
-    props.singleConcurrency,
+    props.maxConcurrency,
   ],
-  () => saveConfig({
-    maxRuntime: props.selectedMaxRuntime,
-    maxIntersection: props.selectedMaxIntersection,
-    rounds: props.rounds,
-    interRoundSleep: props.interRoundSleep,
-    minScore: props.minScore,
-    allowedAdvice: props.allowedAdvice,
-    excludeKeywords: props.excludeKeywords,
-    requireAllRounds: props.requireAllRounds,
-    llmTimeout: props.llmTimeout,
-    singleConcurrency: props.singleConcurrency,
-  }),
+  _saveConfigDebounced,
   { deep: true },
 )
 </script>
@@ -126,6 +129,7 @@ watch(
       @update:value="$emit('update:selectedMaxRuntime', $event)"
       :disabled="loading"
       size="medium"
+      aria-label="最长任务时间"
     >
       <n-radio
         v-for="opt in MAX_RUNTIME_OPTIONS"
@@ -159,6 +163,7 @@ watch(
       @update:value="$emit('update:selectedMaxIntersection', $event)"
       :disabled="loading"
       size="medium"
+      aria-label="分析数量"
     >
       <n-radio
         v-for="opt in INTERSECTION_OPTIONS"
@@ -193,6 +198,7 @@ watch(
       @update:value="$emit('update:rounds', $event)"
       :disabled="loading"
       size="medium"
+      aria-label="分析轮数"
     >
       <n-radio v-for="opt in ROUNDS_OPTIONS" :key="opt" :value="opt" :label="`${opt}轮`" />
     </n-radio-group>
@@ -202,6 +208,7 @@ watch(
       :disabled="loading"
       size="medium"
       style="margin-left: 12px"
+      aria-label="轮间间隔秒数"
     >
       <n-radio v-for="opt in INTER_ROUND_SLEEP_OPTIONS" :key="opt" :value="opt" :label="`${opt}s`" />
     </n-radio-group>
@@ -231,6 +238,7 @@ watch(
       @update:value="$emit('update:llmTimeout', $event)"
       :disabled="loading"
       size="medium"
+      aria-label="LLM 单次超时秒数"
     >
       <n-radio
         v-for="opt in LLM_TIMEOUT_OPTIONS"
@@ -244,7 +252,7 @@ watch(
     </n-text>
   </div>
 
-  <!-- 单股分析并发数 -->
+  <!-- ★ Round 16：市场分析并发分析股票数 -->
   <div
     style="
       display: flex;
@@ -257,24 +265,28 @@ watch(
     "
   >
     <div style="display: flex; align-items: center; gap: 8px; min-width: 140px">
-      <span style="font-size: 18px">🚀</span>
-      <n-text strong style="font-size: 14px; color: var(--color-label)">单股并发</n-text>
+      <span style="font-size: 18px">⚡</span>
+      <n-text strong style="font-size: 14px; color: var(--color-label)">市场分析并发</n-text>
     </div>
     <n-radio-group
-      :value="singleConcurrency"
-      @update:value="$emit('update:singleConcurrency', $event)"
+      :value="maxConcurrency"
+      @update:value="$emit('update:maxConcurrency', $event)"
       :disabled="loading"
       size="medium"
+      aria-label="市场分析并发数"
     >
       <n-radio
-        v-for="opt in SINGLE_CONCURRENCY_OPTIONS"
+        v-for="opt in MARKET_CONCURRENCY_OPTIONS"
         :key="opt"
         :value="opt"
-        :label="`${opt}路`"
+        :label="opt === 1 ? '1只（串行）' : `${opt}只并发`"
       />
     </n-radio-group>
+    <n-tag size="small" :bordered="false" :type="maxConcurrency > 1 ? 'info' : 'default'">
+      {{ maxConcurrency > 1 ? `同时分析 ${maxConcurrency} 只股票` : '逐只串行分析' }}
+    </n-tag>
     <n-text depth="3" style="font-size: 11px; margin-left: auto; opacity: 0.7">
-      同时最多 N 只股票调用 LLM；修改后对下一次提交生效
+      并发越高越快，但可能触发 LLM 限流导致部分股票超时
     </n-text>
   </div>
 
@@ -285,7 +297,7 @@ watch(
         <div style="display: flex; align-items: center; gap: 8px">
           <span style="font-size: 16px">🔧</span>
           <n-text strong style="font-size: 14px">过滤规则</n-text>
-          <n-tag size="small" :bordered="false" style="background: rgba(99,102,241,0.08); color: #6366f1; font-size: 11px">
+          <n-tag size="small" :bordered="false" style="background: var(--accent-soft); color: var(--accent); font-size: 11px">
             高级
           </n-tag>
         </div>
@@ -305,6 +317,7 @@ watch(
             :disabled="loading"
             style="width: 120px"
             size="small"
+            aria-label="最低评分"
           />
           <n-text depth="3" style="font-size: 12px">
             低于此分数的股票将被过滤
@@ -320,6 +333,7 @@ watch(
             :value="allowedAdvice"
             @update:value="$emit('update:allowedAdvice', $event as string[])"
             :disabled="loading"
+            aria-label="允许的建议类型"
           >
             <n-space>
               <n-checkbox
@@ -341,6 +355,7 @@ watch(
             :value="excludeKeywords"
             @update:value="$emit('update:excludeKeywords', $event as string[])"
             :disabled="loading"
+            aria-label="排除的关键词"
           >
             <n-space>
               <n-checkbox
@@ -365,6 +380,7 @@ watch(
             :value="requireAllRounds"
             @update:value="$emit('update:requireAllRounds', $event)"
             :disabled="loading"
+            aria-label="要求所有轮通过"
           />
           <n-tag size="small" :bordered="false" :type="requireAllRounds ? 'info' : 'warning'">
             {{ requireAllRounds ? '每轮都需满足' : '多数轮满足即可' }}

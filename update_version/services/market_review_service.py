@@ -35,6 +35,30 @@ _DEFAULT_INDICES: List[Tuple[str, str]] = [
 ]
 
 
+def _load_v2_db_history():
+    """加载 v2 自己的 db.history（update_version_v2/db/history.py）。
+
+    ★ Round 21 修复(H5)：持久化与去重必须读写同一个库。
+      - 不能 `from db.history`（backend/db 包抢占）
+      - 不能 `from update_version.db.history`（那是 v1 库，会读写错库）
+      这里用路径加载并缓存到 sys.modules，返回模块对象。
+    """
+    from pathlib import Path as _Path
+    import importlib.util as _ilu
+    import sys as _sys
+    _svc_path = _Path(__file__).resolve()
+    _v2_root = _svc_path.parent.parent  # update_version_v2/
+    _db_path = _v2_root / "db" / "history.py"
+    if "v2_root_db_history" not in _sys.modules:
+        if not _db_path.exists():
+            raise ImportError(f"db.history not found at {_db_path}")
+        _spec = _ilu.spec_from_file_location("v2_root_db_history", str(_db_path))
+        _mod = _ilu.module_from_spec(_spec)
+        _sys.modules["v2_root_db_history"] = _mod
+        _spec.loader.exec_module(_mod)
+    return _sys.modules["v2_root_db_history"]
+
+
 # ============================== 工具函数 ==============================
 
 def _safe_float(value: Any, default: Optional[float] = None) -> Optional[float]:
@@ -583,8 +607,31 @@ def generate_market_review(
         warnings = payload["warnings"]
 
     if persist:
+        # ★ Round 10 修复：用 importlib 按路径加载 v2 自己的 db.history
+        # （不能用 `from db.history` 因为 backend/db 包抢占，且 v2 没装成 update_version 包）
+        # 路径：services 在 update_version_v2/services/，所以 db 在 ../db/history.py
         try:
-            from update_version.db.history import save_market_review
+            from pathlib import Path as _Path
+            import importlib.util as _ilu
+            import sys as _sys
+            _svc_path = _Path(__file__).resolve()
+            _v2_root = _svc_path.parent.parent  # update_version_v2/
+            _db_path = _v2_root / "db" / "history.py"
+            if not _db_path.exists():
+                raise ImportError(f"db.history not found at {_db_path}")
+            if "v2_root_db_history" not in _sys.modules:
+                _spec = _ilu.spec_from_file_location("v2_root_db_history", str(_db_path))
+                _mod = _ilu.module_from_spec(_spec)
+                _sys.modules["v2_root_db_history"] = _mod
+                _spec.loader.exec_module(_mod)
+            save_market_review = _sys.modules["v2_root_db_history"].save_market_review
+        except Exception as _ie:
+            logger.warning("[market_review] 路径加载 v2 db.history 失败: %s", _ie)
+            try:
+                from update_version.db.history import save_market_review  # 旧项目兼容
+            except ImportError:
+                raise
+        try:
             save_market_review(
                 review_date=payload["review_date"],
                 region=payload["region"],
@@ -758,13 +805,16 @@ def batch_generate_recent_reviews(
     # 1) 跳过今天（避免重复），从昨天开始回溯
     base_date = datetime.now() - timedelta(days=1)
     # 2) 查 DB：哪些日期已有，跳过
+    # ★ Round 21 修复(H5)：generate_market_review 用 v2 的 db.history 持久化，
+    #   但这里此前查 update_version.db.history（v1 库）→ 去重集合基于错误库，
+    #   要么重复生成已有日期、要么错误跳过。改为复用与持久化一致的 v2 db.history。
     existing: set = set()
     try:
-        from update_version.db.history import get_market_review_list
-        items, _ = get_market_review_list(page=1, page_size=365, region=region)
+        _db = _load_v2_db_history()
+        items, _ = _db.get_market_review_list(page=1, page_size=365, region=region)
         existing = {it["review_date"] for it in items}
     except Exception:
-        pass
+        logger.warning("[market_review] batch dedup load failed, will regenerate all", exc_info=True)
     for i in range(days):
         target = (base_date - timedelta(days=i)).strftime("%Y-%m-%d")
         if target in existing:
