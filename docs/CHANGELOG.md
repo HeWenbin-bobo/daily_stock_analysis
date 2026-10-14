@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [修复] 本地 CLI 的 `stdout_preview` / `stderr_preview` 按环境变量、JSON、YAML/日志标量与 URL 的独立契约脱敏短凭证，避免小于 32 字符的 API key、secret 或 token 进入诊断；普通字段仅按敏感名称判定，未加引号的 YAML 敏感标量则 fail-closed 脱敏至行尾（refs #1784）。
 - [修复] `redact_diagnostic_text()` 在 `export SENSITIVE_ENV=$(printenv OTHER_SECRET) session_id=...` 形态下不再因第二遍 `$(...)` 扫描与第一遍敏感赋值替换区重叠而吞掉 `session_id` 等尾随非敏感诊断字段；第二遍扫描现以 first-pass 已替换 span 列表为可信跳过表，并对 prior-head / prior-semicolon 分支的 leading regex 加上 `(?:export[ \t]+)?` 前缀，使 `export FOO=$(...)` 与 `FOO=$(...)` 在所有分支行为对齐（关闭 PR #2118 review blocker OR-COR-7c0a5d41）。
 
+- [文档] 三语 README 分别使用 Modelflare 简体中文、英文及繁体中文赞助横幅，保持现有版式与链接。
+
+- [改进] Modelflare 只需 MODELFLARE_KEY，后端、Web、筛选及 Actions 统一自动识别渠道并补齐默认地址与模型，保留显式 YAML／渠道配置优先级和高级渠道 Key 兼容。
+
+- [改进] 单 Modelflare 渠道未填写主模型及渠道模型列表时默认使用 gpt-6.1-sol，只需渠道名与 API Key；三语 README 横幅恢复 720px、图片与文案紧接显示，并在 Modelflare 与 SerpAPI 之间添加分隔线。
+
+- [改进] 单 Modelflare 渠道可直接复用现有 LITELLM_MODEL 与 OpenAI 备用模型，后端统一推导模型声明，显式列表及多渠道规则保持优先；三语 README 赞助文案合为重点单段。
+- [修复] 模型设置预览、冒烟及保存的配置校验失败显示具体字段与修正提示，避免仅显示笼统请求失败；Modelflare 渠道说明补充客户端专属注册链接，与快速添加按钮共用 app UTM。
+- [改进] 新增首位 Modelflare LLM 渠道预设及条件注册链接，统一后端默认接入地址、简化三项配置，同步三语 README 紧凑赞助区（默认展开、可折叠，保留运营主体、模型范围、缓存补偿及充值优惠）和配置指南，保留 Anspire LLM 兼容、新闻搜索及 SerpAPI 赞助入口。
 - [修复] 当前 Bot 与 Web 交替问股复用服务端已确认对象及严格工具范围，普通追问／比较保留确认状态，切股进入待确认；Bot 提交校验快照版本及用户锚点，保留真正旧代码／旁路写入的保守失效边界。
 - [修复] 严格回测读取兼容正常 CN 写入器生成的数字汇总／明细键，按已验证对象与关联分析来源约束 SQL，保留跨市场隔离及总数／分页一致性。
 - [修复] 问股条件切股跨逗号保持澄清，否定比较不扩大工具范围；个股回测汇总及明细按已验证市场身份查询，保留同身份存储别名，不回退读取其他市场数据。
@@ -125,6 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 <!-- 新条目格式：- [类型] 描述（类型取值：新功能/改进/修复/文档/测试/chore）-->
 <!-- 每条独立一行追加到本段末尾，无需分类标题，合并时冲突最小 -->
 - [修复] 告警规则创建、启停或删除期间切换筛选或分页后，列表刷新使用当前筛选条件，避免旧请求闭包覆盖当前视图。
+- [修复] 设置页首次启动引导的「维护自选股」按钮点击后滚动并聚焦到基础配置的 `STOCK_LIST` 字段，避免引导卡片仅在基础配置分类渲染时重复切换当前分类而无任何跳转或反馈；其余引导按钮的分类跳转语义不变。
 
 ## [3.32.0] - 2026-09-06
 

@@ -21,6 +21,7 @@ export interface ParsedApiError {
   rawMessage: string;
   status?: number;
   category: ApiErrorCategory;
+  code?: string;
 }
 
 type ResponseLike = {
@@ -43,6 +44,7 @@ type CreateParsedApiErrorOptions = {
   rawMessage?: string;
   status?: number;
   category?: ApiErrorCategory;
+  code?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -167,6 +169,21 @@ function extractErrorCode(data: unknown): string | null {
   return pickString(data.error, data.code);
 }
 
+function extractConfigValidationIssues(data: unknown): string | null {
+  if (!isRecord(data)) return null;
+  const payload = isRecord(data.detail) ? data.detail : data;
+  if (!Array.isArray(payload.issues)) return null;
+  const messages = payload.issues.filter(isRecord).map((issue) => {
+    const key = pickString(issue.key);
+    let message = pickString(issue.message);
+    if (issue.code === 'missing_api_key') message = '请填写此渠道的 API Key。';
+    if (issue.code === 'missing_models') message = '请填写账号可用的模型。';
+    if (issue.code === 'unknown_model') message = '请选择当前启用渠道中的模型，或清空无效的模型选项。';
+    return message ? [key, message].filter(Boolean).join('：') : null;
+  }).filter((message): message is string => Boolean(message));
+  return messages.length ? messages.join('\n') : null;
+}
+
 export function extractErrorPayloadText(data: unknown): string | null {
   if (typeof data === 'string') {
     return data.trim() || null;
@@ -211,6 +228,7 @@ export function createParsedApiError(options: CreateParsedApiErrorOptions): Pars
     rawMessage: options.rawMessage?.trim() || options.message,
     status: options.status,
     category: options.category ?? 'unknown',
+    ...(options.code ? { code: options.code } : {}),
   };
 }
 
@@ -262,7 +280,7 @@ export function createApiError(
   apiError.name = 'ApiRequestError';
   apiError.parsedError = parsed;
   apiError.response = extra.response;
-  apiError.code = extra.code;
+  apiError.code = extra.code ?? parsed.code;
   apiError.status = parsed.status;
   apiError.category = parsed.category;
   apiError.rawMessage = parsed.rawMessage;
@@ -300,6 +318,28 @@ export function parseApiError(error: unknown): ParsedApiError {
   const rawMessage = pickString(payloadText, response?.statusText, errorMessage, causeMessage, code)
     ?? '请求未成功完成，请稍后重试。';
   const matchText = buildMatchText([rawMessage, errorMessage, causeMessage, code, errorCode, response?.statusText]);
+
+  if (errorCode === 'validation_failed') {
+    const issues = extractConfigValidationIssues(response?.data);
+    const message = issues
+      ? `请修正以下配置后重试：\n${issues}`
+      : '请检查渠道的 API Key、模型和运行参数后重试。';
+    return createParsedApiError({
+      title: '配置需要调整',
+      message,
+      rawMessage: message,
+      status,
+      category: 'http_error',
+      code: errorCode,
+    });
+  }
+
+  if (errorCode === 'session_state_conflict' || code === 'session_state_conflict') {
+    return createParsedApiError({
+      title: '会话已更新', message: '请刷新会话后重试。当前输入尚未被接受，请保留问题与选择。',
+      rawMessage, status, code: 'session_state_conflict', category: 'http_error',
+    });
+  }
 
   if (includesAny(matchText, ['agent mode is not enabled', 'agent_mode'])) {
     return createParsedApiError({
@@ -343,57 +383,17 @@ export function parseApiError(error: unknown): ParsedApiError {
     });
   }
 
-  if (errorCode === 'alphasift_install_failed') {
+  if (errorCode === 'screening_unavailable' || includesAny(matchText, ['内建选股引擎初始化失败', '选股功能初始化失败'])) {
     return createParsedApiError({
-      title: 'AlphaSift 修复安装失败',
-      message: 'DSA 已尝试修复安装 AlphaSift，但 pip 安装未成功。请检查 ALPHASIFT_INSTALL_SPEC、网络代理或后端 Python 环境。',
+      title: '选股功能未就绪',
+      message: '选股功能暂不可用，请检查策略配置、数据依赖和服务日志。',
       rawMessage,
       status,
       category: 'http_error',
     });
   }
 
-  if (errorCode === 'alphasift_install_spec_missing') {
-    return createParsedApiError({
-      title: 'AlphaSift 安装来源未配置',
-      message: '请先确认后端依赖已安装；如需使用修复安装入口，请配置受信任的 ALPHASIFT_INSTALL_SPEC。',
-      rawMessage,
-      status,
-      category: 'http_error',
-    });
-  }
-
-  if (errorCode === 'alphasift_install_spec_not_allowed') {
-    return createParsedApiError({
-      title: 'AlphaSift 安装来源受限',
-      message: '修复安装仅允许使用受信任的 AlphaSift GitHub 来源；如需本地路径或 wheel，请先手动安装到当前 Python 环境。',
-      rawMessage,
-      status,
-      category: 'http_error',
-    });
-  }
-
-  if (errorCode === 'alphasift_unavailable' || includesAny(matchText, ['cannot import alphasift', 'alphasift.screen'])) {
-    return createParsedApiError({
-      title: 'AlphaSift 未就绪',
-      message: rawMessage,
-      rawMessage,
-      status,
-      category: 'http_error',
-    });
-  }
-
-  if (errorCode === 'alphasift_adapter_unavailable') {
-    return createParsedApiError({
-      title: 'AlphaSift 适配层不可用',
-      message: '当前 AlphaSift 版本缺少 DSA 稳定适配层。请重新安装或升级 AlphaSift 后再试。',
-      category: 'http_error',
-      rawMessage,
-      status,
-    });
-  }
-
-  if (errorCode === 'alphasift_screen_task_not_found') {
+  if (errorCode === 'screening_screen_task_not_found') {
     return createParsedApiError({
       title: '选股任务不可恢复',
       message: '服务端没有找到这次选股任务，可能后端已重启或任务记录已清理，请重新运行选股。',
@@ -403,10 +403,10 @@ export function parseApiError(error: unknown): ParsedApiError {
     });
   }
 
-  if (errorCode === 'alphasift_screen_failed') {
+  if (errorCode === 'screening_screen_failed') {
     return createParsedApiError({
-      title: 'AlphaSift 选股失败',
-      message: 'AlphaSift 运行时访问外部行情、快照或模型服务失败，请稍后重试，或检查网络与代理设置。',
+      title: '选股失败',
+      message: '选股访问行情、快照或模型服务失败，请稍后重试，或检查网络与代理设置。',
       rawMessage,
       status,
       category: 'upstream_network',

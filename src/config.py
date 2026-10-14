@@ -14,8 +14,9 @@ import json
 import logging
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Mapping, Optional, Tuple
 from urllib.parse import unquote, urlparse
 from dotenv import load_dotenv, dotenv_values
 from dataclasses import dataclass, field
@@ -63,6 +64,7 @@ from src.llm.hermes import (
     HERMES_DEFAULT_MODEL,
     HERMES_DEFAULT_PROTOCOL,
     HermesConfigIssue,
+    hermes_blocked_route_candidates,
     hermes_model_info,
     is_reserved_hermes_name,
     parse_hermes_channel,
@@ -74,11 +76,6 @@ from src.scheduler import normalize_schedule_times
 from src.utils.market_review_region import normalize_market_review_region_lenient
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_ALPHASIFT_INSTALL_SPEC = (
-    "git+https://github.com/ZhuLinsen/alphasift.git@9f522747caafd3c0b1ddb7e14d5cf44c8580b6cf"
-)
-
 
 @dataclass
 class ConfigIssue:
@@ -102,6 +99,26 @@ class ConfigIssue:
 
 _MANAGED_LITELLM_KEY_PROVIDERS = {"gemini", "vertex_ai", "anthropic", "openai", "deepseek"}
 SUPPORTED_LLM_CHANNEL_PROTOCOLS = ("openai", "anthropic", "gemini", "vertex_ai", "deepseek", "ollama")
+SUPPORTED_LLM_CHANNEL_API_SURFACES = ("chat_completions", "responses")
+_FALLBACK_LITELLM_MODEL_PROVIDERS = _MANAGED_LITELLM_KEY_PROVIDERS | set(SUPPORTED_LLM_CHANNEL_PROTOCOLS) | {
+    "minimax",
+    "cohere",
+    "huggingface",
+    "bedrock",
+    "sagemaker",
+    "azure",
+    "replicate",
+    "together_ai",
+    "palm",
+    "text-completion-openai",
+    "command-r",
+    "groq",
+    "cerebras",
+    "fireworks_ai",
+    "friendliai",
+    "openrouter",
+    "xai",
+}
 _FALSEY_ENV_VALUES = {"0", "false", "no", "off"}
 PROMPT_CACHE_DIAGNOSTICS_LEVELS = {"off", "basic", "debug"}
 SUPPORTED_AGENT_BACKENDS = {"auto", "litellm", "codex_app_server"}
@@ -113,6 +130,8 @@ DEFAULT_ETF_ROTATION_SAFE_ASSET = "511880"
 # These are compatibility examples; actual availability should be validated by Anspire console/model entitlement.
 ANSPIRE_LLM_BASE_URL_DEFAULT = "https://open-gateway.anspire.cn/v6"
 ANSPIRE_LLM_MODEL_DEFAULT = "Doubao-Seed-2.0-lite"
+MODELFLARE_LLM_BASE_URL_DEFAULT = "https://modelflare.dev/v1"
+MODELFLARE_LLM_MODEL_DEFAULT = "openai/gpt-6.1-sol"
 
 
 def _has_ntfy_topic_endpoint(value: Optional[str]) -> bool:
@@ -390,6 +409,155 @@ def canonicalize_llm_channel_protocol(value: Optional[str]) -> str:
     return aliases.get(candidate, candidate)
 
 
+def canonicalize_llm_channel_api_surface(value: Optional[str]) -> str:
+    """Normalize an LLM channel endpoint surface label."""
+    candidate = (value or "").strip().lower().replace("-", "_")
+    aliases = {
+        "chat": "chat_completions",
+        "chat_completion": "chat_completions",
+        "completions": "chat_completions",
+        "response": "responses",
+        "responses_api": "responses",
+    }
+    return aliases.get(candidate, candidate)
+
+
+def normalize_llm_channel_api_surface(value: Optional[str]) -> str:
+    """Return a supported endpoint surface, defaulting to Chat Completions."""
+    normalized = canonicalize_llm_channel_api_surface(value)
+    if normalized in SUPPORTED_LLM_CHANNEL_API_SURFACES:
+        return normalized
+    return "chat_completions"
+
+
+def is_supported_llm_channel_api_surface_value(value: Optional[str]) -> bool:
+    """Return whether a raw API surface is blank or recognized."""
+    canonical = canonicalize_llm_channel_api_surface(value)
+    return not canonical or canonical in SUPPORTED_LLM_CHANNEL_API_SURFACES
+
+
+@lru_cache(maxsize=1)
+def get_litellm_model_providers() -> frozenset[str]:
+    """Return provider identifiers from the installed LiteLLM routing enum.
+
+    LiteLLM adds direct providers independently of this repository. Loading
+    its enum keeps channel validation aligned with the actual router instead
+    of relying on a permanently incomplete local allow-list. The fallback is
+    only for lightweight test stubs or a broken optional import; a production
+    installation gets the complete provider set from its pinned LiteLLM.
+    """
+    providers = set(_FALLBACK_LITELLM_MODEL_PROVIDERS)
+    try:
+        from litellm.types.utils import LlmProviders
+
+        providers.update(
+            str(provider.value).strip().lower()
+            for provider in LlmProviders
+            if str(getattr(provider, "value", "")).strip()
+        )
+    except (ImportError, AttributeError, TypeError):
+        logger.debug("LiteLLM provider metadata unavailable; using the compatibility fallback")
+    return frozenset(providers)
+
+
+def get_explicit_llm_channel_model_provider(model: str) -> str:
+    """Return the explicit LiteLLM provider prefix, if the model has one.
+
+    A slash alone does not establish a provider: OpenAI-compatible gateways
+    commonly expose provider-owned IDs such as ``Qwen/Qwen3`` or
+    ``deepseek-ai/DeepSeek-V3``. Only prefixes understood as LiteLLM providers
+    are treated as routing declarations.
+    """
+    normalized_model = (model or "").strip()
+    if "/" not in normalized_model:
+        return ""
+    raw_prefix = normalized_model.split("/", 1)[0].lower()
+    canonical_prefix = canonicalize_llm_channel_protocol(raw_prefix)
+    providers = get_litellm_model_providers()
+    if raw_prefix in providers:
+        return raw_prefix
+    if canonical_prefix in providers:
+        return canonical_prefix
+    return ""
+
+
+def apply_litellm_api_surface(model: str, api_surface: Optional[str]) -> str:
+    """Encode an explicit API surface in a LiteLLM wire model.
+
+    LiteLLM's ``provider/responses/model`` convention keeps the public Router
+    alias stable while letting ``completion()`` bridge messages, streaming,
+    tools, responses, and usage through the provider's Responses endpoint.
+    """
+    normalized_model = (model or "").strip()
+    if not normalized_model or normalize_llm_channel_api_surface(api_surface) != "responses":
+        return normalized_model
+    provider = get_explicit_llm_channel_model_provider(normalized_model)
+    if provider != "openai":
+        raise ValueError(
+            "Responses API surface requires a normalized openai/<model> route; "
+            f"got {normalized_model!r}"
+        )
+    provider, remainder = normalized_model.split("/", 1)
+    if remainder.startswith("responses/"):
+        return normalized_model
+    return f"{provider}/responses/{remainder}"
+
+
+def resolve_llm_channel_base_url(channel_name: str, base_url: Optional[str]) -> str:
+    """Apply named-channel endpoint defaults without changing explicit configuration."""
+    explicit = (base_url or "").strip()
+    if explicit:
+        return explicit
+    if channel_name.strip().lower() == "modelflare":
+        return MODELFLARE_LLM_BASE_URL_DEFAULT
+    return ""
+
+
+def resolve_llm_channel_names(config_map: Mapping[str, str]) -> str:
+    """Infer the Modelflare channel from its key unless channels are explicit."""
+    channels = (config_map.get("LLM_CHANNELS") or "").strip()
+    if channels:
+        return channels
+    if any(
+        key.strip()
+        for field in ("MODELFLARE_KEY", "LLM_MODELFLARE_API_KEY", "LLM_MODELFLARE_API_KEYS")
+        for key in (config_map.get(field) or "").split(',')
+    ):
+        return "modelflare"
+    return ""
+
+
+def resolve_llm_channel_api_keys(
+    channel_name: str, api_keys: List[str], config_map: Mapping[str, str],
+) -> List[str]:
+    """Keep explicit channel keys first, with MODELFLARE_KEY as its shorthand."""
+    if api_keys or channel_name.strip().lower() != "modelflare":
+        return api_keys
+    return [key.strip() for key in (config_map.get("MODELFLARE_KEY") or "").split(',') if key.strip()]
+
+
+def resolve_llm_channel_models(
+    channel_name: str,
+    models: List[str],
+    *,
+    channel_names: str,
+    primary_model: str = "",
+    fallback_models: str = "",
+) -> List[str]:
+    """Resolve explicit routes or the default for a single Modelflare channel."""
+    if models:
+        return models
+    names = [name.strip().lower() for name in channel_names.split(',') if name.strip()]
+    primary = primary_model.strip() or MODELFLARE_LLM_MODEL_DEFAULT
+    if (names != ["modelflare"] or channel_name.strip().lower() != "modelflare"
+            or not primary.startswith("openai/") or not primary[7:].strip()):
+        return []
+    routes = [primary] + [model.strip() for model in fallback_models.split(',')]
+    return list(dict.fromkeys(
+        route for route in routes if route.startswith("openai/") and route[7:].strip()
+    ))
+
+
 def resolve_llm_channel_protocol(
     protocol: Optional[str],
     *,
@@ -401,6 +569,11 @@ def resolve_llm_channel_protocol(
     explicit = canonicalize_llm_channel_protocol(protocol)
     if explicit in SUPPORTED_LLM_CHANNEL_PROTOCOLS:
         return explicit
+
+    # Requesty is OpenAI-compatible; its vendor/model IDs (anthropic/...,
+    # vertex/...) are not LiteLLM protocol declarations.
+    if is_requesty_gateway_base_url(base_url):
+        return "openai"
 
     for model in models or []:
         if "/" not in model:
@@ -435,6 +608,34 @@ def channel_allows_empty_api_key(protocol: Optional[str], base_url: Optional[str
     return parsed.hostname in {"127.0.0.1", "localhost", "0.0.0.0"}
 
 
+def is_requesty_gateway_base_url(base_url: Optional[str]) -> bool:
+    """Return whether a Base URL points at the Requesty router (any region)."""
+    raw_url = (base_url or "").strip()
+    if not raw_url:
+        return False
+    try:
+        hostname = (urlparse(raw_url).hostname or "").lower()
+    except ValueError:
+        return False
+    return hostname == "requesty.ai" or hostname.endswith(".requesty.ai")
+
+
+def route_discovered_llm_model(model_id: str, base_url: Optional[str]) -> str:
+    """Return the saved channel value for an ID listed by a gateway ``/models``.
+
+    Requesty lists ``vendor/model`` IDs (``openai/gpt-4o-mini``,
+    ``anthropic/claude-sonnet-4-6``, ``vertex/claude-sonnet-4-5``) and managed
+    policy IDs without a slash. The vendor segment collides with LiteLLM
+    provider names, so the saved value carries the OpenAI-compatible gateway
+    route once (``openai/openai/gpt-4o-mini``); LiteLLM strips that layer and
+    sends the full Requesty ID unchanged.
+    """
+    normalized_id = (model_id or "").strip()
+    if not normalized_id or not is_requesty_gateway_base_url(base_url):
+        return normalized_id
+    return f"openai/{normalized_id}"
+
+
 def normalize_llm_channel_model(model: str, protocol: Optional[str], base_url: Optional[str] = None) -> str:
     """Attach a provider prefix when the model omits it."""
     normalized_model = model.strip()
@@ -442,6 +643,17 @@ def normalize_llm_channel_model(model: str, protocol: Optional[str], base_url: O
         return normalized_model
 
     resolved_protocol = resolve_llm_channel_protocol(protocol, base_url=base_url, models=[normalized_model])
+
+    if (
+        "/" in normalized_model
+        and resolved_protocol == "openai"
+        and is_requesty_gateway_base_url(base_url)
+        and normalized_model.split("/", 1)[0].lower() != "openai"
+    ):
+        # Requesty vendor IDs such as anthropic/... or vertex/... must stay
+        # intact behind the OpenAI-compatible gateway route instead of being
+        # read as LiteLLM direct providers.
+        return f"openai/{normalized_model}"
 
     if "/" in normalized_model:
         # The model already has a slash, e.g. 'deepseek-ai/DeepSeek-V3'.
@@ -451,15 +663,10 @@ def normalize_llm_channel_model(model: str, protocol: Optional[str], base_url: O
         raw_prefix, remainder = normalized_model.split("/", 1)
         prefix = raw_prefix.lower()
         canonical_prefix = canonicalize_llm_channel_protocol(prefix)
-        known_providers = _MANAGED_LITELLM_KEY_PROVIDERS | set(SUPPORTED_LLM_CHANNEL_PROTOCOLS) | {
-            "minimax",
-            "cohere", "huggingface", "bedrock", "sagemaker", "azure",
-            "replicate", "together_ai", "palm", "text-completion-openai",
-            "command-r", "groq", "cerebras", "fireworks_ai", "friendliai",
-        }
-        if prefix in known_providers:
+        providers = get_litellm_model_providers()
+        if prefix in providers:
             return normalized_model
-        if canonical_prefix in known_providers:
+        if canonical_prefix in providers:
             return f"{canonical_prefix}/{remainder}"
         # Not a real provider prefix — add one so LiteLLM routes correctly.
         if resolved_protocol:
@@ -469,6 +676,58 @@ def normalize_llm_channel_model(model: str, protocol: Optional[str], base_url: O
     if not resolved_protocol:
         return normalized_model
     return f"{resolved_protocol}/{normalized_model}"
+
+
+def find_incompatible_llm_channel_models(
+    models: List[str],
+    protocol: Optional[str],
+    api_surface: Optional[str],
+    base_url: Optional[str] = None,
+) -> List[str]:
+    """Return models whose actual LiteLLM route conflicts with the surface.
+
+    Responses routing is implemented through LiteLLM's OpenAI bridge, so both
+    the channel protocol and every normalized model route must resolve to the
+    OpenAI provider. This is the shared invariant used by validation, runtime
+    loading, diagnostics, and screening.
+    """
+    if normalize_llm_channel_api_surface(api_surface) != "responses":
+        return []
+    resolved_protocol = resolve_llm_channel_protocol(
+        protocol,
+        base_url=base_url,
+        models=models,
+    )
+    if resolved_protocol != "openai":
+        return [model for model in models if (model or "").strip()]
+    incompatible: List[str] = []
+    for model in models:
+        normalized_model = normalize_llm_channel_model(model, resolved_protocol, base_url)
+        if normalized_model and get_explicit_llm_channel_model_provider(normalized_model) != "openai":
+            incompatible.append(model)
+    return incompatible
+
+
+def find_llm_channel_surface_conflicts(
+    channels: List[Dict[str, Any]],
+) -> Dict[str, Tuple[str, ...]]:
+    """Return public route aliases declared with more than one API surface."""
+    route_surfaces: Dict[str, set[str]] = {}
+    for channel in channels:
+        if not isinstance(channel, dict) or not channel.get("enabled", True):
+            continue
+        protocol = str(channel.get("protocol") or "")
+        base_url = str(channel.get("base_url") or "")
+        surface = normalize_llm_channel_api_surface(channel.get("api_surface"))
+        for raw_model in channel.get("models") or []:
+            model = normalize_llm_channel_model(str(raw_model), protocol, base_url)
+            if model:
+                route_surfaces.setdefault(model, set()).add(surface)
+    return {
+        model: tuple(sorted(surfaces))
+        for model, surfaces in route_surfaces.items()
+        if len(surfaces) > 1
+    }
 
 
 def get_configured_llm_models(model_list: List[Dict[str, Any]]) -> List[str]:
@@ -729,6 +988,11 @@ class Config:
     tickflow_priority: int = 2
     tickflow_batch_daily_enabled: bool = True
     tickflow_batch_size: int = 100
+    futu_opend_host: Optional[str] = None
+    futu_opend_port: int = 11111
+    futu_hk_realtime_source_priority: str = "futu,longbridge,akshare,yfinance"
+    mx_apikey: Optional[str] = None
+    mx_priority: int = 6
     finnhub_api_key: Optional[str] = None
     alphavantage_api_key: Optional[str] = None
     longbridge_app_key: Optional[str] = None
@@ -737,9 +1001,8 @@ class Config:
     longbridge_oauth_client_id: Optional[str] = None
     stock_index_remote_update_enabled: bool = True
 
-    # === AlphaSift optional stock screening integration ===
-    alphasift_enabled: bool = False
-    alphasift_install_spec: str = DEFAULT_ALPHASIFT_INSTALL_SPEC
+    # === Built-in stock screening ===
+    screening_enabled: bool = False
 
     # === AI 分析配置 ===
     generation_backend: str = LITELLM_BACKEND_ID
@@ -825,7 +1088,8 @@ class Config:
     brave_api_keys: List[str] = field(default_factory=list)  # Brave Search API Keys
     serpapi_keys: List[str] = field(default_factory=list)  # SerpAPI Keys
     searxng_base_urls: List[str] = field(default_factory=list)  # SearXNG instance URLs (self-hosted, no quota)
-    searxng_public_instances_enabled: bool = True  # Auto-discover public SearXNG instances when base URLs are absent
+    searxng_public_instances_enabled: bool = False  # Opt in to public discovery when base URLs are absent
+    searxng_timeout_seconds: int = 10  # 自建 SearXNG 单次搜索超时（秒）
 
     # === Social Sentiment (US stocks only, api.adanos.org) ===
     social_sentiment_api_key: Optional[str] = None
@@ -860,12 +1124,19 @@ class Config:
     agent_decision_agent_timeout_s: float = 0
     agent_portfolio_agent_timeout_s: float = 0
     agent_skill_agent_timeout_s: float = 0
+    # Per-category default timeouts for agent tool calls (seconds).
+    # 0 / unset means "no category default" -> falls back to the global
+    # tool_call_timeout_seconds budget.
+    agent_data_tool_timeout_s: float = 0.0
+    agent_search_tool_timeout_s: float = 0.0
+    agent_analysis_tool_timeout_s: float = 0.0
+    agent_action_tool_timeout_s: float = 0.0
     agent_skill_concurrency: int = 3
     agent_risk_override: bool = True  # Allow risk agent to veto buy signals
     agent_deep_research_budget: int = 30000  # Max token budget for deep research
     agent_deep_research_timeout: int = 180  # Max seconds for /research command before returning timeout
     agent_memory_enabled: bool = False  # Enable memory & calibration system
-    agent_skill_autoweight: bool = True  # Auto-weight skills by backtest performance
+    agent_skill_autoweight: bool = True  # Weight skills by attributable Outcome performance
     agent_skill_routing: str = "auto"  # Skill routing: 'auto' (regime-based) or 'manual'
     agent_context_compression_enabled: bool = False  # Compress visible chat history before Agent calls
     agent_context_compression_profile: str = AGENT_CONTEXT_COMPRESSION_DEFAULT_PROFILE
@@ -995,7 +1266,11 @@ class Config:
     # Markdown 转图片（Issue #289）：对不支持 Markdown 的渠道以图片发送
     markdown_to_image_channels: List[str] = field(default_factory=list)  # 逗号分隔：telegram,wechat,custom,email
     markdown_to_image_max_chars: int = 15000  # 超过此长度不转换，避免超大图片
-    md2img_engine: str = "wkhtmltoimage"  # wkhtmltoimage | markdown-to-file (Issue #455, better emoji support)
+    md2img_engine: str = "wkhtmltoimage"  # wkhtmltoimage | markdown-to-file | playwright
+    share_image_xiaohongshu_url: Optional[str] = None
+    share_image_xiaohongshu_handle: Optional[str] = None
+    share_image_xiaohongshu_id: Optional[str] = None
+    share_image_xiaohongshu_qr_path: Optional[str] = None
 
     # 实时行情预取（Issue #455）：设为 false 可禁用，避免 efinance/akshare_em 全市场拉取
     prefetch_realtime_quotes: bool = True
@@ -1026,7 +1301,7 @@ class Config:
     etf_rotation_switch_buffer_pct: float = 2.0
     etf_rotation_cost_bps: float = 10.0
     etf_rotation_backtest_years: int = 8
-
+    
     # === 日志配置 ===
     log_dir: str = "./logs"  # 日志文件目录
     log_level: str = "INFO"  # 日志级别
@@ -1330,19 +1605,15 @@ class Config:
             os.getenv('ANSPIRE_LLM_BASE_URL') or ANSPIRE_LLM_BASE_URL_DEFAULT
         ).strip()
         _anspire_llm_model_env = os.getenv('ANSPIRE_LLM_MODEL', '').strip()
-        anspire_channel_disabled = False
+        anspire_channel_declared = False
         for _raw_channel in os.getenv('LLM_CHANNELS', '').split(','):
             if _raw_channel.strip().lower() != "anspire":
                 continue
-            _channel_enabled_raw = os.getenv('LLM_ANSPIRE_ENABLED')
-            if _channel_enabled_raw is not None and _channel_enabled_raw.strip():
-                anspire_channel_disabled = not parse_env_bool(_channel_enabled_raw, default=True)
-            else:
-                anspire_channel_disabled = not anspire_llm_enabled
+            anspire_channel_declared = True
             break
         using_anspire_llm_legacy = bool(
             anspire_llm_enabled
-            and not anspire_channel_disabled
+            and not anspire_channel_declared
             and anspire_api_keys
             and not openai_api_keys
         )
@@ -1388,7 +1659,7 @@ class Config:
 
         # Priority 2: LLM_CHANNELS (env var based channel config)
         if not llm_model_list:
-            _channels_str = os.getenv('LLM_CHANNELS', '').strip()
+            _channels_str = resolve_llm_channel_names(os.environ)
             if _channels_str:
                 llm_channel_names = [
                     ch.strip().lower()
@@ -1563,7 +1834,7 @@ class Config:
             )
         searxng_public_instances_enabled = parse_env_bool(
             os.getenv('SEARXNG_PUBLIC_INSTANCES_ENABLED'),
-            default=True,
+            default=False,
         )
 
         # 企微消息类型与最大字节数逻辑
@@ -1643,6 +1914,11 @@ class Config:
             tickflow_priority=parse_env_int(os.getenv('TICKFLOW_PRIORITY'), 2, field_name='TICKFLOW_PRIORITY', minimum=0),
             tickflow_batch_daily_enabled=parse_env_bool(os.getenv('TICKFLOW_BATCH_DAILY_ENABLED'), default=True),
             tickflow_batch_size=parse_env_int(os.getenv('TICKFLOW_BATCH_SIZE'), 100, field_name='TICKFLOW_BATCH_SIZE', minimum=1),
+            futu_opend_host=os.getenv('FUTU_OPEND_HOST') or None,
+            futu_opend_port=parse_env_int(os.getenv('FUTU_OPEND_PORT'), 11111, field_name='FUTU_OPEND_PORT', minimum=1, maximum=65535),
+            futu_hk_realtime_source_priority=os.getenv('FUTU_HK_REALTIME_SOURCE_PRIORITY', 'futu,longbridge,akshare,yfinance'),
+            mx_apikey=os.getenv('MX_APIKEY') or None,
+            mx_priority=parse_env_int(os.getenv('MX_PRIORITY'), 6, field_name='MX_PRIORITY', minimum=0),
             finnhub_api_key=os.getenv('FINNHUB_API_KEY') or None,
             alphavantage_api_key=os.getenv('ALPHAVANTAGE_API_KEY') or None,
             longbridge_app_key=os.getenv('LONGBRIDGE_APP_KEY') or None,
@@ -1723,6 +1999,9 @@ class Config:
             serpapi_keys=serpapi_keys,
             searxng_base_urls=searxng_base_urls,
             searxng_public_instances_enabled=searxng_public_instances_enabled,
+            searxng_timeout_seconds=parse_env_int(
+                os.getenv('SEARXNG_TIMEOUT_SECONDS'), 10, field_name='SEARXNG_TIMEOUT_SECONDS', minimum=1
+            ),
             social_sentiment_api_key=os.getenv('SOCIAL_SENTIMENT_API_KEY') or None,
             social_sentiment_api_url=os.getenv('SOCIAL_SENTIMENT_API_URL', 'https://api.adanos.org').rstrip('/'),
             news_max_age_days=parse_env_int(os.getenv('NEWS_MAX_AGE_DAYS'), 3, field_name='NEWS_MAX_AGE_DAYS', minimum=1),
@@ -1801,6 +2080,22 @@ class Config:
             agent_skill_agent_timeout_s=parse_env_float(
                 os.getenv('AGENT_SKILL_AGENT_TIMEOUT_S'), 0,
                 field_name='AGENT_SKILL_AGENT_TIMEOUT_S', minimum=0,
+            ),
+            agent_data_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_DATA_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_DATA_TOOL_TIMEOUT_S', minimum=0.0,
+            ),
+            agent_search_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_SEARCH_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_SEARCH_TOOL_TIMEOUT_S', minimum=0.0,
+            ),
+            agent_analysis_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_ANALYSIS_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_ANALYSIS_TOOL_TIMEOUT_S', minimum=0.0,
+            ),
+            agent_action_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_ACTION_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_ACTION_TOOL_TIMEOUT_S', minimum=0.0,
             ),
             agent_skill_concurrency=parse_env_int(
                 os.getenv('AGENT_SKILL_CONCURRENCY'),
@@ -1950,6 +2245,10 @@ class Config:
                 minimum=1,
             ),
             md2img_engine=cls._parse_md2img_engine(os.getenv('MD2IMG_ENGINE', 'wkhtmltoimage')),
+            share_image_xiaohongshu_url=(os.getenv('SHARE_IMAGE_XIAOHONGSHU_URL') or '').strip() or None,
+            share_image_xiaohongshu_handle=(os.getenv('SHARE_IMAGE_XIAOHONGSHU_HANDLE') or '').strip() or None,
+            share_image_xiaohongshu_id=(os.getenv('SHARE_IMAGE_XIAOHONGSHU_ID') or '').strip() or None,
+            share_image_xiaohongshu_qr_path=(os.getenv('SHARE_IMAGE_XIAOHONGSHU_QR_PATH') or '').strip() or None,
             prefetch_realtime_quotes=os.getenv('PREFETCH_REALTIME_QUOTES', 'true').lower() == 'true',
             database_path=os.getenv('DATABASE_PATH', './data/stock_analysis.db'),
             sqlite_wal_enabled=os.getenv('SQLITE_WAL_ENABLED', 'true').lower() == 'true',
@@ -2134,12 +2433,7 @@ class Config:
                 minimum=1,
             ),
             portfolio_fx_update_enabled=os.getenv('PORTFOLIO_FX_UPDATE_ENABLED', 'true').lower() == 'true',
-            alphasift_enabled=parse_env_bool(os.getenv('ALPHASIFT_ENABLED'), default=False),
-            alphasift_install_spec=(
-                DEFAULT_ALPHASIFT_INSTALL_SPEC
-                if os.getenv('ALPHASIFT_INSTALL_SPEC') is None
-                else os.getenv('ALPHASIFT_INSTALL_SPEC', '').strip()
-            ),
+            screening_enabled=parse_env_bool(os.getenv('SCREENING_ENABLED'), default=False),
         )
     
     @classmethod
@@ -2204,6 +2498,7 @@ class Config:
         Format:
             LLM_CHANNELS=aihubmix,deepseek,gemini
             LLM_AIHUBMIX_PROTOCOL=openai
+            LLM_AIHUBMIX_API_SURFACE=chat_completions
             LLM_AIHUBMIX_BASE_URL=https://aihubmix.com/v1
             LLM_AIHUBMIX_API_KEY=sk-xxx           (or LLM_AIHUBMIX_API_KEYS=k1,k2)
             LLM_AIHUBMIX_MODELS=gpt-5.5,claude-sonnet-4-6
@@ -2216,6 +2511,15 @@ class Config:
         issues: List[HermesConfigIssue] = []
         blocks_legacy_fallback = False
         blocked_hermes_routes: List[str] = []
+
+        def record_blocked_hermes_routes(raw_models: List[str]) -> None:
+            nonlocal blocks_legacy_fallback
+            blocks_legacy_fallback = True
+            for raw_model in raw_models or [HERMES_DEFAULT_MODEL]:
+                for route_name in hermes_blocked_route_candidates(raw_model):
+                    if route_name not in blocked_hermes_routes:
+                        blocked_hermes_routes.append(route_name)
+
         for raw_name in channels_str.split(','):
             ch_name = raw_name.strip()
             if not ch_name:
@@ -2223,7 +2527,9 @@ class Config:
             ch_lower = ch_name.lower()
             ch_upper = ch_name.upper()
 
-            base_url = os.getenv(f'LLM_{ch_upper}_BASE_URL', '').strip() or None
+            base_url = resolve_llm_channel_base_url(
+                ch_name, os.getenv(f'LLM_{ch_upper}_BASE_URL', '')
+            ) or None
             if ch_lower == "anspire" and not base_url:
                 base_url = (
                     os.getenv('ANSPIRE_LLM_BASE_URL') or ANSPIRE_LLM_BASE_URL_DEFAULT
@@ -2231,6 +2537,7 @@ class Config:
             protocol_raw = os.getenv(f'LLM_{ch_upper}_PROTOCOL', '').strip()
             if ch_lower == "anspire" and not protocol_raw:
                 protocol_raw = "openai"
+            api_surface_raw = os.getenv(f'LLM_{ch_upper}_API_SURFACE', '').strip()
             enabled_raw = os.getenv(f'LLM_{ch_upper}_ENABLED')
             if ch_lower == "anspire" and (enabled_raw is None or not enabled_raw.strip()):
                 enabled_raw = os.getenv('ANSPIRE_LLM_ENABLED')
@@ -2246,10 +2553,16 @@ class Config:
             if not api_keys and ch_lower == "anspire":
                 anspire_keys_raw = os.getenv('ANSPIRE_API_KEYS', '')
                 api_keys = [k.strip() for k in anspire_keys_raw.split(',') if k.strip()]
+            api_keys = resolve_llm_channel_api_keys(ch_name, api_keys, os.environ)
 
             # Models
             models_raw = os.getenv(f'LLM_{ch_upper}_MODELS', '')
             raw_models = [m.strip() for m in models_raw.split(',') if m.strip()]
+            raw_models = resolve_llm_channel_models(
+                ch_name, raw_models, channel_names=channels_str,
+                primary_model=os.getenv('LITELLM_MODEL', ''),
+                fallback_models=os.getenv('LITELLM_FALLBACK_MODELS', ''),
+            )
             if not raw_models and ch_lower == "anspire":
                 anspire_model = (
                     os.getenv('ANSPIRE_LLM_MODEL') or ANSPIRE_LLM_MODEL_DEFAULT
@@ -2257,7 +2570,45 @@ class Config:
                 if anspire_model:
                     raw_models = [anspire_model]
 
+            # Disabled channels are inert. In particular, stale values such as
+            # LLM_HERMES_API_SURFACE=responses must not block valid legacy
+            # deployments after Hermes has been explicitly disabled.
+            if not enabled:
+                _logger.info("LLM channel '%s': disabled, skipped", ch_name)
+                continue
+
+            if not is_supported_llm_channel_api_surface_value(api_surface_raw):
+                issues.append(HermesConfigIssue(
+                    f"LLM_{ch_upper}_API_SURFACE",
+                    "invalid_api_surface",
+                    (
+                        f"Unsupported LLM API surface '{api_surface_raw}'. "
+                        f"Supported: {', '.join(SUPPORTED_LLM_CHANNEL_API_SURFACES)}"
+                    ),
+                ))
+                if is_reserved_hermes_name(ch_name):
+                    record_blocked_hermes_routes(raw_models)
+                _logger.warning(
+                    "LLM_%s_API_SURFACE=%s is unsupported; channel skipped",
+                    ch_upper,
+                    api_surface_raw,
+                )
+                continue
+            api_surface = normalize_llm_channel_api_surface(api_surface_raw)
+
             if is_reserved_hermes_name(ch_name):
+                if api_surface == "responses":
+                    issues.append(HermesConfigIssue(
+                        f"LLM_{ch_upper}_API_SURFACE",
+                        "hermes_responses_unsupported",
+                        "The reserved Hermes channel does not support the Responses API surface",
+                    ))
+                    record_blocked_hermes_routes(raw_models)
+                    _logger.warning(
+                        "LLM_%s_API_SURFACE=responses is unsupported for reserved Hermes channel; channel skipped",
+                        ch_upper,
+                    )
+                    continue
                 if not raw_models:
                     raw_models = [HERMES_DEFAULT_MODEL]
                 result = parse_hermes_channel(
@@ -2285,6 +2636,38 @@ class Config:
                 continue
 
             protocol = resolve_llm_channel_protocol(protocol_raw, base_url=base_url, models=raw_models, channel_name=ch_name)
+            if api_surface == "responses" and protocol != "openai":
+                issues.append(HermesConfigIssue(
+                    f"LLM_{ch_upper}_API_SURFACE",
+                    "responses_requires_openai_protocol",
+                    "Responses API surface currently requires the openai protocol",
+                ))
+                _logger.warning(
+                    "LLM_%s_API_SURFACE=responses requires protocol=openai; channel skipped",
+                    ch_upper,
+                )
+                continue
+            incompatible_models = find_incompatible_llm_channel_models(
+                raw_models,
+                protocol,
+                api_surface,
+                base_url,
+            )
+            if incompatible_models:
+                issues.append(HermesConfigIssue(
+                    f"LLM_{ch_upper}_MODELS",
+                    "responses_requires_openai_model_provider",
+                    (
+                        "Responses API surface requires every model to use the OpenAI "
+                        f"provider route; incompatible: {', '.join(incompatible_models[:3])}"
+                    ),
+                ))
+                _logger.warning(
+                    "LLM_%s_API_SURFACE=responses has non-OpenAI model routes (%s); channel skipped",
+                    ch_upper,
+                    ", ".join(incompatible_models[:3]),
+                )
+                continue
             models = [normalize_llm_channel_model(m, protocol, base_url) for m in raw_models]
 
             # Extra headers (JSON string, optional)
@@ -2295,10 +2678,6 @@ class Config:
                     extra_headers = json.loads(extra_headers_raw)
                 except json.JSONDecodeError:
                     _logger.warning(f"LLM_{ch_upper}_EXTRA_HEADERS: invalid JSON, ignored")
-
-            if not enabled:
-                _logger.info(f"LLM channel '{ch_name}': disabled, skipped")
-                continue
 
             if protocol_raw and canonicalize_llm_channel_protocol(protocol_raw) not in SUPPORTED_LLM_CHANNEL_PROTOCOLS:
                 _logger.warning(
@@ -2321,6 +2700,7 @@ class Config:
             channels.append({
                 'name': ch_name.lower(),
                 'protocol': protocol,
+                'api_surface': api_surface,
                 'enabled': enabled,
                 'base_url': base_url,
                 'api_keys': api_keys,
@@ -2328,6 +2708,36 @@ class Config:
                 'extra_headers': extra_headers,
             })
             _logger.info(f"LLM channel '{ch_name}': {len(models)} model(s), {len(api_keys)} key(s)")
+
+        surface_conflicts = find_llm_channel_surface_conflicts(channels)
+        if surface_conflicts:
+            conflicting_models = set(surface_conflicts)
+            for model, surfaces in surface_conflicts.items():
+                issues.append(HermesConfigIssue(
+                    "LLM_CHANNELS",
+                    "mixed_api_surfaces_for_route",
+                    (
+                        f"LLM route alias '{model}' is declared with multiple API surfaces: "
+                        f"{', '.join(surfaces)}"
+                    ),
+                ))
+                _logger.warning(
+                    "LLM route alias '%s' mixes API surfaces (%s); conflicting channels skipped",
+                    model,
+                    ", ".join(surfaces),
+                )
+            channels = [
+                channel
+                for channel in channels
+                if not {
+                    normalize_llm_channel_model(
+                        str(model),
+                        str(channel.get("protocol") or ""),
+                        str(channel.get("base_url") or ""),
+                    )
+                    for model in channel.get("models") or []
+                }.intersection(conflicting_models)
+            ]
 
         return channels, issues, blocks_legacy_fallback, blocked_hermes_routes
 
@@ -2339,6 +2749,12 @@ class Config:
         - LiteLLM providers: https://docs.litellm.ai/docs/providers
         - LiteLLM model_list 语义: https://docs.litellm.ai/docs/proxy/configs#the-model_list-key
         """
+        surface_conflicts = find_llm_channel_surface_conflicts(channels)
+        if surface_conflicts:
+            raise ValueError(
+                "LLM route aliases cannot mix API surfaces: "
+                + ", ".join(sorted(surface_conflicts))
+            )
         model_list: List[Dict[str, Any]] = []
         for ch in channels:
             hermes_refs = {
@@ -2350,6 +2766,8 @@ class Config:
                 for api_key in ch['api_keys']:
                     model_ref = hermes_refs.get(str(model_name))
                     wire_model = str((model_ref or {}).get("wire_model") or model_name)
+                    api_surface = normalize_llm_channel_api_surface(ch.get("api_surface"))
+                    wire_model = apply_litellm_api_surface(wire_model, api_surface)
                     litellm_params: Dict[str, Any] = {
                         'model': wire_model,
                     }
@@ -2372,6 +2790,8 @@ class Config:
                         entry["model_info"] = hermes_model_info(
                             str((model_ref or {}).get("display_model") or "")
                         )
+                    elif api_surface == "responses":
+                        entry["model_info"] = {"dsa_api_surface": "responses"}
                     model_list.append(entry)
         return model_list
 
@@ -2638,6 +3058,7 @@ class Config:
             news_strategy_profile=self.news_strategy_profile,
         )
 
+    @staticmethod
     def _parse_etf_rotation_pool(value: Optional[str]) -> List[str]:
         if value is None or not value.strip():
             return list(DEFAULT_ETF_ROTATION_POOL)
@@ -2685,13 +3106,13 @@ class Config:
     def _parse_md2img_engine(cls, value: str) -> str:
         """Parse MD2IMG_ENGINE, fallback to wkhtmltoimage for invalid values (Issue #455)."""
         v = (value or 'wkhtmltoimage').strip().lower()
-        if v in ('wkhtmltoimage', 'markdown-to-file'):
+        if v in ('wkhtmltoimage', 'markdown-to-file', 'playwright'):
             return v
         if v:
             import logging
             logging.getLogger(__name__).warning(
                 f"MD2IMG_ENGINE '{value}' invalid, fallback to 'wkhtmltoimage' "
-                "(valid: wkhtmltoimage | markdown-to-file)"
+                "(valid: wkhtmltoimage | markdown-to-file | playwright)"
             )
         return 'wkhtmltoimage'
 
@@ -3182,6 +3603,7 @@ class Config:
         # --- Notification channels ---
         has_notification = bool(
             self.wechat_webhook_url
+            or self.dingtalk_webhook_url
             or self.feishu_webhook_url
             or (
                 (self.feishu_app_id or "")
