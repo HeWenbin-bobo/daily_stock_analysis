@@ -41,7 +41,7 @@ export type Phase = 'idle' | 'previewing' | 'previewed' | 'analyzing' | 'done'
 export type SortKey = 'code' | 'name' | 'avg_score' | 'final_advice'
 
 // 视图模式
-export type ViewMode = 'analysis' | 'history' | 'compare' | 'single' | 'watchlist' | 'templates' | 'scheduled' | 'review' | 'viz' | 'technical' | 'deepresearch' | 'hyperopt'
+export type ViewMode = 'analysis' | 'history' | 'compare' | 'single' | 'watchlist' | 'templates' | 'scheduled' | 'review' | 'viz' | 'technical' | 'deepresearch' | 'hyperopt' | 'etf' | 'portfolio' | 'intent' | 'settings'
 
 /** 单股分析任务（并发） */
 export interface SingleTask {

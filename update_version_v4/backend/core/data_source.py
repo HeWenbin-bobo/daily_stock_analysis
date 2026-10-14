@@ -8,6 +8,7 @@
 """
 import time
 import logging
+import threading
 import os
 from collections import OrderedDict
 from typing import Any, Callable, Optional, Dict, List, Tuple
@@ -487,6 +488,10 @@ def is_mock_payload(payload: Any) -> bool:
     return False
 
 
+# ★ E2E 修复：单数据源行情硬超时（秒）——防止无内部超时的接口把整条 fallback 链拖死
+_QUOTE_SOURCE_TIMEOUT = 15.0
+
+
 def fetch_quotes_bulk(codes: List[str], parallel: bool = True) -> Dict[str, Optional[Dict[str, Any]]]:
     """批量拉取行情，避免 N+1
 
@@ -695,7 +700,25 @@ def fetch_quote_with_fallback(code: str) -> Optional[Dict[str, Any]]:
             logger.info("Skipping unhealthy primary source %s", src)
             continue
         try:
-            result = adapter.fetch_quote(code)
+            # ★ E2E 修复：akshare 等 quote 接口可能无内部超时地挂起（实测热力图
+            #   请求 197s），fallback 链会倍增卡顿。daemon 线程 + join(timeout)
+            #   实现真硬超时（ThreadPoolExecutor 的 with 退出会 join 挂起线程，
+            #   超时形同虚设）；超时后线程自然泄漏为 daemon，按失败走下一源。
+            _box: list = []
+            def _fetch():
+                try:
+                    _box.append(("ok", adapter.fetch_quote(code)))
+                except BaseException as _e:  # noqa: BLE001
+                    _box.append(("err", _e))
+            _t = threading.Thread(target=_fetch, daemon=True)
+            _t.start()
+            _t.join(_QUOTE_SOURCE_TIMEOUT)
+            if _t.is_alive():
+                raise TimeoutError(f"{src} quote timed out after {_QUOTE_SOURCE_TIMEOUT}s")
+            _state, _val = _box[0]
+            if _state == "err":
+                raise _val
+            result = _val
         except Exception as e:
             logger.warning("fetch_quote via %s failed: %s", src, e)
             continue

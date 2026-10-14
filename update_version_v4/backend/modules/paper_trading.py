@@ -289,6 +289,9 @@ def place_order(
         raise ValueError(f"side 必须是 buy/sell，got {side}")
     if quantity <= 0:
         raise ValueError("quantity 必须 > 0")
+    # ★ 探索期修复：与 portfolio.add_holding 对齐的上限护栏（防天文数字订单污染账本）
+    if quantity > 10**9 or (price is not None and price > 10**9):
+        raise ValueError("quantity/price 超出合理范围（上限 1e9）")
 
     account = get_account(account_id)
     if not account:

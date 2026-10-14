@@ -22,6 +22,8 @@ LIMITS: Dict[str, Tuple[int, int]] = {
     # ★ Round 4 新增：昂贵端点限流
     "/api/v2/market-review/generate": (1, 60),       # 单日复盘 1 次/分钟（重）
     "/api/v2/market-review/batch": (1, 600),         # 批量复盘 1 次/10 分钟
+    "/api/v2/etf-rotation/run": (2, 300),            # ETF 轮动（数据抓取重）2 次/5 分钟
+    "/api/v2/web-intent/resolve": (30, 60),          # 意图解析（可能触发 LLM）30 次/分钟
     # ★ 修复(M7)：删除 alias 路径死配置（/hot-analysis/market-review/* alias 透传
     #   request 到原生函数，限流 key 是 /api/v2/market-review/generate|batch，
     #   下面两条 /api/v2/hot-analysis/... 永远不生效——alias 和原生共享同一桶，

@@ -205,6 +205,10 @@ class PortfolioService:
             raise ValueError("side must be buy or sell")
         if quantity <= 0 or price <= 0:
             raise ValueError("quantity and price must be > 0")
+        # ★ 探索期修复：上限护栏（v4 边界 fuzz 发现 quantity=10**18 也被接受，
+        #   产生天文数字持仓污染组合统计）。cost/price/quantity 上限 1e9。
+        if quantity > 10**9 or price > 10**9 or fee > 10**9 or tax > 10**9:
+            raise ValueError("quantity/price/fee/tax 超出合理范围（上限 1e9）")
         if fee < 0 or tax < 0:
             raise ValueError("fee and tax must be >= 0")
         symbol_norm = self._normalize_symbol_for_storage(symbol)

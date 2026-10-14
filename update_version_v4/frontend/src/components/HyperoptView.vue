@@ -93,11 +93,14 @@ import {
   NCard, NAlert, NForm, NFormItem, NInput, NInputNumber, NSelect,
   NButton, NDataTable, NDescriptions, NDescriptionsItem, NCode,
   NGrid, NGridItem, NStatistic, NText,
+  createDiscreteApi,
 } from 'naive-ui'
 
 const V2_API_BASE = '/api/v2'
 const http = axios.create({ baseURL: V2_API_BASE, timeout: 30000 })
 const httpLong = axios.create({ baseURL: V2_API_BASE, timeout: 0 })
+// ★ 探索期修复：alert() 阻塞 JS 主线程（CDP 自动化挂死根因），改用 discrete message
+const { message } = createDiscreteApi(['message'])
 
 const symbol = ref('600519')
 const strategyId = ref<number | null>(null)
@@ -163,12 +166,16 @@ async function loadStrategies() {
       strategyId.value = strategyOptions.value[0].value
     }
   } catch (e: any) {
-    alert(`❌ 加载策略列表失败: ${e?.message || e}`)
+    message.error(`加载策略列表失败: ${e?.message || e}`)
   }
 }
 
+function _errorMsg(m: string) {
+  message.error(m.includes('DSL') ? `${m} —— 请先对该策略执行 DSL 编译后再优化` : m, { duration: 8000 })
+}
+
 async function onRun() {
-  if (!strategyId.value) { alert('请先选择策略'); return }
+  if (!strategyId.value) { message.error('请先选择策略'); return }
   running.value = true
   try {
     const { data } = await httpLong.post('/backtest/hyperopt', {
@@ -178,11 +185,11 @@ async function onRun() {
       epochs: epochs.value,
       loss_fn: lossFn.value,
     })
-    alert(`✅ 优化完成！run_id=${data.run_id}\nbest_loss=${Number(data.best_loss).toFixed(4)}\n样本外收益=${data.oos_metrics?.total_return_pct ?? '-'}%${data.oos_no_trades ? '\n\n⚠️ 注意：样本外 0 笔交易！策略可能过拟合，请勿直接应用！' : ''}`)
+    message.success(`优化完成！run_id=${data.run_id}，best_loss=${Number(data.best_loss).toFixed(4)}，样本外收益=${data.oos_metrics?.total_return_pct ?? '-'}%${data.oos_no_trades ? ' ⚠️ 样本外 0 笔交易！策略可能过拟合，请勿直接应用！' : ''}`, { duration: 8000 })
     detail.value = data
     await loadRuns()
   } catch (e: any) {
-    alert(`❌ 优化失败: ${e?.response?.data?.detail || e?.message || e}`)
+    _errorMsg(String(e?.response?.data?.detail || e?.message || e))
   } finally {
     running.value = false
   }
@@ -195,7 +202,7 @@ async function loadRuns(uid?: string) {
     })
     runs.value = data.runs
   } catch (e: any) {
-    alert(`❌ 加载记录失败: ${e?.message || e}`)
+    message.error(`加载记录失败: ${e?.message || e}`)
   }
 }
 
@@ -204,7 +211,7 @@ async function loadDetail(id: number) {
     const { data } = await http.get(`/backtest/hyperopt/runs/${id}`)
     detail.value = data
   } catch (e: any) {
-    alert(`❌ 加载详情失败: ${e?.message || e}`)
+    message.error(`加载详情失败: ${e?.message || e}`)
   }
 }
 
@@ -217,10 +224,10 @@ async function onApply() {
     const { data } = await http.post(`/backtest/hyperopt/runs/${detail.value.id}/apply`, {
       user_id: userId.value || 'api_test_user',
     })
-    alert(`✅ 已应用！策略 #${data.strategy_id} 参数已更新\n${data.backup_hint}`)
+    message.success(`已应用：最优参数 #${data.strategy_id} 策略已更新 ${data.backup_hint || ''}`, { duration: 8000 })
     await loadStrategies()  // 刷新策略下拉（DSL 已变）
   } catch (e: any) {
-    alert(`❌ 应用失败: ${e?.response?.data?.detail || e?.message || e}`)
+    message.error(`应用失败: ${e?.response?.data?.detail || e?.message || e}`, { duration: 8000 })
   } finally {
     applying.value = false
   }

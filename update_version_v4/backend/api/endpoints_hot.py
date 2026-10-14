@@ -1162,3 +1162,191 @@ async def market_review_batch(payload: dict, request: Request = None):
 # ============================================================================
 # /health（v2 已有，保留即可）
 # ============================================================================
+
+
+# ============================================================================
+# ETF 双动量轮动（复用主项目 src/services/etf_rotation_service）
+# ============================================================================
+# 当日缓存：as_of 同日重复请求直接复用（抓取 8 年数据 1-3 分钟，避免重复开销）
+_etf_cache: Dict[str, Any] = {}
+_etf_cache_lock = threading.Lock()
+
+
+def _etf_today() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+@router.post("/etf-rotation/run")
+async def run_etf_rotation_endpoint(request: Request, force: bool = False):
+    """运行 ETF 轮动：抓取数据 → 最新信号 + 规则回测，返回 markdown 报告与目标持仓。
+
+    配置来自主项目环境变量（ETF_ROTATION_POOL / ETF_ROTATION_SAFE_ASSET / ...）。
+    send_notification=False：Web 端触发不重复推送，报告仅返回给调用方。
+    ?force=true 跳过当日缓存强制重跑。
+    """
+    from core import ratelimit
+    ip = ratelimit.get_client_ip(request)
+    allowed, retry = ratelimit.check_limit(ip, "/api/v2/etf-rotation/run")
+    if not allowed:
+        raise HTTPException(429, f"限流，{retry}s 后重试")
+    if not force:
+        with _etf_cache_lock:
+            cached = _etf_cache.get("today")
+            if cached and cached.get("as_of") == _etf_today():
+                return {**cached, "cached": True}
+
+    def _run():
+        _MAIN_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+        v4_snap = {
+            n: m for n, m in sys.modules.items()
+            if (n == "src" or n.startswith("src."))
+            and "update_version_v4" in str(getattr(m, "__file__", "") or "")
+        }
+        while str(_MAIN_ROOT) in sys.path:
+            sys.path.remove(str(_MAIN_ROOT))
+        sys.path.insert(0, str(_MAIN_ROOT))
+        for n in list(v4_snap):
+            del sys.modules[n]
+        try:
+            from src.config import get_config
+            from src.services.etf_rotation_service import run_etf_rotation
+            report = run_etf_rotation(get_config(), send_notification=False)
+        finally:
+            sys.modules.update(v4_snap)
+        return report
+
+    try:
+        report = await asyncio.to_thread(_run)
+    except ValueError as exc:
+        raise HTTPException(400, f"配置错误: {exc}")
+    except RuntimeError as exc:
+        raise HTTPException(502, f"数据获取失败: {exc}")
+    except Exception as exc:
+        raise HTTPException(500, f"ETF 轮动执行失败: {exc}")
+
+    data = {
+        "as_of": f"{report.as_of:%Y-%m-%d}" if report.as_of is not None else None,
+        "target_weights": report.target_weights,
+        "failed_codes": report.failed_codes,
+        "warnings": report.warnings,
+        "markdown": report.markdown,
+        "cached": False,
+    }
+    with _etf_cache_lock:
+        _etf_cache["today"] = data
+    return data
+
+
+@router.get("/etf-rotation/history")
+def etf_rotation_history(limit: int = Query(30, le=200)):
+    """列出已落盘的 ETF 轮动报告（主项目 reports/etf_rotation_*.md，新→旧）。"""
+    reports_dir = Path(__file__).resolve().parent.parent.parent.parent / "reports"
+    if not reports_dir.exists():
+        return {"reports": []}
+    files = sorted(reports_dir.glob("etf_rotation_*.md"), reverse=True)[:limit]
+    out = []
+    for f in files:
+        try:
+            out.append({"date": f.stem.replace("etf_rotation_", ""), "file": f.name, "size": f.stat().st_size})
+        except OSError:
+            continue
+    return {"reports": out}
+
+
+@router.get("/etf-rotation/history/{date}")
+def etf_rotation_history_detail(date: str):
+    """读取指定日期的 ETF 轮动报告全文。date 形如 20261013。"""
+    if not date.isdigit() or len(date) != 8:
+        raise HTTPException(400, "date 必须是 8 位数字，如 20261013")
+    f = Path(__file__).resolve().parent.parent.parent.parent / "reports" / f"etf_rotation_{date}.md"
+    if not f.exists():
+        raise HTTPException(404, f"报告不存在: {f.name}")
+    try:
+        content = f.read_text(encoding="utf-8")
+    except Exception as exc:
+        raise HTTPException(500, f"读取失败: {exc}")
+    return {"date": date, "markdown": content}
+
+
+# ============================================================================
+# Web Chat 意图识别（复用主项目 src/agent/web_intent_resolver）
+# ============================================================================
+_intent_resolver = None
+_intent_lock = threading.Lock()
+
+
+def _get_intent_resolver():
+    """进程内单例 WebIntentResolver（带主项目 config → LLM 兜底可用）。"""
+    global _intent_resolver
+    if _intent_resolver is None:
+        with _intent_lock:
+            if _intent_resolver is None:
+                _MAIN_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+                v4_snap = {
+                    n: m for n, m in sys.modules.items()
+                    if (n == "src" or n.startswith("src.") or n.startswith("data_provider"))
+                    and "update_version_v4" in str(getattr(m, "__file__", "") or "")
+                }
+                while str(_MAIN_ROOT) in sys.path:
+                    sys.path.remove(str(_MAIN_ROOT))
+                sys.path.insert(0, str(_MAIN_ROOT))
+                for n in list(v4_snap):
+                    del sys.modules[n]
+                try:
+                    from src.config import get_config
+                    from src.agent.web_intent_resolver import WebIntentResolver
+                    _intent_resolver = WebIntentResolver(get_config())
+                finally:
+                    sys.modules.update(v4_snap)
+    return _intent_resolver
+
+
+def _resolution_to_dict(t) -> dict:
+    return {
+        "intent": str(t.intent.value) if hasattr(t.intent, "value") else str(t.intent),
+        "confidence": t.confidence,
+        "source": t.source,
+        "stocks": [{"code": s.code, "name": s.name, "market": s.market} for s in t.stocks],
+        "sectors": list(t.sectors),
+        "candidates": [{"code": s.code, "name": s.name, "market": s.market} for s in t.candidates],
+        "unresolved_names": list(t.unresolved_names),
+        "unverified_codes": list(t.unverified_codes),
+        "needs_confirmation": t.needs_confirmation,
+        "reason": t.reason,
+        "source_request": t.source_request,
+        "inherited_stock_code": t.inherited_stock_code,
+    }
+
+
+@router.post("/web-intent/resolve")
+def web_intent_resolve(payload: dict):
+    """解析一条 Web Chat 消息 → 二维任务组列表（组=子消息，组内平权任务）。
+
+    body: {message, session_context?, request_context?}
+    session_context: {recent_stocks?, pending_actions?, last_intent?}
+    request_context: {current_stock_code?}
+    """
+    message = payload.get("message")
+    if not isinstance(message, str):
+        raise HTTPException(400, "message 必填（字符串）")
+
+    def _run():
+        resolver = _get_intent_resolver()
+        return resolver.resolve(
+            message,
+            session_context=payload.get("session_context"),
+            request_context=payload.get("request_context"),
+        )
+
+    try:
+        # sync 端点由 FastAPI 线程池承载，resolve 本身是阻塞计算，直接调用
+        groups = _run()
+    except Exception as exc:
+        raise HTTPException(500, f"意图解析失败: {exc}")
+
+    return {
+        "groups": [
+            [_resolution_to_dict(t) for t in group]
+            for group in groups
+        ]
+    }

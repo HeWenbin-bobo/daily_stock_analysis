@@ -48,7 +48,16 @@ def ensure_symlink() -> None:
     ensure_file_exists(AGENTS, "canonical AGENTS.md")
     if not CLAUDE.exists():
         fail("CLAUDE.md is missing")
+    # ★ Windows 兼容：无 Developer Mode/管理员权限时 git 把 symlink（index mode 120000）
+    #   检出为内容=目标路径的普通文件。此时文件内容为 "AGENTS.md" 即视为等价。
     if not CLAUDE.is_symlink():
+        if sys.platform == "win32":
+            try:
+                content = CLAUDE.read_text(encoding="utf-8").strip()
+            except OSError:
+                content = ""
+            if content == "AGENTS.md":
+                return
         fail("CLAUDE.md must be a symlink to AGENTS.md")
 
     target = Path(CLAUDE.readlink())

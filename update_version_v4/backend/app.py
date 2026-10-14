@@ -67,6 +67,12 @@ class UserIDMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期：替代 deprecated on_event"""
+    # ★ 设置页：启动时应用已保存的 LLM 设置到 os.environ（已设置的环境变量优先不覆盖）
+    try:
+        from core import llm_settings
+        llm_settings.apply_to_environ()
+    except Exception as e:
+        logger.warning("apply llm_settings on startup failed: %s", e)
     # ★ Round 19 修复(M7)：cron DB 用绝对路径，避免从仓库根启动时
     #   sqlite:///data/v2_dev.db 相对 CWD 解析到错误位置，导致任务存储与业务 DB 分离
     cron_mod.init(db_path=str(BACKEND_DIR / "data" / "v2_dev.db"))

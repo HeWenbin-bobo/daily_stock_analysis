@@ -8,7 +8,9 @@ import logging
 import os
 import hmac
 import asyncio
+import threading
 import time
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -1214,3 +1216,241 @@ def berkshire_tools_health():
         "files": status,
         "financial_rigor_importable": rigor_ok,
     }
+
+# ============================================================================
+# 组合总览 Dashboard（复用主项目 src/services/portfolio_service — P0 组合域）
+# ============================================================================
+_pf_lock = threading.Lock()
+_pf_service = None
+
+
+def _get_pf_service():
+    """进程内单例 PortfolioService（主项目 src 层，连接主项目数据库）。"""
+    global _pf_service
+    if _pf_service is None:
+        with _pf_lock:
+            if _pf_service is None:
+                import importlib
+                import sys as _sys
+                _MAIN_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+                v4_snap = {
+                    n: m for n, m in _sys.modules.items()
+                    if (n == "src" or n.startswith("src.") or n.startswith("data_provider"))
+                    and "update_version_v4" in str(getattr(m, "__file__", "") or "")
+                }
+                while str(_MAIN_ROOT) in _sys.path:
+                    _sys.path.remove(str(_MAIN_ROOT))
+                _sys.path.insert(0, str(_MAIN_ROOT))
+                for n in list(v4_snap):
+                    del _sys.modules[n]
+                try:
+                    mod = importlib.import_module("src.services.portfolio_service")
+                finally:
+                    _sys.modules.update(v4_snap)
+                _pf_service = mod.PortfolioService()
+    return _pf_service
+
+
+@router.get("/portfolio-p0/accounts")
+def portfolio_p0_list_accounts():
+    """列出组合账户（主项目 P0 组合域）。"""
+    return {"accounts": _get_pf_service().list_accounts()}
+
+
+@router.post("/portfolio-p0/accounts")
+def portfolio_p0_create_account(payload: dict):
+    require_keys(payload, "name", "market")
+    try:
+        account = _get_pf_service().create_account(
+            name=payload["name"],
+            broker=payload.get("broker"),
+            market=payload["market"],
+            base_currency=payload.get("base_currency") or "",
+            owner_id=payload.get("owner_id"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    audit.record(action="create_p0_account", user_id=payload.get("owner_id"), resource_id=str(account.get("id")))
+    return account
+
+
+@router.post("/portfolio-p0/trades")
+def portfolio_p0_record_trade(payload: dict):
+    """记录一笔交易（buy/sell，含费税；sell 校验可用数量）。"""
+    require_keys(payload, "account_id", "symbol", "trade_date", "side", "quantity", "price")
+    from datetime import date as _date
+    try:
+        trade_date = _date.fromisoformat(str(payload["trade_date"]))
+        result = _get_pf_service().record_trade(
+            account_id=int(payload["account_id"]),
+            symbol=str(payload["symbol"]),
+            trade_date=trade_date,
+            side=str(payload["side"]),
+            quantity=float(payload["quantity"]),
+            price=float(payload["price"]),
+            fee=float(payload.get("fee") or 0.0),
+            tax=float(payload.get("tax") or 0.0),
+            note=payload.get("note"),
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        name = type(exc).__name__
+        if "Conflict" in name:
+            raise HTTPException(409, str(exc))
+        raise
+    audit.record(action="record_p0_trade", resource_id=str(result.get("id")))
+    return result
+
+
+@router.get("/portfolio-p0/snapshot")
+def portfolio_p0_snapshot(
+    account_id: Optional[int] = None,
+    cost_method: str = "fifo",
+    include_realtime: bool = False,
+):
+    """组合快照：现金/持仓/市值/盈亏（Web 端默认关实时行情，避免慢请求）。"""
+    try:
+        return _get_pf_service().get_portfolio_snapshot(
+            account_id=account_id,
+            cost_method=cost_method,
+            include_realtime=include_realtime,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+# ============================================================================
+# LLM 设置（Web 界面直接配置自定义模型 + API key；敏感字段脱敏防窥）
+# ============================================================================
+@router.get("/settings/llm")
+def settings_llm_get():
+    """LLM 设置状态。敏感字段只回 is_set + 尾 4 位掩码（防窥），永不回明文。"""
+    from core import llm_settings
+    return llm_settings.get_status()
+
+
+@router.post("/settings/llm")
+def settings_llm_update(payload: dict):
+    """保存 LLM 设置并即时生效（写入 llm_settings.json + 同步 os.environ）。
+
+    body: {fields: {field_key: value}}
+    - 敏感字段传 "__MASKED__" 表示未修改（保留原值）；传空串表示清除
+    - 非敏感字段（base_url/model）传实际值
+    """
+    from core import llm_settings
+    fields = payload.get("fields")
+    if not isinstance(fields, dict):
+        raise HTTPException(400, "fields 必填（对象）")
+    unknown = set(fields) - {f[0] for f in llm_settings.FIELDS}
+    if unknown:
+        raise HTTPException(400, f"未知字段: {sorted(unknown)}")
+    result = llm_settings.update(fields)
+    audit.record(action="update_llm_settings", request_body={"changed": result["saved"]})
+    return result
+
+
+# ============================================================================
+# LLM 设置辅助：上游模型列表拉取 + 连接测试
+# ============================================================================
+def _settings_openai_client(base_url: str, api_key: str, timeout: float = 15.0):
+    """构造 OpenAI 兼容客户端（openai SDK 可用则用 SDK，否则退回 HTTP 直连）。"""
+    try:
+        from openai import OpenAI
+        return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
+    except Exception:
+        return None
+
+
+@router.post("/settings/llm/models")
+def settings_llm_list_models(payload: dict):
+    """从上游拉取可用模型列表（OpenAI 兼容 /v1/models）。
+
+    body: {base_url, api_key?, api_key_field?}
+    - api_key 为空/哨兵时用已保存或环境变量中的 key（对应 api_key_field）
+    返回: {ok, models: [{id, owned_by}], error?}
+    """
+    import httpx
+    from core import llm_settings as ls
+
+    base_url = (payload.get("base_url") or "").strip().rstrip("/")
+    if not base_url:
+        raise HTTPException(400, "base_url 必填")
+    # key 来源优先级：显式传入 > 已保存文件 > 环境变量
+    api_key = (payload.get("api_key") or "").strip()
+    if not api_key or api_key == ls.MASK_SENTINEL:
+        field = payload.get("api_key_field") or "openai_api_key"
+        env = next((f[1] for f in ls.FIELDS if f[0] == field), "OPENAI_API_KEY")
+        data = ls._load_file()
+        api_key = data.get(field) or os.environ.get(env) or ""
+    if not api_key:
+        return {"ok": False, "models": [], "error": "未设置 API key（请先填写并保存，或在表单中直接输入）"}
+
+    try:
+        resp = httpx.get(f"{base_url}/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=15.0)
+        resp.raise_for_status()
+        data = resp.json()
+        items = data.get("data") if isinstance(data, dict) else data
+        models = []
+        for m in items or []:
+            if isinstance(m, dict) and m.get("id"):
+                models.append({"id": m["id"], "owned_by": m.get("owned_by", "")})
+        models.sort(key=lambda x: x["id"])
+        return {"ok": True, "models": models, "count": len(models)}
+    except Exception as exc:
+        return {"ok": False, "models": [], "error": str(exc)[:300]}
+
+
+@router.post("/settings/llm/test")
+def settings_llm_test_connection(payload: dict):
+    """测试渠道连接：向上游发一条最小对话请求验证 key/base_url/model 可用。
+
+    body: {base_url, model, api_key?, api_key_field?, prompt?}
+    返回: {ok, provider_reply?, latency_ms?, error?}
+    """
+    import time as _time
+    import httpx
+    from core import llm_settings as ls
+
+    base_url = (payload.get("base_url") or "").strip().rstrip("/")
+    model = (payload.get("model") or "").strip()
+    if not base_url or not model:
+        raise HTTPException(400, "base_url 和 model 必填")
+    api_key = (payload.get("api_key") or "").strip()
+    if not api_key or api_key == ls.MASK_SENTINEL:
+        field = payload.get("api_key_field") or "openai_api_key"
+        env = next((f[1] for f in ls.FIELDS if f[0] == field), "OPENAI_API_KEY")
+        data = ls._load_file()
+        api_key = data.get(field) or os.environ.get(env) or ""
+    if not api_key:
+        return {"ok": False, "error": "未设置 API key"}
+
+    prompt = (payload.get("prompt") or "ping，请回复 pong").strip()
+    started = _time.time()
+    try:
+        resp = httpx.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 32,
+                "temperature": 0,
+            },
+            timeout=30.0,
+        )
+        latency_ms = int((_time.time() - started) * 1000)
+        resp.raise_for_status()
+        data = resp.json()
+        content = ""
+        try:
+            content = data["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError):
+            content = str(data)[:200]
+        return {"ok": True, "latency_ms": latency_ms, "reply": content[:200], "model": model}
+    except Exception as exc:
+        latency_ms = int((_time.time() - started) * 1000)
+        detail = str(exc)[:300]
+        # httpx.HTTPStatusError 的响应体里常有上游真实错误（无效 key / 模型不存在）
+        body = getattr(getattr(exc, "response", None), "text", "")[:200]
+        return {"ok": False, "latency_ms": latency_ms, "error": detail, "upstream_body": body}

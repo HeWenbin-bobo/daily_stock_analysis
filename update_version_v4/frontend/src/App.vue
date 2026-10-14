@@ -47,6 +47,10 @@ import AdvancedViz from './components/AdvancedViz.vue'
 import TechnicalAnalysisView from './components/TechnicalAnalysisView.vue'
 import DeepResearchView from './components/DeepResearchView.vue'
 import HyperoptView from './components/HyperoptView.vue'
+import EtfRotationView from './components/EtfRotationView.vue'
+import PortfolioP0View from './components/PortfolioP0View.vue'
+import WebIntentView from './components/WebIntentView.vue'
+import SettingsView from './components/SettingsView.vue'
 
 const WEEK_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
@@ -217,10 +221,12 @@ const textSecondary = 'var(--text-secondary)'
       </header>
 
       <!-- 导航标签 -->
+      <!-- ★ 用户反馈：16 个标签一行放不下 → bar 型 + CSS flex-wrap 自动两行换行 -->
       <n-tabs
         :value="viewMode"
         @update:value="setViewMode($event as ViewMode)"
-        type="segment"
+        type="bar"
+        class="nav-tabs-wrap"
         style="margin-bottom: 20px"
       >
         <n-tab-pane name="analysis" tab="📊 分析" />
@@ -235,6 +241,10 @@ const textSecondary = 'var(--text-secondary)'
         <n-tab-pane name="scheduled" tab="⏰ 定时" />
         <n-tab-pane name="deepresearch" tab="🧠 深度研究" />
         <n-tab-pane name="hyperopt" tab="⚙️ 参数优化" />
+        <n-tab-pane name="etf" tab="🔄 ETF轮动" />
+        <n-tab-pane name="portfolio" tab="💼 组合" />
+        <n-tab-pane name="intent" tab="🧭 意图" />
+        <n-tab-pane name="settings" tab="⚙️ 设置" />
       </n-tabs>
 
       <!-- ========== 分析视图 ========== -->
@@ -470,6 +480,18 @@ const textSecondary = 'var(--text-secondary)'
       <div v-if="viewMode === 'hyperopt'">
         <HyperoptView />
       </div>
+      <div v-if="viewMode === 'etf'">
+        <EtfRotationView />
+      </div>
+      <div v-if="viewMode === 'portfolio'">
+        <PortfolioP0View />
+      </div>
+      <div v-if="viewMode === 'intent'">
+        <WebIntentView />
+      </div>
+      <div v-if="viewMode === 'settings'">
+        <SettingsView />
+      </div>
     </div>
     </div>
   </n-config-provider>
@@ -477,4 +499,13 @@ const textSecondary = 'var(--text-secondary)'
 
 <style scoped>
 header h1 { letter-spacing: 0.5px; }
+/* ★ 16 个导航标签自动换行成多行（默认 .n-tabs-nav 不换行会溢出） */
+.nav-tabs-wrap :deep(.n-tabs-nav) {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.nav-tabs-wrap :deep(.n-tabs-nav__content) {
+  flex-wrap: wrap;
+  width: 100%;
+}
 </style>

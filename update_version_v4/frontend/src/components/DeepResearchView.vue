@@ -6,7 +6,7 @@
  * - 展示：信息丰富度评级 / 六维评分表 / 综合结论 / 操作建议 / 估值区间 / 最大风险
  * - LLM 不可用时后端返回 mock 占位（mocked=true 提示）
  */
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, h } from 'vue'
 import {
   NCard, NInput, NButton, NSpace, NText, NTag, NSpin, NAlert,
   NDataTable, NEmpty, NGrid, NGi, NCollapse, NCollapseItem,
@@ -58,10 +58,12 @@ const scoreColumns = [
     title: '分数',
     key: 'score',
     width: 70,
+    // ★ 探索期修复：NDataTable render 返回字符串不会渲染 HTML（显示为字面文本），
+    //   必须返回 VNode（h 函数）才能生效
     render: (r: { score: number }) => {
       const s = Number(r.score)
       const color = s >= 70 ? '#16a34a' : s >= 50 ? '#d97706' : '#dc2626'
-      return `<span style="font-weight:700;color:${color}">${Number.isFinite(s) ? s : '-'}</span>`
+      return h('span', { style: `font-weight:700;color:${color}` }, Number.isFinite(s) ? s : '-')
     },
   },
   { title: '信心度', key: 'confidence', width: 90 },

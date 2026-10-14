@@ -683,20 +683,26 @@ def test_cors_configurable_via_env():
 
 
 def test_alerts_scan_rate_limit():
-    """Phase 15: /alerts/scan 限流 3/min"""
+    """Phase 15: /alerts/scan 限流 3/min
+
+    ★ 稳定性：扫描真实执行可能超过 60s 限流窗口（网络慢时第 4 次请求不再 429），
+    mock 掉 scan_all_alerts 使请求瞬时完成，只测限流本身。
+    """
     from fastapi.testclient import TestClient
+    from unittest.mock import patch
     from core import cron as cron_mod
     from core import ratelimit
     cron_mod.APS_AVAILABLE = False
     ratelimit._buckets.clear()
     from app import app
     client = TestClient(app)
-    # 前 3 次应成功
-    for i in range(3):
+    with patch("modules.alerts_engine.scan_all_alerts", return_value={"triggered": 0, "scanned": 0}):
+        # 前 3 次应成功
+        for i in range(3):
+            r = client.post("/api/v2/alerts/scan")
+            assert r.status_code == 200, f"req {i}: {r.status_code} {r.text[:200]}"
+        # 第 4 次应 429
         r = client.post("/api/v2/alerts/scan")
-        assert r.status_code in (200, 500), f"req {i}: {r.status_code} {r.text[:200]}"
-    # 第 4 次应 429
-    r = client.post("/api/v2/alerts/scan")
     assert r.status_code == 429, f"expected 429, got {r.status_code}"
     assert "限流" in r.text
     print("OK /alerts/scan rate limit: 3 pass, 4th 429")

@@ -40,6 +40,10 @@ def add_holding(
     """
     if cost <= 0 or quantity <= 0:
         raise ValueError("cost 和 quantity 必须 > 0")
+    # ★ 探索期修复：加上限校验——此前 quantity=10**18 也接受（返回 200），
+    #   会产生无意义的天文数字持仓并污染组合统计（总市值溢出/展示崩溃）
+    if cost > 10**9 or quantity > 10**9:
+        raise ValueError("cost 和 quantity 超出合理范围（上限 1e9）")
     conn = get_conn()
     cur = conn.cursor()
     trade_date = purchase_date or datetime.now().strftime("%Y-%m-%d")
