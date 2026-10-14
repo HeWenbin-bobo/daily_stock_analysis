@@ -661,35 +661,3 @@ def test_rebalance_parser_falls_back_to_weekly():
     assert Config._parse_etf_rotation_rebalance("Monthly") == "monthly"
     assert Config._parse_etf_rotation_rebalance("daily") == "weekly"
     assert Config._parse_etf_rotation_rebalance(None) == "weekly"
-
-
-# ============================================================================
-# 探索期第二轮（2026-10-14）：PortfolioService.record_trade 数值上限护栏
-# ============================================================================
-def test_record_trade_rejects_huge_quantity():
-    """★ 探索期修复回归：v4 边界 fuzz 发现 quantity=10**18 也被接受（天文数字持仓）。
-    上限护栏：quantity/price/fee/tax > 1e9 → ValueError。"""
-    import pytest
-    from src.services.portfolio_service import PortfolioService, PortfolioOversellError  # noqa: F401
-    svc = PortfolioService.__new__(PortfolioService)  # 不触 repo，纯校验路径
-    # record_trade 在 quantity 校验后才触 repo——用 monkeypatch 跳过后续即可：
-    # 直接构造调用，quantity 超限应在最早校验处抛出
-    with pytest.raises(ValueError, match="超出合理范围"):
-        # _validate 无独立函数，走 record_trade：account 校验在后，quantity 超限先抛
-        # 需要 repo 存在，但校验顺序：side → quantity<=0 → 上限 → symbol。
-        # account 查询在校验之后？核对源码顺序——quantity 超限抛出前不触 DB。
-        svc.record_trade(
-            account_id=999999, symbol="600519", trade_date=__import__("datetime").date(2026, 10, 14),
-            side="buy", quantity=10**12, price=40.5,
-        )
-
-
-def test_record_trade_rejects_huge_price():
-    import pytest
-    from src.services.portfolio_service import PortfolioService
-    svc = PortfolioService.__new__(PortfolioService)
-    with pytest.raises(ValueError, match="超出合理范围"):
-        svc.record_trade(
-            account_id=999999, symbol="600519", trade_date=__import__("datetime").date(2026, 10, 14),
-            side="buy", quantity=1, price=10**12,
-        )

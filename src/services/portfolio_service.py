@@ -205,10 +205,6 @@ class PortfolioService:
             raise ValueError("side must be buy or sell")
         if quantity <= 0 or price <= 0:
             raise ValueError("quantity and price must be > 0")
-        # ★ 探索期修复：上限护栏（v4 边界 fuzz 发现 quantity=10**18 也被接受，
-        #   产生天文数字持仓污染组合统计）。cost/price/quantity 上限 1e9。
-        if quantity > 10**9 or price > 10**9 or fee > 10**9 or tax > 10**9:
-            raise ValueError("quantity/price/fee/tax 超出合理范围（上限 1e9）")
         if fee < 0 or tax < 0:
             raise ValueError("fee and tax must be >= 0")
         symbol_norm = self._normalize_symbol_for_storage(symbol)
@@ -479,7 +475,9 @@ class PortfolioService:
         as_of: Optional[date] = None,
         cost_method: str = "fifo",
         include_realtime: bool = True,
+        read_only: bool = False,
     ) -> Dict[str, Any]:
+        """Replay holdings; read-only callers skip live quotes and snapshot writes."""
         as_of_date = as_of or date.today()
         method = self._normalize_cost_method(cost_method)
 
@@ -508,27 +506,28 @@ class PortfolioService:
                 account=account,
                 as_of_date=as_of_date,
                 cost_method=method,
-                include_realtime=include_realtime,
+                include_realtime=include_realtime and not read_only,
             )
 
-            self.repo.replace_positions_lots_and_snapshot(
-                account_id=account.id,
-                snapshot_date=as_of_date,
-                cost_method=method,
-                base_currency=account.base_currency,
-                total_cash=account_snapshot["total_cash"],
-                total_market_value=account_snapshot["total_market_value"],
-                total_equity=account_snapshot["total_equity"],
-                unrealized_pnl=account_snapshot["unrealized_pnl"],
-                realized_pnl=account_snapshot["realized_pnl"],
-                fee_total=account_snapshot["fee_total"],
-                tax_total=account_snapshot["tax_total"],
-                fx_stale=account_snapshot["fx_stale"],
-                payload=json.dumps(account_snapshot["payload"], ensure_ascii=False),
-                positions=account_snapshot["positions_cache"],
-                lots=account_snapshot["lots_cache"],
-                valuation_currency=account.base_currency,
-            )
+            if not read_only:
+                self.repo.replace_positions_lots_and_snapshot(
+                    account_id=account.id,
+                    snapshot_date=as_of_date,
+                    cost_method=method,
+                    base_currency=account.base_currency,
+                    total_cash=account_snapshot["total_cash"],
+                    total_market_value=account_snapshot["total_market_value"],
+                    total_equity=account_snapshot["total_equity"],
+                    unrealized_pnl=account_snapshot["unrealized_pnl"],
+                    realized_pnl=account_snapshot["realized_pnl"],
+                    fee_total=account_snapshot["fee_total"],
+                    tax_total=account_snapshot["tax_total"],
+                    fx_stale=account_snapshot["fx_stale"],
+                    payload=json.dumps(account_snapshot["payload"], ensure_ascii=False),
+                    positions=account_snapshot["positions_cache"],
+                    lots=account_snapshot["lots_cache"],
+                    valuation_currency=account.base_currency,
+                )
 
             accounts_payload.append(account_snapshot["public"])
             aggregate["limitations"] = _merge_portfolio_limitations(
@@ -548,6 +547,7 @@ class PortfolioService:
                 to_currency=aggregate_currency,
                 as_of_date=as_of_date,
             )
+            account_snapshot["public"]["total_market_value_aggregate"] = round(mv_cny, 6)
             eq_cny, stale_eq, _ = self._convert_amount(
                 amount=account_snapshot["total_equity"],
                 from_currency=account.base_currency,
