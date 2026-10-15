@@ -113,3 +113,20 @@ def test_session_detail_preserves_missing_persisted_state() -> None:
     assert [message["content"] for message in detail.messages] == ["legacy question"]
     assert detail.selected_skill_ids is None
     assert db.get_conversation_session_selected_skill_ids("legacy-session") is None
+
+
+def test_first_turn_bare_code_question_does_not_get_empty_strict_scope() -> None:
+    """新会话首轮裸代码/名称提问不得被空 strict scope 拦截行情工具（探索期 bug #7 回归）。"""
+    db = DatabaseManager(db_url="sqlite:///:memory:")
+    service = AgentChatSessionService(db)
+    config = SimpleNamespace()
+    db.save_conversation_message("fresh-session", "user", "600519 现在多少价")
+    db.save_conversation_message("fresh-session", "assistant", "嗯嗯")
+
+    snapshot = db.read_chat_session_snapshot("fresh-session")
+    turn = service.prepare_compatibility_turn(
+        config, snapshot, "贵州茅台现在多少钱", context=None,
+    )
+    resolution, _disposition = turn
+    # maintain 且无 active 对象 → scope 必须为 None（fail-open），不能是空 strict scope
+    assert resolution.stock_scope is None

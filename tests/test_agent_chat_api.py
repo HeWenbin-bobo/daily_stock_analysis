@@ -499,7 +499,8 @@ def test_stream_forwards_normalized_skill_selection_to_prepare_turn() -> None:
     assert kwargs["message"] == "check risk" and kwargs["session_id"] == "risk-session"
     assert kwargs["context"] == {"skills": ["risk"], "report_language": "zh"}
     assert kwargs["selected_skill_ids"] == ["risk"]
-    assert kwargs["resolved_turn"].stock_scope.strict
+    # 无 active 对象且消息未确认标的（maintain）→ fail-open：scope 为 None 而非空 strict scope
+    assert kwargs["resolved_turn"].stock_scope is None
 
 
 def test_stream_all_invalid_skills_inherit_without_clearing_state(tmp_path: Path) -> None:

@@ -104,7 +104,7 @@ class ResolvedChatTurn:
     message: str
     snapshot: Dict[str, Any]
     active_stock_context: Optional[Dict[str, Any]]
-    stock_scope: StockScope
+    stock_scope: Optional[StockScope]
     effective_context: Dict[str, Any]
     skill_selection: ChatSkillSelection
     confirm_stock: bool = False
@@ -229,10 +229,16 @@ class AgentChatSessionService:
             allowed.append(_identity(active))
         if compare and clarification is None:
             allowed.extend(item for item in decision.participants if item not in allowed)
-        scope = StockScope(expected_stock_code=active["stock_code"] if active else "",
-                           allowed_stock_codes={item.stock_code for item in allowed},
-                           mode="compare" if compare else "switch" if confirm else "maintain",
-                           strict=True, identities=tuple(allowed))
+        if active is None and decision.kind == "maintain":
+            # 首轮裸代码/名称提问（如"600519 现在多少价"、"贵州茅台现在多少钱"）决策器判为
+            # maintain 且无 active 会话对象；空 strict scope 会拦截一切行情工具调用，
+            # 返回 None 让执行层 fail-open，把工具访问交给上游一次性 scope 规则。
+            scope = None
+        else:
+            scope = StockScope(expected_stock_code=active["stock_code"] if active else "",
+                               allowed_stock_codes={item.stock_code for item in allowed},
+                               mode="compare" if compare else "switch" if confirm else "maintain",
+                               strict=True, identities=tuple(allowed))
         effective_context = dict(context or {})
         effective_context.pop("allowed_stock_codes", None)
         effective_context.pop("skills", None)

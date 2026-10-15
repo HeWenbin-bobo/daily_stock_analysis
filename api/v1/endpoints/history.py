@@ -448,7 +448,11 @@ def get_stock_bar(
         # Deduplicate by normalized code, keeping the record with highest id
         seen: dict = {}
         for record in records:
-            display_code = service._display_stock_code(record.code or "")
+            # 历史脏数据（如代码解析失败被存为 INVALID）不应出现在个股栏
+            display_code_check = service._display_stock_code(record.code or "")
+            if not display_code_check or display_code_check.upper() in ("INVALID", "UNKNOWN"):
+                continue
+            display_code = display_code_check
             norm_code = _stock_bar_group_key(record.code or "", display_code)
             if norm_code not in seen or record.id > seen[norm_code].id:
                 seen[norm_code] = record

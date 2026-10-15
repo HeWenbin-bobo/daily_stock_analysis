@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 
 from sqlalchemy import and_, case, delete, desc, func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from src.core.backtest_engine import OVERALL_SENTINEL_CODE
 from src.services.stock_code_utils import resolve_daily_stock_identity
@@ -167,6 +168,21 @@ class BacktestRepository:
                 session.add_all(results)
                 session.commit()
                 return len(results)
+            except IntegrityError:
+                # 并发回测时候选集可能已包含对方刚写入的结果，整批失败降级为逐行去重保存
+                session.rollback()
+                saved = 0
+                for result in results:
+                    try:
+                        session.add(result)
+                        session.commit()
+                        saved += 1
+                    except IntegrityError:
+                        session.rollback()
+                    except Exception:
+                        session.rollback()
+                        raise
+                return saved
             except Exception as exc:
                 session.rollback()
                 logger.error(f"批量保存回测结果失败: {exc}")

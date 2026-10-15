@@ -3318,6 +3318,7 @@ class DatabaseManager(metaclass=_DatabaseManagerMeta):
                 subq = subq.where(
                     and_(
                         AnalysisHistory.code != "MARKET",
+                        AnalysisHistory.code != "INVALID",
                         or_(
                             AnalysisHistory.report_type.is_(None),
                             AnalysisHistory.report_type != "market_review",

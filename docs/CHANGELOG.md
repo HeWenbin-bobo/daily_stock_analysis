@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [修复] Agent 问股新会话首轮裸代码/名称提问（如"600519 现在多少价"、"贵州茅台现在多少钱"）不再被空的 strict 股票 scope 拦截全部行情工具：无 active 会话对象且决策为 maintain 时改为 fail-open（scope=None），已有会话对象或已确认标的的 strict 拦截行为不变。
+- [修复] flake8 排除 3 个历史遗留副本目录（`daily_stock_analysis/`、`stock_analysis/`、`update_version/`），这些目录存在 F821 等真实静态错误但不被活代码引用，此前会导致任何 PR 的 backend-gate 必红。
+- [修复] 个股栏不再展示代码解析失败的历史脏数据记录（如代码被存为 INVALID 的条目）：聚合查询与展示层双重过滤，历史记录本身不删除。
+- [改进] 持仓交易/资金流水/公司行动的数值入口增加上限护栏（数量≤1e12、价格与费用≤1e9、分红与拆股比≤1e6），防止天文数字污染持仓统计。
 - [修复] Outcome 候选按上次尝试时间公平调度，避免持续新增的缺失 key 使旧 `pending` outcome 永久得不到重试。
 - [新功能] 新增按 skill、horizon 与 outcome engine version 独立聚合的只读 Skill Opinion 表现统计；少于 30 条 evaluated 样本时仅返回观察性计数，不输出表现指标或调整运行时权重。
 - [修复] 统一等价股票代码的本地日线候选与同源窗口解析；冲突沪深交易所代码不再降级匹配裸码，回测仅接受快照或交易日历确认的起点，并在同一起点中优先完整的单一代码窗口。
