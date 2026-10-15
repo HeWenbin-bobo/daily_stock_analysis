@@ -11,7 +11,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # 主项目根（data_provider / api.v1.endpoints.hot_analysis）：测试文件在
-#   update_version_v4/backend/tests/ → 向上 4 级即 F:/daily_stock_analysis_v2
+#   update_version/backend/tests/ → 向上 4 级即 F:/daily_stock_analysis_v2
 _MAIN = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _MAIN not in sys.path:
     sys.path.insert(0, _MAIN)
@@ -130,17 +130,9 @@ def test_dynamic_limiter_limits_concurrency():
 # ============================================================================
 # 3. DataFetcherManager 数据源并发节流
 # ============================================================================
-def test_fetcher_manager_throttle_integration():
-    from data_provider.base import DataFetcherManager
-    m = DataFetcherManager([])
-    m.set_data_concurrency(4)
-    assert m.get_data_concurrency() == 4
-    assert getattr(m.get_daily_data, "__wrapped__", None) is not None, "get_daily_data 未包节流器"
-    assert getattr(m.get_chip_distribution, "__wrapped__", None) is not None, "get_chip_distribution 未包节流器"
-    # 设置后重置失败计数
-    m.set_data_concurrency(2)
-    assert m.get_data_concurrency() == 2
-    print("OK DataFetcherManager 节流器集成")
+# ★ 上游合并后移除：set_data_concurrency 是早期迭代给主项目 data_provider/base.py
+#   加的本地节流 API，上游从未合入（upstream 有自己的 AdaptiveThrottle 体系），
+#   全量对齐后该 API 不存在；v4 生产代码亦无依赖，仅此测试断言过时。
 
 
 ALL_TESTS = [
@@ -149,7 +141,6 @@ ALL_TESTS = [
     test_throttle_limits_concurrency_and_timeout_fallback,
     test_dynamic_limiter_degrades_to_serial,
     test_dynamic_limiter_limits_concurrency,
-    test_fetcher_manager_throttle_integration,
 ]
 
 

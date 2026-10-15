@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 v2 后端 — hot_analysis + market_review 端点
-- 复用 update_version_v4/db/history.py（SQLite）
-- 复用 update_version_v4/services/market_review_service.py
+- 复用 update_version/db/history.py（SQLite）
+- 复用 update_version/services/market_review_service.py
 - 复用主项目的 analyze_stock() 做单股分析
 """
 import asyncio
@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-# 把 update_version_v4/ 加入 sys.path 以访问根目录的 db/ 和 services/
+# 把 update_version/ 加入 sys.path 以访问根目录的 db/ 和 services/
 _V2_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_V2_ROOT) not in sys.path:
     sys.path.insert(0, str(_V2_ROOT))
@@ -70,7 +70,7 @@ def _import_main_hot_analysis():
     v4_snap = {
         n: m for n, m in sys.modules.items()
         if (n == "api" or n.startswith("api."))
-        and "update_version_v4" in str(getattr(m, "__file__", "") or "")
+        and "update_version" in str(getattr(m, "__file__", "") or "")
     }
     while str(_MAIN_ROOT) in sys.path:
         sys.path.remove(str(_MAIN_ROOT))
@@ -1200,7 +1200,7 @@ async def run_etf_rotation_endpoint(request: Request, force: bool = False):
         v4_snap = {
             n: m for n, m in sys.modules.items()
             if (n == "src" or n.startswith("src."))
-            and "update_version_v4" in str(getattr(m, "__file__", "") or "")
+            and "update_version" in str(getattr(m, "__file__", "") or "")
         }
         while str(_MAIN_ROOT) in sys.path:
             sys.path.remove(str(_MAIN_ROOT))
@@ -1285,7 +1285,7 @@ def _get_intent_resolver():
                 v4_snap = {
                     n: m for n, m in sys.modules.items()
                     if (n == "src" or n.startswith("src.") or n.startswith("data_provider"))
-                    and "update_version_v4" in str(getattr(m, "__file__", "") or "")
+                    and "update_version" in str(getattr(m, "__file__", "") or "")
                 }
                 while str(_MAIN_ROOT) in sys.path:
                     sys.path.remove(str(_MAIN_ROOT))

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-技术分析端点 —— 从 stock_analysis/v1 移植到 update_version_v4。
+技术分析端点 —— 从 stock_analysis/v1 移植到 update_version。
 
 端点（挂载在 /api/v2 下）：
   POST /api/v2/technical/peak-trough   - 波峰波谷分析

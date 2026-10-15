@@ -254,7 +254,7 @@ def _get_watchlist_symbols(user_id: str) -> List[str]:
     global _WATCHLIST_DB_MOD
     # ★ Round 19 修复(M7)：旧代码 import update_version.db.history（v1 包）在 v2 进程里
     #   大概率 ImportError 被 try/except 吞掉 → 规则空转且无日志。
-    #   优先用 v2 自己的 db.history（update_version_v4/db/history.py），再退 v1。
+    #   优先用 v2 自己的 db.history（update_version/db/history.py），再退 v1。
     if _WATCHLIST_DB_MOD is not None:
         try:
             items = _WATCHLIST_DB_MOD.get_watchlist()

@@ -90,8 +90,8 @@
 - DB 存量扫描：`alert_rule` 表 4 条记录无非法 params（之前测试脏数据 rule 1678/1679/1680 已清理），修复前如有过脏数据也会在每次 `scan_all_alerts` 静默失败。
 
 **交付物**：
-- 修改文件：`update_version_v4/backend/modules/alerts_engine.py`
-- 新增测试：`update_version_v4/backend/tests/test_phase24_round_rule_params.py`（3 用例，固化防回归）
+- 修改文件：`update_version/backend/modules/alerts_engine.py`
+- 新增测试：`update_version/backend/tests/test_phase24_round_rule_params.py`（3 用例，固化防回归）
 - 清理：测试用规则 1678/1679/1680 已删
 
 **同类风险扫描**：比对 v2/v3/v4 各模块 `★ 修复` 标记（alerts_engine / paper_trading / portfolio / community / backtest_engine / hyperopt_engine / cron / data_source / notifier），仅 `alerts_engine` 缺该修复，其余模块的 v2 关键修复（TOCTOU、share 归属、cron 调度、leaderboard 除零等）均已继承到 v4。

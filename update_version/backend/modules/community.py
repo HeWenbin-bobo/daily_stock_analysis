@@ -295,7 +295,7 @@ def _open_conn(db_alias: str):
     elif db_alias == "history":
         import sqlite3
         from pathlib import Path
-        # 与 update_version_v4/db/history.py 一致的路径
+        # 与 update_version/db/history.py 一致的路径
         _DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "history.db"
         if not _DB_PATH.exists():
             logger.warning("history.db not found at %s", _DB_PATH)

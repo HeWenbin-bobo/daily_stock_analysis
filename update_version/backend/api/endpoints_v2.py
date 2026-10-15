@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-update_version_v4 - 所有 v2 端点
+update_version - 所有 v2 端点
 - 前缀：/api/v2
 - 端点分组：notifications / alerts / backtest / paper / community / portfolio / data / llm / cron / health
 """
@@ -89,7 +89,7 @@ def _check_resource_owner(
     """★ 本轮修复(M4)：向后兼容的资源归属校验（替代/补充 _require_user_match）
 
     与 _require_user_match 的核心区别：**不要求前端必须发 X-User-Id header**。
-    实测当前前端（update_version_v4/frontend/src/api/）从未携带 X-User-Id，
+    实测当前前端（update_version/frontend/src/api/）从未携带 X-User-Id，
     若对写端点套用 _require_user_match 严格模式，会把所有现有写操作打成 401，
     直接搞坏应用。
 
@@ -138,7 +138,7 @@ def _coerce_int(value: Any, field: str) -> int:
 # ============================================================================
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "update_version_v4", "ts": datetime.now().isoformat()}
+    return {"status": "ok", "service": "update_version", "ts": datetime.now().isoformat()}
 
 
 # ============================================================================
@@ -1236,7 +1236,7 @@ def _get_pf_service():
                 v4_snap = {
                     n: m for n, m in _sys.modules.items()
                     if (n == "src" or n.startswith("src.") or n.startswith("data_provider"))
-                    and "update_version_v4" in str(getattr(m, "__file__", "") or "")
+                    and "update_version" in str(getattr(m, "__file__", "") or "")
                 }
                 while str(_MAIN_ROOT) in _sys.path:
                     _sys.path.remove(str(_MAIN_ROOT))

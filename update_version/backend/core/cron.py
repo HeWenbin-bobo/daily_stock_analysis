@@ -566,7 +566,7 @@ def _today_iso() -> str:
 
 
 def _load_history_module_for_catchup():
-    """按路径加载 update_version_v4/db/history.py（避开 backend/db 包冲突）。"""
+    """按路径加载 update_version/db/history.py（避开 backend/db 包冲突）。"""
     import importlib.util
     from pathlib import Path
     _v2_root = Path(__file__).resolve().parent.parent.parent

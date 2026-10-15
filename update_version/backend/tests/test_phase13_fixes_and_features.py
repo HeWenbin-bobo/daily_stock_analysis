@@ -618,7 +618,18 @@ def test_market_review_pdf_alias():
     r = client.get("/api/v1/hot-analysis/market-review/2099-01-01/pdf")
     assert r.status_code == 404
     # 存在的日期 → 200（PDF 或 fallback markdown）
-    r = client.get("/api/v1/hot-analysis/market-review/2026-07-30/pdf")
+    # ★ 整理期修复：不再依赖写死的历史夹具日期（DB 是本地产物，可能被清理），
+    #   动态取最新一条复盘记录；没有任何记录时先生成今日。
+    r = client.get("/api/v1/hot-analysis/market-review/latest")
+    latest_date = None
+    if r.status_code == 200:
+        latest_date = (r.json() or {}).get("review_date") or (r.json() or {}).get("date")
+    if not latest_date:
+        gen = client.post("/api/v2/market-review/generate", json={})
+        assert gen.status_code == 200, gen.text[:200]
+        latest_date = (gen.json() or {}).get("review_date")
+    assert latest_date, "无法获得任何复盘记录日期"
+    r = client.get(f"/api/v1/hot-analysis/market-review/{latest_date}/pdf")
     assert r.status_code == 200
     ct = r.headers.get("content-type", "")
     assert "pdf" in ct or "markdown" in ct

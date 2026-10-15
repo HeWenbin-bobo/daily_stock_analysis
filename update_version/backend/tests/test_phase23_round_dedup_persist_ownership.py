@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # ★ 路径技巧：主项目 api/ 与 v2 backend api/ 同名 → sys.path 顺序决定 import 解析。
 #   本测试在 backend/ 启动（backend/ 在 sys.path），所以 `import api` 会解析到 backend/api。
 #   需要主项目 api.v1.* / data_provider.* 的测试，用 importlib 按文件加载，绕过 `api` 包机制。
-_BACKEND = Path(__file__).resolve().parent.parent  # update_version_v4/backend/
+_BACKEND = Path(__file__).resolve().parent.parent  # update_version/backend/
 _MAIN_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # daily_stock_analysis_v2/
 
 # 添加主项目根目录作为 fallback（backend 仍在首位，所以 `from api import ...` 仍解析到 backend）。
@@ -52,13 +52,13 @@ _STATE: dict = {}
 def _load_endpoints_hot():
     """Import api.endpoints_hot and repair sys.path that it polluted.
 
-    ★ endpoints_hot.py 在模块加载时执行 sys.path.insert(0, update_version_v4/)，
-      而 update_version_v4/db/ 里只有 history.py（没有 migrate.py）。
+    ★ endpoints_hot.py 在模块加载时执行 sys.path.insert(0, update_version/)，
+      而 update_version/db/ 里只有 history.py（没有 migrate.py）。
       这会让后续 `from db.migrate import get_conn` 解析到错误的 db 目录。
       必须在 import 后立刻把 backend/ (含 db/migrate.py) 抢回 sys.path[0]。
 
-    注意 update_version_v4/ 的路径是 _BACKEND.parent（不是 .parent.parent），
-      因为 _BACKEND = update_version_v4/backend/，.parent 就是 update_version_v4/。
+    注意 update_version/ 的路径是 _BACKEND.parent（不是 .parent.parent），
+      因为 _BACKEND = update_version/backend/，.parent 就是 update_version/。
     """
     from api import endpoints_hot as eh
     _V2_ROOT = str(_BACKEND.parent)

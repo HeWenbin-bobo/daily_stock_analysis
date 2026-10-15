@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-update_version_v4 FastAPI app
+update_version FastAPI app
 - 启动入口
 - ★ Round 4 升级：request_id 中间件、/ready 健康检查、APP_CORS_ORIGINS 强校验
 """
@@ -73,6 +73,16 @@ async def lifespan(app: FastAPI):
         llm_settings.apply_to_environ()
     except Exception as e:
         logger.warning("apply llm_settings on startup failed: %s", e)
+    # ★ 检查模式修复：启动时自动跑 DB 迁移——此前表结构靠测试套件建立，
+    #   DB 缺失/被清理时（如目录改名事故清空 v2_dev.db）应用启动不会建表，
+    #   hot-list 等端点直接 500 no such table。幂等（CREATE IF NOT EXISTS）。
+    try:
+        from db.migrate import migrate
+        n = migrate()
+        if n:
+            logger.info("startup db migrate: %s tables ensured", n)
+    except Exception as e:
+        logger.warning("startup db migrate failed: %s", e)
     # ★ Round 19 修复(M7)：cron DB 用绝对路径，避免从仓库根启动时
     #   sqlite:///data/v2_dev.db 相对 CWD 解析到错误位置，导致任务存储与业务 DB 分离
     cron_mod.init(db_path=str(BACKEND_DIR / "data" / "v2_dev.db"))
@@ -88,10 +98,10 @@ async def lifespan(app: FastAPI):
         cron_mod.catchup_market_review_on_startup()
     except Exception as e:
         logger.warning("catchup market review on startup failed: %s", e)
-    logger.info("update_version_v4 started")
+    logger.info("update_version started")
     yield
     cron_mod.shutdown()
-    logger.info("update_version_v4 stopped")
+    logger.info("update_version stopped")
 
 
 # ============================================================================
@@ -150,7 +160,7 @@ def _resolve_cors_origins() -> list:
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="update_version_v4 API",
+        title="update_version API",
         version="2.0.0",
         description="可上线的产品级股票分析平台",
         lifespan=lifespan,
@@ -185,7 +195,7 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health():
         """轻量探活（liveness）"""
-        return {"status": "ok", "service": "update_version_v4", "ts": time.time()}
+        return {"status": "ok", "service": "update_version", "ts": time.time()}
 
     @app.get("/ready")
     def ready():

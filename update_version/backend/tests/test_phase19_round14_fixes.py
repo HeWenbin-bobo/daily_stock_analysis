@@ -15,7 +15,7 @@ def _v2_db():
     """用 importlib 按路径加载 v2 根目录 db/history.py（避免 backend/db 包抢占）"""
     import importlib.util
     from pathlib import Path
-    _v2_root = Path(__file__).resolve().parent.parent.parent  # update_version_v4/
+    _v2_root = Path(__file__).resolve().parent.parent.parent  # update_version/
     spec = importlib.util.spec_from_file_location(
         "v2_db_history_test", _v2_root / "db" / "history.py"
     )

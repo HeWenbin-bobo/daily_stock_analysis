@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-技术分析模块 —— 从 stock_analysis/v1 移植而来，适配 update_version_v4 的 dict 数据格式。
+技术分析模块 —— 从 stock_analysis/v1 移植而来，适配 update_version 的 dict 数据格式。
 
 包含：
   - 波峰波谷识别算法（analyze_peaks_troughs）
