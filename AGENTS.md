@@ -13,6 +13,7 @@
   - 部署与流水线改动在 `scripts/`、`.github/workflows/`、`docker/`
 - 未经明确确认，不执行 `git commit`、`git tag`、`git push`。
 - `git reset`、`git rebase`、强制推送、删除历史等改写性操作，必须用户明确指示后才可执行。
+- **禁止写入上游仓库**：`upstream` remote 指向原始项目，只用于 `fetch` 同步；任何写入上游的操作——`git push upstream ...`、针对上游的 `gh pr` / `gh issue` / 评论等写操作——一律不执行。推送只允许发往 `origin`（本 fork）。本机已将 `upstream` 的 push URL 设为 `DISABLE`（`git remote set-url --push upstream DISABLE`）以从配置层面根除误推，不要恢复它。
 - commit message 使用英文标题，不添加 `Co-Authored-By`；标题用 `feat:/fix:/chore:/docs:/test:` 等常规前缀，正文（如有）分块说明用户可感知的变化，不写"修复若干问题"这类模糊表述。
 - 不写死密钥、账号、路径、模型名、端口或环境差异逻辑。
 - **密钥/凭据绝不入库、绝不打印**：任何 API Key、token、密码不得进入 commit/push 或日志输出；提交前必查 `git status` 与 `git diff --cached`，含密钥的配置文件、日志、截图、临时文件一律排除。密钥只存在于本机 `.env`（不入库）或运行时环境变量。
