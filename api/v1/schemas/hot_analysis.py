@@ -3,6 +3,9 @@
 ===================================
 三榜交集分析 Schema
 ===================================
+
+未接入：截至 2026-10 未被任何入口 import；唯一消费者是同样未注册的
+`api/v1/endpoints/hot_analysis.py`。保留待评估。
 """
 from __future__ import annotations
 

@@ -123,10 +123,16 @@ def _refresh_hot_list_fallback(cur, today: str, top_n: int = 50) -> Dict[str, An
     return {"date": today, "count": inserted}
 
 
-def get_daily_hot_list(rank_date: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+def get_daily_hot_list(
+    rank_date: Optional[str] = None,
+    limit: int = 50,
+    quote_budget_seconds: Optional[float] = None,
+) -> List[Dict[str, Any]]:
     """取某日榜单（公开接口，无需登录）
 
     ★ 第三轮优化：批量并发拉取行情，避免 N+1
+    ★ 本轮修复：可传 quote_budget_seconds 限制行情富化的总耗时。这是只读接口，
+      榜单行本身已在库里；行情只是附加字段，不该让挂起的上游数据源拖垮调用方。
     """
     if rank_date is None:
         from datetime import datetime
@@ -142,7 +148,7 @@ def get_daily_hot_list(rank_date: Optional[str] = None, limit: int = 50) -> List
     if not raw_rows:
         return []
     symbols = [r["symbol"] for r in raw_rows]
-    quotes_map = fetch_quotes_bulk(symbols, parallel=True)
+    quotes_map = fetch_quotes_bulk(symbols, parallel=True, budget_seconds=quote_budget_seconds)
     for d in raw_rows:
         q = quotes_map.get(d["symbol"])
         if q:

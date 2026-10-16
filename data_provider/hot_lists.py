@@ -17,6 +17,9 @@
 - 同花顺通过 akshare 的 `stock_hot_ths_*d` 系列接口按时间维度降级尝试
 - akshare 的 `stock_hot_rank_em()` / `stock_hot_follow_xq()` 实际最多返回约 100 条
   - 任务要求"前 1000 名"在工程上等同于"全榜"（已记录此假设）
+
+未接入：截至 2026-10 未被任何入口 import；唯一消费者是同样未注册的
+`api/v1/endpoints/hot_analysis.py`。保留待评估，重新接入前先确认榜单可用性。
 """
 from __future__ import annotations
 

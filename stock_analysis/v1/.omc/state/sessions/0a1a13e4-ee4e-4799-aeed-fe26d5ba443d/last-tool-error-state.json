@@ -1,7 +1,0 @@
-{
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"F:\\\\stock_analysis\\\\v1\\\\frontend\\\\src\\\\types\\\\index.ts\"}",
-  "error": "File does not exist. Note: your current working directory is F:\\stock_analysis\\v1.",
-  "timestamp": "2026-08-03T18:35:19.799Z",
-  "retry_count": 1
-}

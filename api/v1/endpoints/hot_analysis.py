@@ -17,6 +17,12 @@
 - 异步执行（asyncio.to_thread 把同步 LLM 调用扔到线程池）
 - 全部异常隔离：单股失败不影响整体；单榜失败降级为空
 - 进度由前端"loading"轮询体验承担；当前实现为同步长任务，UI 显示加载动画
+
+未接入：截至 2026-10 该 router 未在任何入口注册（`api/app.py` 无引入），
+因此 `POST /api/v1/hot-analysis/run` 对外不可达；前端亦无调用方。
+本文件连同 `api/v1/schemas/hot_analysis.py`、`data_provider/hot_lists.py`
+（以及未接入的 `data_provider/adaptive_throttle.py`）保留待评估。
+重新接入前先确认榜单数据源可用性与同步长任务的超时语义。
 """
 from __future__ import annotations
 

@@ -6,7 +6,7 @@
 python-dotenv>=1.0.0        # Environment variable configuration
 tenacity>=8.2.0             # Retry support with exponential backoff
 sqlalchemy>=2.0.0           # ORM database access
-apscheduler>=3.10,<4        # update_version_v2 定时任务调度（SQLAlchemyJobStore 持久化到 SQLite）
+apscheduler>=3.10,<4        # update_version_v2 scheduled-task scheduler (SQLAlchemyJobStore persisted to SQLite)
 schedule>=1.2.0             # Scheduled task runner
 exchange-calendars>=4.13.0   # Trading calendars; 4.5.x is incompatible with pandas 3 Timedelta "T"
 
@@ -24,8 +24,7 @@ longbridge==0.2.74; platform_system == "Linux" and python_version < "3.12"
 longbridge>=4.0.5,<5; platform_system != "Linux" or python_version >= "3.12"
 tickflow>=0.1.24           # TickFlow official SDK; 0.1.24 verified for klines/get batch quotes/universes
 futu-api==10.8.6808        # Futu OpenAPI SDK for read-only --portfolio futu holdings import
-# Built-in optional AlphaSift screening engine
-git+https://github.com/ZhuLinsen/alphasift.git@9f522747caafd3c0b1ddb7e14d5cf44c8580b6cf#egg=alphasift
+# The screening engine is maintained in src/services/screening.
 
 # Feishu
 lark-oapi>=1.0.0             # Feishu API
@@ -74,3 +73,11 @@ jinja2>=3.1.0               # Jinja2 template engine for report rendering
 fastapi>=0.109.0            # Modern Python Web framework
 uvicorn[standard]>=0.27.0   # ASGI server
 python-multipart>=0.0.6     # FastAPI File/Form upload support
+
+# Public macroeconomic tools
+# `src/agent/tools/fxmacrodata_tools.py` imports `fxmacrodata_public` at module
+# level and three agent modules import it unconditionally, so the client is
+# required rather than optional. Installed from a pinned GitHub release wheel
+# (sha256 checked); if that release URL is removed or replaced, update the URL
+# and hash here or installs of this file will fail.
+fxmacrodata-public-client @ https://github.com/fxmacrodata/fxmacrodata-public-client/releases/download/v0.1.0/fxmacrodata_public_client-0.1.0-py3-none-any.whl#sha256=5c60ff217243ff4001f178d4fdd8c3c8ce29001ad1ea0a170ed96606f0dd07c8

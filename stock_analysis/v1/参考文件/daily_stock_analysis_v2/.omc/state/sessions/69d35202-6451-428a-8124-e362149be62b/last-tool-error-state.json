@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd \\\"F:/daily_stock_analysis\\\" && C:/ProgramData/miniforge3/condabin/conda.bat run -n daily_stock_analysis --no-capture-output python -m py_compile api/v1/endpoints/history.py api/v1/endpo...",
-  "error": "Exit code 1\n  File \"api/v1/endpoints/history.py\", line 275\r\n    )\r\n    ^\r\nSyntaxError: unmatched ')'\r\nERROR conda.cli.main_run:execute(148): `conda run python -m py_compile api/v1/endpoints/history.py api/v1/endpoints/portfolio.py api/v1/endpoints/alerts.py api/v1/endpoints/decision_signals.py api/v1/endpoints/intelligence.py api/v1/endpoints/hot_analysis.py api/v1/schemas/hot_analysis.py` failed. (See above for error)",
-  "timestamp": "2026-07-23T03:50:46.124Z",
-  "retry_count": 1
-}

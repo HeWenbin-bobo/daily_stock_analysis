@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"python -c \\\"\\nimport requests\\nr=requests.post('http://127.0.0.1:8000/api/v1/hot-analysis/preview', json={'hot_list_n':20,'max_intersection':300,'rounds':1,'inter_round_sleep':0,'simple_re...",
-  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\site-packages\\urllib3\\connectionpool.py\", line 534, in _make_request\r\n    response = conn.getresponse()\r\n               ^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\site-packages\\urllib3\\connection.py\", line 571, in getresponse\r\n    httplib_response = super().getresponse()\r\n                       ^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\...",
-  "timestamp": "2026-07-24T07:54:24.919Z",
-  "retry_count": 1
-}

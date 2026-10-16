@@ -43,11 +43,21 @@ export const StockBarItemComponent: React.FC<StockBarItemProps> = ({
     .replace('Market phase: ', '');
 
   return (
-    <button
-      type="button"
+    // The row hosts its own delete control, so it cannot be a <button>
+    // (nested buttons are invalid HTML and break keyboard/click semantics).
+    // role/tabIndex/keydown reproduce the button affordances instead.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onClick(item.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick(item.id);
+        }
+      }}
       aria-label={t('history.itemAria', { name: stockName, code: item.stockCode })}
-      className={`home-history-item w-full min-w-0 flex-1 text-left p-2.5 group/item ${
+      className={`home-history-item w-full min-w-0 flex-1 text-left p-2.5 group/item cursor-pointer ${
         isViewing ? 'home-history-item-selected' : ''
       }`}
     >
@@ -150,6 +160,6 @@ export const StockBarItemComponent: React.FC<StockBarItemProps> = ({
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 };

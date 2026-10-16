@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"curl -s --max-time 150 -X POST http://127.0.0.1:8001/api/v1/hot-analysis/analyze-single -H 'Content-Type: application/json' -d '{\\\"code\\\":\\\"600519\\\",\\\"rounds\\\":1,\\\"simple_report\\\":true}' |...",
-  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<string>\", line 3, in <module>\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\json\\__init__.py\", line 293, in load\r\n    return loads(fp.read(),\r\n           ^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\json\\__init__.py\", line 346, in loads\r\n    return _default_decoder.decode(s)\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\r\n  File \"D:\\miniforge3\\envs\\daily_stock_analysis\\Lib\\json\\decoder.py\", line 338, in decode\r\n    ...",
-  "timestamp": "2026-08-11T13:49:57.946Z",
-  "retry_count": 1
-}

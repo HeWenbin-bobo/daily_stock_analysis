@@ -38,6 +38,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# 社区热榜的行情富化预算：榜单行本身已在库中，行情只是附加字段。上游数据源
+# 挂起时（实测 akshare/baostock 各 15s 超时），给整批一个上限，超时即返回已
+# 拿到的部分，避免只读接口长期占用 Web 线程池。
+_HOT_LIST_QUOTE_BUDGET_SECONDS = 8.0
+
 
 # ============================================================================
 # 公共 helper：限流统一调用
@@ -722,10 +727,15 @@ def paper_transfer(payload: dict, request: Request):
 def community_hot_list(date: Optional[str] = None, limit: int = Query(50, le=200)):
     # ★ 迭代2 修复(M2)：date=None 时 date 与 items 必须用同一个日期，否则响应显示
     #   "最新日期" 却查今天（可能无数据）→ 自相矛盾
+    # ★ 本轮修复：榜单行的行情富化设总预算。这是只读接口且榜单数据已在库里，
+    #   上游数据源挂起时（实测 akshare/baostock 各 15s 超时）不能把请求线程占死。
     actual_date = date or cm.get_latest_hot_list_date()
     return {
         "date": actual_date,
-        "items": cm.get_daily_hot_list(actual_date, limit) if actual_date else [],
+        "items": (
+            cm.get_daily_hot_list(actual_date, limit, quote_budget_seconds=_HOT_LIST_QUOTE_BUDGET_SECONDS)
+            if actual_date else []
+        ),
     }
 
 

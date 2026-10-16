@@ -63,8 +63,10 @@ jobs:
       - name: Install backend gate dependencies
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install flake8 pytest
+          # 与 backend-gate (ci.yml) 一致：requirements-ci.txt 递归拉 requirements.txt
+          # 并附上 pytest-timeout 等 CI-only 依赖；ci_gate.sh 传了 --timeout=120，
+          # 缺插件时 pytest 会以 unrecognized arguments 退出。
+          pip install -r .github/requirements-ci.txt
 
       - name: Run backend gate before publish
         run: ./scripts/ci_gate.sh

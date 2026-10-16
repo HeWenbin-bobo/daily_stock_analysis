@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"sleep 120; curl -s -X POST \\\"http://127.0.0.1:8001/api/v2/hot-analysis/analyze-single\\\" -H \\\"Content-Type: application/json\\\" -d '{\\\"code_or_name\\\":\\\"600519\\\",\\\"llm_timeout_seconds\\\":30}' ...",
-  "error": "Exit code 143\nCommand timed out after 3m 0s",
-  "timestamp": "2026-08-02T14:43:21.099Z",
-  "retry_count": 1
-}

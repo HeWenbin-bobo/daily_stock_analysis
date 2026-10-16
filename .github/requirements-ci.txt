@@ -4,3 +4,6 @@
 # Test and lint tooling used by backend-gate.
 flake8
 pytest
+# ci_gate.sh passes --timeout=120 / timeout_method=thread; without this plugin
+# pytest exits with "unrecognized arguments" and backend-gate fails.
+pytest-timeout>=2.3.0

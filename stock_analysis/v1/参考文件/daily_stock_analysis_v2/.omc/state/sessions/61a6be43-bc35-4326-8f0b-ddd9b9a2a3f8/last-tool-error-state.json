@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd \\\"F:/daily_stock_analysis\\\" && python -c \\\"\\nimport re\\nfilepath = 'update_version/tests/test_hot_analysis.py'\\nwith open(filepath, 'r', encoding='utf-8') as f:\\n    content = f.read()\\...",
-  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<string>\", line 7, in <module>\r\nUnicodeEncodeError: 'gbk' codec can't encode character '\\xbe' in position 9: illegal multibyte sequence",
-  "timestamp": "2026-07-28T07:24:10.853Z",
-  "retry_count": 1
-}

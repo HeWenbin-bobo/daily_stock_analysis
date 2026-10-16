@@ -1,7 +1,0 @@
-{
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"F:\\\\daily_stock_analysis_v2\\\\update_version_v2\\\\AGENTS.md\"}",
-  "error": "File does not exist. Note: your current working directory is F:\\daily_stock_analysis_v2.",
-  "timestamp": "2026-08-11T14:16:00.485Z",
-  "retry_count": 1
-}

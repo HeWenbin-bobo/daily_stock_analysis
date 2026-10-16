@@ -1,7 +1,0 @@
-{
-  "tool_name": "WebFetch",
-  "tool_input_preview": "{\"url\":\"https://github.com/xbtlin/ai-berkshire\",\"prompt\":\"这个仓库是什么项目？请提取：1) 项目名称和定位（README 开头描述） 2) 主要功能模块 3) 技术栈（语言/框架） 4) 目录结构 5) 如何运行。尽可能详细。\"}",
-  "error": "Unable to verify if domain github.com is safe to fetch. This may be due to network restrictions or enterprise security policies blocking claude.ai.",
-  "timestamp": "2026-08-26T16:37:29.933Z",
-  "retry_count": 1
-}

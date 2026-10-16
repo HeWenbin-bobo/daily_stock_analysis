@@ -79,7 +79,7 @@ python scripts/check_ai_assets.py
   - `src/core/`：主流程编排
   - `src/services/`：业务服务层
   - `src/repositories/`：数据访问层
-  - `src/reports/`：报告生成
+  - `src/services/report_renderer.py` 与 `templates/*.j2`：报告生成
   - `src/schemas/`：Schema / 数据结构
   - `data_provider/`：多数据源适配与 fallback
   - `api/`：FastAPI API

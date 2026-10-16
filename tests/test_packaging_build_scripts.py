@@ -6,6 +6,7 @@ import json
 import os
 import runpy
 import shlex
+import shutil
 import subprocess
 from types import SimpleNamespace
 from pathlib import Path
@@ -21,9 +22,24 @@ def _read_text(path: Path) -> str:
 
 
 def _bash_path(path: Path) -> str:
+    """Render a path for the `bash` that these tests invoke on PATH.
+
+    On Windows that bash may be Cygwin/MSYS (Git Bash) or a WSL relay, and they
+    disagree on drive mapping: Git Bash needs `/f/...` while WSL needs
+    `/mnt/f/...`. `cygpath` ships with the Cygwin/MSYS toolchain, so when it is
+    present its answer is the one that matches the bash in use; otherwise this
+    is WSL and the `/mnt/<drive>/` form applies.
+    """
     resolved = path.resolve()
     if os.name != "nt":
         return str(resolved)
+    if shutil.which("cygpath"):
+        return subprocess.run(
+            ["cygpath", "-u", str(resolved)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
     drive = resolved.drive.rstrip(":").lower()
     relative = resolved.relative_to(resolved.anchor).as_posix()
     return f"/mnt/{drive}/{relative}"

@@ -11,6 +11,7 @@ export type ApiErrorCategory =
   | 'upstream_llm_400'
   | 'upstream_timeout'
   | 'upstream_network'
+  | 'server_capability'
   | 'local_connection_failed'
   | 'http_error'
   | 'unknown';
@@ -167,6 +168,20 @@ function extractErrorCode(data: unknown): string | null {
   }
 
   return pickString(data.error, data.code);
+}
+
+// Backend codes for "the server is healthy but a required local capability is
+// missing" (as opposed to an upstream/proxy failure, which shares HTTP 503).
+const BACKEND_CAPABILITY_CODES = new Set([
+  'share_image_unavailable',
+  'renderer_unavailable',
+  'capability_unsupported',
+  'feature_disabled',
+  'not_supported',
+]);
+
+function isBackendCapabilityCode(code: string): boolean {
+  return BACKEND_CAPABILITY_CODES.has(code.trim().toLowerCase());
 }
 
 function extractConfigValidationIssues(data: unknown): string | null {
@@ -487,6 +502,20 @@ export function parseApiError(error: unknown): ParsedApiError {
       '503',
     ])
   ) {
+    // A 5xx here is not automatically an outbound-network failure: the backend
+    // also uses 503 for "this capability is unavailable on this host" (e.g. the
+    // share-image renderer is not installed) and names the real cause in its
+    // payload. Prefer that specific message over guessing proxy/DNS, which
+    // sends users chasing a network problem that does not exist.
+    if (errorCode && isBackendCapabilityCode(errorCode)) {
+      return createParsedApiError({
+        title: '服务端缺少所需能力',
+        message: rawMessage,
+        rawMessage,
+        status,
+        category: 'server_capability',
+      });
+    }
     return createParsedApiError({
       title: '服务端无法访问外部依赖',
       message: '页面已连接到本地服务，但本地服务访问外部模型或数据接口失败，请检查代理、DNS 或出网配置。',

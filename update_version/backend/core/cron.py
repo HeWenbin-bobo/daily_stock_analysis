@@ -429,6 +429,12 @@ def _schedule_job(
             id=job_id,
             name=description or job_id,
             replace_existing=True,
+            # 内置扫描类任务单次执行可能超过调度间隔（外部数据源挂起时尤甚）。
+            # max_instances=1 保证同一任务不会并发堆积；coalesce=True 让错过的
+            # 多次触发合并为一次，misfire_grace_time 给迟到执行留出余量。
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=300,
         )
         # 注册监听器（job 执行后写日志）
         _attach_listener_if_needed()

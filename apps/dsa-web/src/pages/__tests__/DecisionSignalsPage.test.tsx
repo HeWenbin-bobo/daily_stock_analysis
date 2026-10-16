@@ -756,6 +756,10 @@ describe('DecisionSignalsPage', () => {
   it('reports an expired signal refresh separately and refreshes active views', async () => {
     const refreshedItem = makeSignal({
       id: 90,
+      // The shared fixture is pinned to 2026-06-17, which ages out of the 90-day
+      // timeline window; a refreshed signal must stay inside it to be shown.
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       decisionProfile: 'balanced',
       sourceAgent: null,
       triggerSource: 'api',

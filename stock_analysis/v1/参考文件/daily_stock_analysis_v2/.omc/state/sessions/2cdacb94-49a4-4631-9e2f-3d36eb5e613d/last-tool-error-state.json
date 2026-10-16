@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"powershell -NoProfile -Command \\\"Get-CimInstance Win32_Process | Where-Object { \\\\$_.CommandLine -like '*main.py*' -or \\\\$_.CommandLine -like '*conda*run*' -or \\\\$_.Name -eq 'conda.exe' } ...",
-  "error": "Exit code 1\n\r\nName           ProcessId CmdLine                                                                                       \r\n----           --------- -------                                                                                       \r\nbash.exe           20900 \"C:\\Program Files\\Git\\bin\\bash.exe\" -c \"source /c/Users/jww/.claude/shell-snapshots/snapsho...\r\nbash.exe            6376 \"C:\\Program Files\\Git\\bin\\..\\usr\\bin\\bash.exe\" -c \"source /c/Users/jww/.claude/shell-snapsh...\r\nba...",
-  "timestamp": "2026-07-02T01:21:25.944Z",
-  "retry_count": 1
-}

@@ -28,12 +28,15 @@ ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 安装系统依赖（wkhtmltopdf 含 wkhtmltoimage，用于 Markdown 转图片 Issue #289）
+# fonts-noto-cjk 提供中文/韩文渲染字体；缺少时分享图中的 CJK 文字会消失，
+# 只剩数字与边框（见 docs/share-images.md）。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
     git \
     gosu \
     wkhtmltopdf \
+    fonts-noto-cjk \
     fontconfig \
     libjpeg62-turbo \
     libxrender1 \
@@ -62,7 +65,7 @@ COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Verify globally bundled runtime dependencies without leaving SDK logs in the image.
 RUN mkdir -p /tmp/futu-sdk-smoke-home && \
-    HOME=/tmp/futu-sdk-smoke-home python -c "import alphasift.dsa_adapter; import futu" && \
+    HOME=/tmp/futu-sdk-smoke-home python -c "import src.services.screening.pipeline; import futu" && \
     rm -rf /tmp/futu-sdk-smoke-home
 
 # 确保数据目录存在并授权给 non-root 用户

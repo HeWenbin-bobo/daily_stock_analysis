@@ -492,11 +492,18 @@ def is_mock_payload(payload: Any) -> bool:
 _QUOTE_SOURCE_TIMEOUT = 15.0
 
 
-def fetch_quotes_bulk(codes: List[str], parallel: bool = True) -> Dict[str, Optional[Dict[str, Any]]]:
+def fetch_quotes_bulk(
+    codes: List[str],
+    parallel: bool = True,
+    budget_seconds: Optional[float] = None,
+) -> Dict[str, Optional[Dict[str, Any]]]:
     """批量拉取行情，避免 N+1
 
     - codes: 股票代码列表
     - parallel: True 时用线程池并发拉取（推荐）；False 时顺序拉取
+    - budget_seconds: 整批的总时间预算。到期后未完成的 code 直接记为 None 并返回，
+      不再等待（上游数据源挂起时，单个 code 最坏要跑满整条 fallback 链，
+      30 只叠加足以占满 Web 线程池）。None 表示沿用旧行为、不设总预算。
     - 返回: {code: quote_dict_or_None} — 缺失的 code 也保留 key，值为 None
     - 利用现有 60s 内存缓存，已缓存的 code 不会触发新请求
     """
@@ -507,17 +514,38 @@ def fetch_quotes_bulk(codes: List[str], parallel: bool = True) -> Dict[str, Opti
     unique_codes = [c for c in codes if not (c in seen or seen.add(c))]
     result: Dict[str, Optional[Dict[str, Any]]] = {c: None for c in unique_codes}
     if parallel:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
         max_workers = min(8, len(unique_codes))
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        deadline = (time.monotonic() + budget_seconds) if budget_seconds else None
+        # 不用 with：块退出会 join 所有 worker，超时形同虚设。改为手动 shutdown
+        # 且不等待未完成任务，让挂起的上游调用留在后台线程里自生自灭。
+        ex = ThreadPoolExecutor(max_workers=max_workers)
+        try:
             futures = {ex.submit(fetch_quote_with_fallback, c): c for c in unique_codes}
-            for fut in as_completed(futures):
-                c = futures[fut]
-                try:
-                    result[c] = fut.result(timeout=30)
-                except Exception as e:
-                    logger.warning("bulk fetch %s failed: %s", c, e)
-                    result[c] = None
+            pending = set(futures)
+            while pending:
+                # 必须用 wait(timeout=) 主动限时：as_completed 只在有 future 完成时
+                # 才返回，整批都卡在上游时它会一直阻塞到最慢的那个跑完。
+                remaining = None
+                if deadline is not None:
+                    remaining = max(0.0, deadline - time.monotonic())
+                done, pending = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    c = futures[fut]
+                    try:
+                        result[c] = fut.result(timeout=0)
+                    except Exception as e:
+                        logger.warning("bulk fetch %s failed: %s", c, e)
+                        result[c] = None
+                if deadline is not None and time.monotonic() >= deadline and pending:
+                    logger.warning(
+                        "bulk fetch budget %.1fs exhausted; %d/%d codes unresolved "
+                        "(returning partial quotes)",
+                        budget_seconds, len(pending), len(unique_codes),
+                    )
+                    break
+        finally:
+            ex.shutdown(wait=False)
     else:
         for c in unique_codes:
             result[c] = fetch_quote_with_fallback(c)

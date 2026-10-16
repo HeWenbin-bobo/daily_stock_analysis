@@ -565,9 +565,13 @@ class BaseFetcher(ABC):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # 去除关键列为空的行
-        df = df.dropna(subset=['close', 'volume'])
-        
+        # 去除关键列为空的行。只检查真实存在的列：部分数据源（如腾讯
+        # `ak.stock_zh_a_hist_tx`）不再返回 volume，硬编码列名会让整条
+        # fallback 链因 KeyError 提前失败，而不是走下一数据源。
+        key_cols = [col for col in ('close', 'volume') if col in df.columns]
+        if key_cols:
+            df = df.dropna(subset=key_cols)
+
         # 按日期升序排序
         df = df.sort_values('date', ascending=True).reset_index(drop=True)
         
@@ -592,10 +596,13 @@ class BaseFetcher(ABC):
         # 注意：此处的 volume_ratio 是“日线成交量 / 前5日均量(shift 1)”的相对倍数，
         # 与部分交易软件口径的“分时量比（同一时刻对比）”不同，含义更接近“放量倍数”。
         # 该行为目前保留（按需求不改逻辑）。
-        avg_volume_5 = df['volume'].rolling(window=5, min_periods=1).mean()
-        df['volume_ratio'] = df['volume'] / avg_volume_5.shift(1)
-        df['volume_ratio'] = df['volume_ratio'].fillna(1.0)
-        
+        # 只有该数据源真的提供了 volume 才计算量比；缺失时留空，下游按“无数据”处理，
+        # 避免用虚构的 0 成交量造出误导性的量比。
+        if 'volume' in df.columns:
+            avg_volume_5 = df['volume'].rolling(window=5, min_periods=1).mean()
+            df['volume_ratio'] = df['volume'] / avg_volume_5.shift(1)
+            df['volume_ratio'] = df['volume_ratio'].fillna(1.0)
+
         # 保留2位小数
         for col in ['ma5', 'ma10', 'ma20', 'volume_ratio']:
             if col in df.columns:

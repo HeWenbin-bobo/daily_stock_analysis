@@ -417,6 +417,40 @@ class AnalysisHistoryTestCase(unittest.TestCase):
         with self.db.get_session() as session:
             self.assertIsNotNone(session.query(AnalysisHistory).filter(AnalysisHistory.id == record_id).first())
 
+    def test_stock_bar_rejects_malformed_dates_as_400_not_500(self) -> None:
+        """非法日期是客户端输入问题，不能被兜底 except 升格成 500。"""
+        if get_stock_bar is None:
+            self.skipTest("fastapi is not installed in this test environment")
+
+        for field, value in (
+            ("start_date", "notadate"),
+            ("start_date", "2026-13-45"),
+            ("end_date", "9999-99-99"),
+        ):
+            with self.subTest(field=field, value=value):
+                kwargs = {
+                    "start_date": None,
+                    "end_date": None,
+                    "limit": 10,
+                    "db_manager": self.db,
+                    field: value,
+                }
+                with self.assertRaises(Exception) as raised:
+                    get_stock_bar(**kwargs)
+                self.assertEqual(getattr(raised.exception, "status_code", None), 400)
+
+    def test_stock_bar_accepts_valid_and_absent_dates(self) -> None:
+        if get_stock_bar is None:
+            self.skipTest("fastapi is not installed in this test environment")
+
+        for kwargs in (
+            {"start_date": "2026-01-01", "end_date": "2026-12-31"},
+            {"start_date": None, "end_date": None},
+        ):
+            with self.subTest(kwargs=kwargs):
+                response = get_stock_bar(limit=10, db_manager=self.db, **kwargs)
+                self.assertIsNotNone(response)
+
     def _build_result(self) -> AnalysisResult:
         """构造分析结果"""
         return AnalysisResult(

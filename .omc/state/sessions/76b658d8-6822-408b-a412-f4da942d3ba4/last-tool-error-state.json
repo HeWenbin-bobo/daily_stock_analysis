@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"wmic process where \\\"ProcessId=34228\\\" get Name,ProcessId 2>&1\",\"description\":\"Identify PID 34228\"}",
-  "error": "Exit code 127\n/usr/bin/bash: line 1: wmic: command not found",
-  "timestamp": "2026-08-03T09:39:27.628Z",
-  "retry_count": 2
-}

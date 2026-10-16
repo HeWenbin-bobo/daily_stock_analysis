@@ -137,6 +137,12 @@ const TokenUsagePage: React.FC = () => {
     };
   }, [loadDashboard]);
 
+  // Keep the browser tab/bookmark title in step with the route, matching the
+  // other pages (this page previously left the bundler default in place).
+  useEffect(() => {
+    document.title = `${t('usage.title')} - DSA`;
+  }, [t]);
+
   const largestCallTypeTotal = useMemo(() => {
     return Math.max(...(dashboard?.byCallType.map((item) => item.totalTokens) ?? [0]), 1);
   }, [dashboard]);

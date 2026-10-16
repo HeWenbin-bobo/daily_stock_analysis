@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"ls \\\"C:\\\\Users\\\\jww\\\\.claude\\\\projects\\\\F--daily-stock-analysis-v2\\\\memory\\\\\\\" | grep -E \\\"project-progress|loop\\\" | sort\",\"description\":\"List existing progress and loop memory files\"}",
-  "error": "Exit code 2\n/usr/bin/bash: eval: line 1: unexpected EOF while looking for matching `\"'",
-  "timestamp": "2026-08-26T01:02:53.788Z",
-  "retry_count": 1
-}

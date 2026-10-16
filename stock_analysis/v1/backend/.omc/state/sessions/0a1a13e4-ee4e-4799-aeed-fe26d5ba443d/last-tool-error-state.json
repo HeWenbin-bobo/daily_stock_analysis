@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"taskkill /F /PID 32700 2>&1\",\"description\":\"kill stale uvicorn\"}",
-  "error": "Exit code 1\n����: ��Ч����/ѡ�� - 'F:/'��\r\n���� \"TASKKILL /?\" ���˽��÷���",
-  "timestamp": "2026-08-03T16:39:07.989Z",
-  "retry_count": 1
-}

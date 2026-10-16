@@ -87,4 +87,20 @@ verify_*.py
 static/
 /apps/dsa-desktop/dist/
 /apps/dsa-desktop/node_modules/
+/node_modules/
 docs/specs/
+
+# 瞬态产物：AGENTS.md 明确要求不入库
+# .omc 只忽略运行时状态；notepad.md / project-memory.json 是人工维护内容，保持可入库。
+# 用 **/ 前缀以匹配嵌套路径（apps/dsa-web/.omc、update_version/*/.omc 等），
+# 带中间斜杠的模式若不加 **/ 会被 git 锚定到仓库根。
+**/.omc/state/
+**/.omc/sessions/
+**/node_modules/
+.playwright-mcp/
+e2e_*.png
+
+# 本地探针/取证输出
+fail_groups.txt
+pytest_failures_full.txt
+pytest_final.txt

@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"taskkill /F /PID 15128 2>&1; taskkill /F /PID 37212 2>&1\",\"description\":\"Stop frontend (15128) and backend (37212) processes\"}",
-  "error": "Exit code 1\n����: ��Ч����/ѡ�� - 'F:/'��\r\n���� \"TASKKILL /?\" ���˽��÷���\r\n����: ��Ч����/ѡ�� - 'F:/'��\r\n���� \"TASKKILL /?\" ���˽��÷���",
-  "timestamp": "2026-08-03T08:24:37.033Z",
-  "retry_count": 1
-}

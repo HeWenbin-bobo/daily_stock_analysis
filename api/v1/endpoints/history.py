@@ -417,6 +417,7 @@ def delete_history_records(
     response_model=StockBarResponse,
     responses={
         200: {"description": "不重复个股列表"},
+        400: {"description": "日期格式非法", "model": ErrorResponse},
         500: {"description": "服务器错误", "model": ErrorResponse},
     },
     summary="获取不重复个股列表",
@@ -433,8 +434,18 @@ def get_stock_bar(
         from src.utils.data_processing import parse_json_field
 
         service = HistoryService(db_manager)
-        start = date_type.fromisoformat(start_date) if start_date else None
-        end = date_type.fromisoformat(end_date) if end_date else None
+        try:
+            start = date_type.fromisoformat(start_date) if start_date else None
+            end = date_type.fromisoformat(end_date) if end_date else None
+        except ValueError:
+            # 非法日期是客户端输入问题，应返回 400 而不是落到下面的 500。
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_request",
+                    "message": "start_date/end_date 必须是 YYYY-MM-DD 格式的合法日期",
+                },
+            )
 
         # Fetch more than limit to compensate for normalization dedup shrinkage
         # (e.g. 002460 + 002460.SZ both initially counted but merged to one)
@@ -511,6 +522,9 @@ def get_stock_bar(
         items = items[:limit]
         return StockBarResponse(total=len(items), items=items)
 
+    except HTTPException:
+        # 上面已给出明确的 400，不要被下面的兜底升格成 500。
+        raise
     except Exception as e:
         logger.error(f"查询个股栏失败: {e}", exc_info=True)
         raise HTTPException(

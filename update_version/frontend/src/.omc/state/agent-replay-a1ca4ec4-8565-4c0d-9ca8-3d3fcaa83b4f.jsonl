@@ -1,4 +1,0 @@
-{"t":0,"agent":"abc10b1","agent_type":"executor","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"abc10b1","agent_type":"executor","event":"agent_stop","success":true,"duration_ms":282545}
-{"t":0,"agent":"ad8f4a7","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"system","event":"skill_invoked","skill_name":"agent-browser"}

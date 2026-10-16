@@ -11,6 +11,7 @@
 """
 
 import logging
+import math
 import traceback
 from typing import Callable
 
@@ -67,18 +68,39 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
             )
 
 
+def _json_safe(value):
+    """Return a JSON-serialisable copy of validation error details.
+
+    Pydantic reports the rejected input verbatim, so it can carry values that
+    ``json`` refuses to encode: a client sending ``NaN``/``Infinity`` puts a
+    non-finite float in the payload, and a non-JSON content type leaves the raw
+    ``bytes`` body there. Both used to turn a legitimate 422 into a 500.
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else repr(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    return repr(value)
+
+
 def add_error_handlers(app) -> None:
     """
     添加全局异常处理器
-    
+
     为 FastAPI 应用添加各类异常的处理器
-    
+
     Args:
         app: FastAPI 应用实例
     """
     from fastapi import HTTPException
     from fastapi.exceptions import RequestValidationError
-    
+
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         """处理 HTTP 异常"""
@@ -97,7 +119,7 @@ def add_error_handlers(app) -> None:
                 "detail": None
             }
         )
-    
+
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         """处理请求验证异常"""
@@ -106,7 +128,7 @@ def add_error_handlers(app) -> None:
             content={
                 "error": "validation_error",
                 "message": "请求参数验证失败",
-                "detail": exc.errors()
+                "detail": _json_safe(exc.errors())
             }
         )
     

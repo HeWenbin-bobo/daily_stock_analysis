@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd F:/daily_stock_analysis/update_version_v2/backend && python -m db.migrate 2>&1\",\"description\":\"Run db migration\"}",
-  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\r\n  File \"<frozen runpy>\", line 88, in _run_code\r\n  File \"F:\\daily_stock_analysis\\update_version_v2\\backend\\db\\migrate.py\", line 38, in <module>\r\n    n = migrate()\r\n        ^^^^^^^^^\r\n  File \"F:\\daily_stock_analysis\\update_version_v2\\backend\\db\\migrate.py\", line 26, in migrate\r\n    cur.executescript(schema_sql)\r\nsqlite3.OperationalError: unrecognized token: \"#\"",
-  "timestamp": "2026-07-30T02:55:46.767Z",
-  "retry_count": 1
-}

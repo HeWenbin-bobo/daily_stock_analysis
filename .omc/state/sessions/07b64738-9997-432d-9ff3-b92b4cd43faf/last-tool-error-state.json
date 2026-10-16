@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /f/daily_stock_analysis_v2/update_version_v2 && sed -n '786,800p' backend/api/endpoints_hot.py; echo \\\"=== 定时任务触发后前端不刷新列表 → last_status 仍是旧的（除非重新加载）===\\\"; grep -rn \\\"handleTrigger\\\" -A ...",
-  "error": "Exit code 2\nasync def _watch_scheduled_persist(sched_task_id: int, analysis_task_id: str, timeout: float = 7200) -> None:\n    \"\"\"轮询主项目分析任务，终态时落库 v2 + 更新定时任务 last_status。\"\"\"\n    try:\n        deadline = time.time() + timeout\n        while time.time() < deadline:\n            task = _main_task(analysis_task_id)\n            if task is None:\n                return\n            if task.get(\"phase\") == \"completed\" or task.get(\"status\") in (\"ok\", \"failed\", \"cancelled\", \"timeout\"):\n                result =...",
-  "timestamp": "2026-08-24T03:41:03.706Z",
-  "retry_count": 1
-}

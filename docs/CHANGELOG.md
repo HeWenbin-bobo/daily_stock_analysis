@@ -139,6 +139,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 <!-- 每条独立一行追加到本段末尾，无需分类标题，合并时冲突最小 -->
 - [修复] 告警规则创建、启停或删除期间切换筛选或分页后，列表刷新使用当前筛选条件，避免旧请求闭包覆盖当前视图。
 - [修复] 设置页首次启动引导的「维护自选股」按钮点击后滚动并聚焦到基础配置的 `STOCK_LIST` 字段，避免引导卡片仅在基础配置分类渲染时重复切换当前分类而无任何跳转或反馈；其余引导按钮的分类跳转语义不变。
+- [修复] `apps/dsa-web/` 与 `apps/dsa-desktop/` 对齐上游基线：此前一次冲突合并逐文件采用了各自的旧版本，导致 Web 端 `npm run dev` 依赖预打包失败（`hooks/index.ts` 未导出 `SettingsPage` 需要的 `useDesktopUpdate`）、`npm run build` 因 83 个 TS 错误中断、数据中台页面无路由与导航入口、分享图片按钮未接线后端 `/share-image`。对齐后 Web 端 `tsc -b`／`build`／`lint` 全通过，`/data` 路由与导航入口恢复。
+- [修复] `python -m pytest` 全量收集不再报 190 个 `ModuleNotFoundError`：`setup.cfg` 的 `norecursedirs` 补齐与 flake8 `exclude` 一致的 3 个历史副本目录（`daily_stock_analysis/`、`stock_analysis/`、`update_version/`）。
+- [修复] 桌面端更新入口不再使用原生 `title` 属性（违反仓库自带 UI 治理守卫），改用统一的 `Tooltip` 组件并保留下载进度提示。
+- [修复] 问股股票名称中的内嵌别名不再虚构讨论对象：完整注册名（如 `长电科技`）作为一个词法对象处理，其内部包含的短别名或类代码片段（如 `长电`）不再额外产生目标；独立提及与名称外的代码仍按原规则校验（`长电` 单独出现仍指向长江电力 600900）。
+- [修复] 请求体校验失败的响应不再因不可序列化输入而崩溃：Pydantic 会把被拒输入原样回显进 `RequestValidationError`，而 `json` 无法编码这些值——非有限浮点（`NaN`／`Infinity`）和非 JSON content-type 留下的原始 `bytes` 请求体——导致本应返回 422 的请求变成 500。现统一将错误详情中的非有限浮点序列化为字面量、`bytes` 解码为文本、未知类型降级为 `repr`，422 语义与响应结构不变。
+- [文档] 重新生成 `docs/architecture/api_spec.json`：静态契约由 31 条路径补齐到运行时的 118 条，并移除 3 条运行时已不存在的陈旧条目（`/api/v1/history/{query_id}` 与 `/{query_id}/news` 实际参数为 `{record_id}`，以及 `/`）。此前 `test_decision_signal_static_api_spec_matches_runtime_paths` 在干净工作树也必定失败。
+- [修复] 个股栏历史条目不再渲染嵌套 `<button>`（外层条目原本是 `<button>`，内部又含删除按钮），该结构是无效 HTML，会发生 React 告警并干扰点击与键盘语义；外层改为 `role="button"` + `tabIndex` + Enter/Space 键处理，保留原有可访问性与交互。
+- [修复] 日线数据源缺少 `volume` 列时不再整条 fallback 链失败：`AkShare` 的 `stock_zh_a_hist_tx` 已不再返回该列，而共享的 `_clean_data` 与 `_calculate_indicators` 会无条件索引 `volume`，抛出裸 `KeyError: ['volume']` 并中断取数（日志中 300124/300136/000029 等均报此错）。现仅对真实存在的列做 `dropna`，`volume` 缺失时跳过量比计算（不再以 0 成交量造出误导性量比），下游 `screening`/`alert`/`events` 各自的“缺列/降级”处理照常生效。
+- [修复] 报告通知模板补齐“未获取到新闻数据”披露与数据来源标注：`templates/report_brief.j2`、`report_markdown.j2`、`report_wechat.j2` 缺少 `empty_news_disclosure` 与 `data_sources` 渲染，导致无新闻时用户看不到“本次未纳入新闻维度证据”的提示（`test_notification_empty_news_disclosure` 因此必失败）。
+- [修复] `requirements.txt` 补齐 `fxmacrodata-public-client`：`src/agent/tools/fxmacrodata_tools.py` 在模块级 `import fxmacrodata_public`，且有 3 个 agent 模块无条件引用它，但依赖从未声明，全新安装后启用 Agent 模式会直接 ImportError。使用上游同款固定 release wheel（含 sha256 校验）。
+- [修复] CI 的 `backend-gate` 补齐 `pytest-timeout` 依赖：`scripts/ci_gate.sh` 传 `--timeout=120 -o timeout_method=thread`，而 `.github/requirements-ci.txt` 未安装该插件，pytest 会以 `unrecognized arguments` 退出，导致 backend-gate 必红。
+- [修复] Docker 镜像安装 `fonts-noto-cjk`：`docs/share-images.md` 声明官方镜像已内置 Noto CJK 字体，但 `docker/Dockerfile` 实际未安装，容器内生成的分享图会丢失中文/韩文（只剩数字与边框）。保留 `git` 包，因本仓库 `requirements.txt` 仍含 git 源依赖。
+- [修复] `requirements.txt` 移除已废弃的 `alphasift` git 源依赖：选股引擎已内置于 `src/services/screening`，该依赖在活代码中无任何 import；同时把 `apscheduler` 行的中文注释改为 ASCII（`test_check_env_encoding` 要求该文件纯 ASCII 可解码，此前必定失败）。`docker/Dockerfile` 的 smoke import 也改指内置引擎。
+- [修复] CI 契约对齐：`.github/workflows/ci.yml` 补上 upstream 的 `backend-tests` 分片 job 与路径过滤规则（`test_ci_workflow_contract` 3 项此前必失败）；`docs/decision-signals.md` 补 `/api/v1/decision-signals/stocks/{stock_code}/review` 等条目；`docs/DEPLOY.md`、`docs/docker/zeabur-deployment.md` 修正 `SEARXNG_PUBLIC_INSTANCES_ENABLED` 默认值（文档写 `true`，代码实为 `false`）。
+- [修复] `.gitignore` 补齐瞬态产物规则：根级 `/node_modules/`、`**/.omc/state/`、`**/.omc/sessions/`、`.playwright-mcp/`、`e2e_*.png`。此前这些产物共 483 个文件已被误提交（AGENTS.md 明确禁止入库），`.omc/notepad.md` 与 `.omc/project-memory.json` 为人工维护内容，保持可入库；`.omc` 规则用 `**/` 前缀以覆盖 `apps/dsa-web/.omc` 等嵌套路径。
+- [修复] `GET /api/v1/history/stocks` 的非法 `start_date`/`end_date` 现在返回 400 而非 500：`date.fromisoformat` 抛出的 `ValueError` 此前被兜底 `except Exception` 捕获并升格为「服务器内部错误」，掩盖了客户端输入问题；同时补上该端点缺失的 `except HTTPException: raise` 直通守卫（同文件其它端点本就有），避免明确的 4xx 被兜底改写。
+- [修复] `tests/test_packaging_build_scripts.py` 的 `_bash_path()` 不再硬编码 WSL 的 `/mnt/<drive>/` 约定：Windows 上 PATH 里的 `bash` 可能是 Cygwin/MSYS（Git Bash，需要 `/f/...`）也可能是 WSL relay，两者驱动盘映射不同。现在优先用 `cygpath -u` 生成与所用 bash 匹配的路径，仅在无 Cygwin/MSYS 工具链时回退到 WSL 形式；Linux/CI 分支行为不变。此前该文件 2 个 macOS 签名审计用例在 Git Bash 环境下必失败。
+- [文档] `AGENTS.md` §3 核心职责中 `src/reports/`（该目录并不存在）改为真实位置 `src/services/report_renderer.py` 与 `templates/*.j2`；报告渲染代码位置不变，仅修正文档指向。
+- [修复] `update_version` 后端在上游行情源挂起时不再整体不可用：社区热榜 `GET /api/v2/community/hot-list` 会为榜单股票逐只拉实时行情，而 akshare／baostock 各需 15s 超时，30 只叠加会占满 FastAPI 同步端点线程池，导致所有业务接口排队超时（`/health` 等异步端点仍秒回，表现为「服务活着但接口全挂」）。现 `fetch_quotes_bulk` 支持总时间预算，到期即返回已拿到的部分而不等待挂起的 future（`wait(timeout=)` 而非 `as_completed`，并手动 `shutdown(wait=False)`，避免 `with` 块退出时 join 挂起线程）；热榜端点传入 8s 预算，实测该接口由 30s 降至 8.0s 且其余端点恢复毫秒级响应。同时给内置定时任务补 `max_instances=1, coalesce=True, misfire_grace_time=300`，防止单次执行超过调度间隔时任务背靠背叠加。
+
 
 ## [3.32.0] - 2026-09-06
 
