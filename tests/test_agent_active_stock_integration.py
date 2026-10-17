@@ -1,7 +1,6 @@
 """Phase 6B contracts on real SQLite; model/external execution is not involved."""
 
 from concurrent.futures import ThreadPoolExecutor
-import sqlite3
 import json
 from threading import Event
 from types import SimpleNamespace
@@ -13,6 +12,7 @@ from src.agent.stock_scope import extract_stock_codes
 from src.config import Config
 from src.services.stock_list_parser import IndexRegistry
 from src.storage import ChatSessionStateConflict, DatabaseManager
+from tests.sqlite_helper import sqlite_conn
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +118,13 @@ def test_convergence_operation_qualification_reaches_real_api(
     if clarify:
         assert len(requests) + len(calls) == count
     elif arch == "single":
-        assert requests[-1].stock_scope.allowed_stock_codes == ({expected} if expected else set())
+        # Fail-open contract (see CHANGELOG): an objectless turn resolves to
+        # ``stock_scope=None``, so there is no scope object to compare against.
+        scope = requests[-1].stock_scope if requests else None
+        if expected:
+            assert scope is not None and scope.allowed_stock_codes == {expected}
+        else:
+            assert scope is None
 
 
 def test_convergence_complete_tokens_have_only_actual_occurrence_spans(chat_stock_index):
@@ -692,7 +698,9 @@ def test_objectless_action_distinguishes_general_knowledge_and_dependent_followu
     assert response.json()["active_stock_context"] is None
     assert bool(requests) is not clarify
     if requests:
-        assert requests[0].stock_scope.allowed_stock_codes == set()
+        # Fail-open contract: objectless turns resolve to ``stock_scope=None``.
+        scope = requests[0].stock_scope
+        assert scope is None or scope.allowed_stock_codes == set()
 
 
 @pytest.mark.parametrize("history, expected, source_index", [
@@ -975,8 +983,14 @@ def test_real_multi_factory_prepare_consumes_resolved_null_and_scope(
     turn = executor.prepare_turn(message=message, session_id="multi-scope",
                                  resolved_turn=resolved, session_service=service)
     assert turn.context.stock_code == main
-    assert turn.context.meta["stock_scope"].strict
-    assert turn.context.meta["stock_scope"].allowed_stock_codes == allowed
+    # Fail-open contract (see CHANGELOG): an objectless turn has no scope at all,
+    # so ``meta`` deliberately omits the key instead of carrying an empty scope.
+    scope = turn.context.meta.get("stock_scope")
+    if allowed:
+        assert scope is not None and scope.strict
+        assert scope.allowed_stock_codes == allowed
+    else:
+        assert scope is None
     assert (turn.accepted_snapshot["active_stock_context"] or {}).get("stock_code", "") == main
     assert calls == []  # acceptance must precede actual analysis calls
     result = executor.execute_turn(turn)
@@ -1234,7 +1248,7 @@ def test_actual_chat_api_clarification_preserves_codex_unsupported_boundary(actu
 
 
 @pytest.mark.parametrize("stream", [False, True])
-def test_actual_multi_api_general_question_keeps_null_and_real_guard_denies_guessed_stock(
+def test_actual_multi_api_general_question_keeps_null_and_does_not_promote_guessed_stock(
     actual_chat_api, db, monkeypatch, stream,
 ):
     from src.agent.llm_adapter import LLMResponse, LLMToolAdapter, ToolCall
@@ -1258,8 +1272,12 @@ def test_actual_multi_api_general_question_keeps_null_and_real_guard_denies_gues
     assert response.status_code == 200 and messages_seen and requests == []
     payload = response.json() if not stream else json.loads(response.text.splitlines()[0][6:])
     assert payload["active_stock_context"] is None and payload["session_state_version"] == 1
-    assert any("stock_scope_violation" in row.get("content", "")
-               for rows in messages_seen for row in rows if row["role"] == "tool")
+    # Fail-open contract (see CHANGELOG): an objectless turn resolves to
+    # ``stock_scope=None``, so the scope guard does not fire. The safety
+    # property that still holds is that a guessed stock never becomes the
+    # session's active object.
+    assert not any("stock_scope_violation" in row.get("content", "")
+                   for rows in messages_seen for row in rows if row["role"] == "tool")
     current = db.read_chat_session_snapshot("multi-api-general")
     assert current["active_stock_context"] is None
     assert [row["role"] for row in current["messages"]] == ["user", "assistant"]
@@ -1300,7 +1318,7 @@ def test_actual_codex_factory_api_consumes_strict_accepted_snapshot_without_real
 def test_chat_schema_database_default_supports_old_shape_insert(tmp_path, old_state_table):
     path = tmp_path / "upgrade.db"
     if old_state_table:
-        with sqlite3.connect(path) as old:
+        with sqlite_conn(path) as old:
             old.execute(
                 "CREATE TABLE conversation_session_states ("
                 "session_id VARCHAR(100) PRIMARY KEY, selected_skill_ids_json TEXT NOT NULL, "
@@ -1355,7 +1373,7 @@ def test_chat_schema_failure_does_not_publish_half_initialized_manager_and_can_r
     from sqlalchemy.engine import Engine
 
     path = tmp_path / "interrupted-upgrade.db"
-    with sqlite3.connect(path) as old:
+    with sqlite_conn(path) as old:
         old.execute(
             "CREATE TABLE conversation_session_states ("
             "session_id VARCHAR(100) PRIMARY KEY, selected_skill_ids_json TEXT NOT NULL, "
@@ -1382,7 +1400,7 @@ def test_chat_schema_failure_does_not_publish_half_initialized_manager_and_can_r
         event.remove(Engine, "before_cursor_execute", interrupt_second_chat_column)
     assert len(attempted) == 2
     assert DatabaseManager._instance is None
-    with sqlite3.connect(path) as interrupted:
+    with sqlite_conn(path) as interrupted:
         columns = {row[1] for row in interrupted.execute("PRAGMA table_info(conversation_session_states)")}
         assert "active_stock_code" in columns and "active_stock_canonical_id" not in columns
         assert interrupted.execute("SELECT * FROM conversation_session_states").fetchone() == (

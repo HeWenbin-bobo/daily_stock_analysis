@@ -2492,6 +2492,33 @@ describe('HomePage', () => {
     expect(historyApi.deleteByCode).toHaveBeenCalledWith('MARKET');
   });
 
+  it('surfaces a delete failure instead of silently ignoring it', async () => {
+    vi.mocked(historyApi.getStockBarList).mockResolvedValue({ total: 0, items: [] });
+    vi.mocked(historyApi.getList).mockImplementation((params: { reportType?: string } = {}) => {
+      if (params.reportType === 'market_review') {
+        return Promise.resolve({
+          total: 1,
+          page: 1,
+          limit: 10,
+          items: [marketReviewHistoryItem],
+        });
+      }
+      return Promise.resolve({ total: 0, page: 1, limit: 20, items: [] });
+    });
+    vi.mocked(historyApi.deleteByCode).mockRejectedValue(new Error('boom'));
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '删除 大盘复盘 历史记录' }));
+
+    // AGENTS §11: 失败必须可见 —— 用户显式删除失败不能毫无反馈。
+    expect(await screen.findByText(/boom/)).toBeInTheDocument();
+  });
+
   it('surfaces duplicate task warnings from dashboard submission', async () => {
     vi.mocked(historyApi.getList).mockResolvedValue({
       total: 0,

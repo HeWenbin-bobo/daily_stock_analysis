@@ -101,3 +101,29 @@ def test_invalid_litellm_log_level_falls_back_to_warning(tmp_path, monkeypatch):
     assert "invalid level warning should remain" in debug_log_text
     assert "LITELLM_LOG_LEVEL" in debug_log_text
     assert "已回退为 WARNING" in debug_log_text
+
+
+def test_log_records_redact_webhook_and_bot_credentials(tmp_path, monkeypatch):
+    """Credentials echoed in ``requests`` errors must never reach the log files.
+
+    Connection/HTTP errors from ``requests`` embed the request URL, and webhook /
+    bot endpoints carry the token inside the path or query string.
+    """
+    monkeypatch.delenv("LITELLM_LOG_LEVEL", raising=False)
+    setup_logging(log_prefix="stock_analysis", log_dir=str(tmp_path), debug=False)
+
+    telegram_token = "123456:AAHsecretTelegramToken"
+    serverchan_key = "SCTsecretServerChanKey"
+    dingtalk_token = "DINGsecretAccessToken"
+
+    logger = logging.getLogger("src.notification_sender")
+    logger.error("Telegram request failed: Max retries exceeded with url: /bot%s/sendMessage", telegram_token)
+    logger.error("ServerChan failed: Max retries exceeded with url: /send/%s.send", serverchan_key)
+    logger.error("DingTalk failed: Max retries exceeded with url: /robot/send?access_token=%s", dingtalk_token)
+
+    debug_log_text = _read_debug_log(tmp_path)
+    assert telegram_token not in debug_log_text
+    assert serverchan_key not in debug_log_text
+    assert dingtalk_token not in debug_log_text
+    # Diagnostics remain useful: the non-secret context is preserved.
+    assert "/sendMessage" in debug_log_text

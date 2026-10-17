@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
+import pytest
 from fastapi import FastAPI, HTTPException, Request
 
 from tests.litellm_stub import ensure_litellm_stub
@@ -288,6 +289,10 @@ class SystemConfigApiTestCase(unittest.TestCase):
         self.assertEqual(ctx.exception.detail["error"], "validation_failed")
         self.assertEqual(ctx.exception.detail["issues"][0]["key"], "GENERATION_BACKEND_TIMEOUT_SECONDS")
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Codex App Server Agent excludes native Windows",
+    )
     def test_preview_agent_backend_status_uses_draft_without_persisting(self) -> None:
         before = self.env_path.read_text(encoding="utf-8")
         before_version = self.manager.get_config_version()
@@ -998,6 +1003,27 @@ class SystemConfigApiTestCase(unittest.TestCase):
         self.assertEqual(payload["models"], ["qwen-plus", "qwen-turbo"])
         self.assertEqual(payload["stage"], "model_discovery")
         mock_discover.assert_called_once()
+
+    def test_discover_models_schema_bounds_timeout_seconds(self) -> None:
+        """Non-finite / unbounded timeouts must be rejected at the schema layer.
+
+        ``timeout=inf`` reaches ``requests`` as an ``OverflowError`` (not a
+        ``RequestException``), which the endpoint would otherwise surface as 500.
+        """
+        from pydantic import ValidationError
+
+        for bad in (float("inf"), float("nan"), 0.0, 100000.0):
+            with self.assertRaises(ValidationError):
+                DiscoverLLMChannelModelsRequest(name="x", timeout_seconds=bad)
+        ok = DiscoverLLMChannelModelsRequest(name="x", timeout_seconds=30.0)
+        self.assertEqual(ok.timeout_seconds, 30.0)
+
+    def test_test_llm_channel_schema_bounds_timeout_seconds(self) -> None:
+        from pydantic import ValidationError
+
+        for bad in (float("inf"), float("nan"), 0.0, 100000.0):
+            with self.assertRaises(ValidationError):
+                TestLLMChannelRequest(name="x", timeout_seconds=bad)
 
 
 if __name__ == "__main__":

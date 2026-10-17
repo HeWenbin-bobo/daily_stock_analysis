@@ -2137,6 +2137,23 @@ class DsaEastMoneyHotspotProvider:
         self._last_request_ts = 0.0
         self._min_request_interval = 0.25
 
+    def close(self) -> None:
+        """Close the shared HTTP session.
+
+        The provider is constructed per screening call, so callers should invoke
+        this when finished; ``__del__`` is a best-effort safety net for the
+        discard-without-close path.
+        """
+        session = getattr(self, "_session", None)
+        if session is not None:
+            session.close()
+
+    def __del__(self) -> None:  # pragma: no cover - GC safety net
+        try:
+            self.close()
+        except Exception:
+            pass
+
     @contextmanager
     def _source_call_budget(self) -> Iterator[None]:
         """Apply one configured budget to a board, constituent, or detail call.

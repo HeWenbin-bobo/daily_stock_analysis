@@ -484,12 +484,14 @@ def _watch_conditions(dashboard: Mapping[str, Any]) -> Optional[Any]:
     phase_decision = _as_mapping(dashboard.get("phase_decision"))
     watch_conditions = phase_decision.get("watch_conditions")
     if isinstance(watch_conditions, list) and watch_conditions:
-        return [str(item) for item in watch_conditions if str(item or "").strip()] or None
+        out = [str(item) for item in watch_conditions if str(item or "").strip()]
+        return out[:5] or None
 
     battle_plan = _as_mapping(dashboard.get("battle_plan"))
     checklist = battle_plan.get("action_checklist")
     if isinstance(checklist, list) and checklist:
-        return [str(item) for item in checklist if str(item or "").strip()] or None
+        out = [str(item) for item in checklist if str(item or "").strip()]
+        return out[:5] or None
     return None
 
 

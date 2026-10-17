@@ -22,6 +22,15 @@ from src.agent.codex_tool_process import MAX_TOOL_RESULT_BYTES, CodexToolProcess
 from src.agent.stock_scope import StockScope
 from src.agent.tools.execution import ToolAccessContext
 
+# The harness below drives POSIX process groups (``os.killpg``/``os.getpgid``)
+# and pipe semantics (``select`` on pipes). The Codex App Server backend is
+# explicitly unsupported on native Windows (``capability_unsupported``), so
+# every scenario here is unreachable there.
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="Codex App Server harness requires POSIX process groups and pipes",
+)
+
 
 def _ok_result(tool_name: str, payload: dict) -> dict:
     return {

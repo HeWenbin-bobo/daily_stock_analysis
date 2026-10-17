@@ -10,7 +10,7 @@ import threading
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -280,7 +280,7 @@ async def agent_chat(
             status_code=400,
             detail={
                 "error": "capability_unsupported",
-                "message": "Codex Agent requires the Chat interface with progress and stop support",
+                "message": "Codex Agent 仅支持带进度与停止能力的 Chat 界面",
             },
         )
     
@@ -333,7 +333,7 @@ class SessionMessagesResponse(BaseModel):
 
 @router.get("/chat/sessions", response_model=SessionsResponse)
 async def list_chat_sessions(
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200, description="返回会话数量上限"),
     user_id: Optional[str] = None,
     session_service: AgentChatSessionService = Depends(get_agent_chat_session_service),
 ):
@@ -354,7 +354,7 @@ async def list_chat_sessions(
 @router.get("/chat/sessions/{session_id}", response_model=SessionMessagesResponse)
 async def get_chat_session_messages(
     session_id: str,
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=500, description="返回消息数量上限"),
     session_service: AgentChatSessionService = Depends(get_agent_chat_session_service),
 ):
     """获取单个会话的完整消息"""
@@ -572,7 +572,7 @@ async def agent_chat_stream(
                     status_code=409,
                     detail={
                         "error": "request_conflict",
-                        "message": "This Agent request is already running",
+                        "message": "该 Agent 请求正在运行中",
                     },
                 )
             _ACTIVE_CODEX_STREAMS[request_id] = cancel_event
@@ -615,7 +615,7 @@ async def agent_chat_stream(
             logger.error("Agent stream error: %s", exc)
             event = {
                 "type": "error",
-                "message": "Agent Chat failed" if backend_id == "codex_app_server" else str(exc),
+                "message": "Agent 问股失败" if backend_id == "codex_app_server" else str(exc),
                 "error_code": getattr(exc, "code", "unknown_backend_error"),
                 "backend": backend_id,
                 "request_id": request_id,
@@ -730,7 +730,7 @@ async def cancel_agent_chat_stream(request_id: str):
             status_code=404,
             detail={
                 "error": "request_not_active",
-                "message": "This Agent request is no longer running",
+                "message": "该 Agent 请求已不在运行",
             },
         )
     cancel_event.set()

@@ -100,6 +100,7 @@ def test_legacy_cache_retains_mtime_fallback(monkeypatch, tmp_path, created_at, 
     assert (daily._read_daily_history_cache(path, ttl_seconds=86400) is None) == expected_stale
 
 
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="requires POSIX TZ support")
 @pytest.mark.parametrize("system_timezone", ["Asia/Shanghai", "UTC", "America/New_York"])
 @pytest.mark.parametrize("now", ["2025-06-06T17:00:00+08:00", "2025-06-07T15:00:00+08:00"])
 def test_naive_created_at_migration_preserves_mtime_and_marks_quality_stale(
@@ -122,6 +123,7 @@ def test_naive_created_at_migration_preserves_mtime_and_marks_quality_stale(
     assert enriched.iloc[0]["daily_quality_score"] < 100
 
 
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="requires POSIX TZ support")
 @pytest.mark.parametrize("system_timezone", ["Asia/Shanghai", "UTC", "America/New_York"])
 @pytest.mark.parametrize("acquired,expected_stale", [
     ("2025-06-06T14:00:00+08:00", True),
@@ -141,6 +143,7 @@ def test_naive_cache_uses_mtime_regardless_of_reading_timezone(
         assert bool(degraded.attrs.get("daily_stale")) == expected_stale
 
 
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="requires POSIX TZ support")
 @pytest.mark.parametrize("system_timezone", ["UTC", "America/New_York", "Asia/Shanghai"])
 @pytest.mark.parametrize("now,last_date", [
     ("2025-06-06T21:00:00+00:00", "2025-06-06"),

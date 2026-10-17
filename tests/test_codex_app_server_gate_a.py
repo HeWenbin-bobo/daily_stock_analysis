@@ -34,6 +34,15 @@ from src.agent.codex_tool_process import CodexToolProcessRunner
 from src.agent.tools.execution import ToolAccessContext
 from src.agent.tools.registry import ToolDefinition, ToolParameter, ToolPolicy, ToolRegistry
 
+# The harness below drives POSIX process groups (``os.killpg``/``os.getpgid``)
+# and pipe semantics (``select`` on pipes). The Codex App Server backend is
+# explicitly unsupported on native Windows (``capability_unsupported``), so
+# every scenario here is unreachable there.
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="Codex App Server harness requires POSIX process groups and pipes",
+)
+
 
 _FAKE_APP_SERVER = r"""
 import json

@@ -66,7 +66,16 @@ def _config(**overrides):
 
 def _script(tmp_path: Path, source: str) -> str:
     path = tmp_path / "mock_cli.py"
-    path.write_text(source, encoding="utf-8")
+    # The backend decodes child output as UTF-8 and compares against LF text.
+    # A bare ``print`` on Windows uses the console code page (GBK here) and
+    # translates ``\n`` to ``\r\n``, which is a property of the mock, not of
+    # the code under test — pin both so the fixture matches the contract.
+    bootstrap = (
+        "import sys as _sys\n"
+        "for _stream in (_sys.stdout, _sys.stderr):\n"
+        "    _stream.reconfigure(encoding='utf-8', newline='\\n')\n"
+    )
+    path.write_text(bootstrap + source, encoding="utf-8")
     return str(path)
 
 
@@ -379,8 +388,11 @@ print(json.dumps({{"type": "step_finish", "reason": "stop"}}))
     assert "--attach" not in argv
     assert "--dangerously-skip-permissions" not in argv
     assert probe["prompt"] == "prompt from dsa"
-    assert probe["prompt_mode"] == 0o600
-    assert probe["cwd_mode"] == 0o700
+    if os.name == "posix":
+        # Windows ``chmod`` only toggles the read-only bit, so POSIX mode bits
+        # are not observable there even though the backend still calls chmod.
+        assert probe["prompt_mode"] == 0o600
+        assert probe["cwd_mode"] == 0o700
     for tool_name in local_cli_backend_module._OPENCODE_DISABLED_TOOL_NAMES:
         assert opencode_config["tools"][tool_name] is False
     assert opencode_config["tools"]["websearch"] is False

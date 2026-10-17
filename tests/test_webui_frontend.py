@@ -213,3 +213,37 @@ def test_has_static_assets_returns_true_when_css_present(tmp_path):
     assets.mkdir()
     (assets / "style.css").write_text("", encoding="utf-8")
     assert webui_frontend._has_static_assets(tmp_path) is True
+
+
+def test_run_frontend_commands_passes_a_hard_timeout(monkeypatch, tmp_path):
+    """Startup-path npm commands must carry a hard timeout (AGENTS.md §11).
+
+    ``prepare_webui_frontend_assets`` runs on the startup path, so a stalled
+    install/build would otherwise block the backend from ever serving.
+    """
+    captured = []
+
+    def fake_run(command, **kwargs):
+        captured.append(kwargs.get("timeout"))
+
+    monkeypatch.setattr(webui_frontend.subprocess, "run", fake_run)
+
+    ok = webui_frontend._run_frontend_commands(
+        commands=[["npm", "ci"], ["npm", "run", "build"]],
+        frontend_dir=tmp_path,
+    )
+
+    assert ok is True
+    assert captured == [webui_frontend._FRONTEND_COMMAND_TIMEOUT_SECONDS] * 2
+
+
+def test_run_frontend_commands_degrades_on_timeout(monkeypatch, tmp_path):
+    """A timed-out build returns False instead of raising out of startup."""
+    def fake_run(command, **kwargs):
+        raise webui_frontend.subprocess.TimeoutExpired(cmd=command, timeout=kwargs.get("timeout"))
+
+    monkeypatch.setattr(webui_frontend.subprocess, "run", fake_run)
+
+    assert webui_frontend._run_frontend_commands(
+        commands=[["npm", "ci"]], frontend_dir=tmp_path,
+    ) is False

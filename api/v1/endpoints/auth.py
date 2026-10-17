@@ -275,7 +275,7 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
                         status_code=429,
                         content={
                             "error": "rate_limited",
-                            "message": "Too many failed attempts. Please try again later.",
+                            "message": "尝试次数过多，请稍后再试。",
                         },
                     )
                 if not verify_stored_password(current_password):
@@ -303,7 +303,7 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
                     status_code=429,
                     content={
                         "error": "rate_limited",
-                        "message": "Too many failed attempts. Please try again later.",
+                        "message": "尝试次数过多，请稍后再试。",
                     },
                 )
             if not verify_stored_password(current_password):
@@ -318,7 +318,7 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
         if not _apply_auth_enabled(target_enabled, request=request):
             return JSONResponse(
                 status_code=500,
-                content={"error": "internal_error", "message": "Failed to update auth settings"},
+                content={"error": "internal_error", "message": "更新认证设置失败"},
             )
         if not rotate_session_secret():
             rollback_ok = _apply_auth_enabled(current_enabled, request=request)
@@ -326,13 +326,13 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
                 logger.error("Failed to roll back auth state after session secret rotation failure")
             return JSONResponse(
                 status_code=500,
-                content={"error": "internal_error", "message": "Failed to rotate session secret"},
+                content={"error": "internal_error", "message": "轮换会话密钥失败"},
             )
     else:
         if not _apply_auth_enabled(target_enabled, request=request):
             return JSONResponse(
                 status_code=500,
-                content={"error": "internal_error", "message": "Failed to update auth settings"},
+                content={"error": "internal_error", "message": "更新认证设置失败"},
             )
 
     if target_enabled:
@@ -343,7 +343,7 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
                 logger.error("Failed to roll back auth state after session creation failure")
             return JSONResponse(
                 status_code=500,
-                content={"error": "internal_error", "message": "Failed to create session"},
+                content={"error": "internal_error", "message": "创建会话失败"},
             )
         # We manually set loggedIn=True because the cookie is being set in this response
         # and won't be visible in request.cookies until the NEXT request.
@@ -369,7 +369,7 @@ async def auth_login(request: Request, body: LoginRequest):
     if not is_auth_enabled():
         return JSONResponse(
             status_code=400,
-            content={"error": "auth_disabled", "message": "Authentication is not configured"},
+            content={"error": "auth_disabled", "message": "尚未配置认证"},
         )
 
     password = (body.password or "").strip()
@@ -385,7 +385,7 @@ async def auth_login(request: Request, body: LoginRequest):
             status_code=429,
             content={
                 "error": "rate_limited",
-                "message": "Too many failed attempts. Please try again later.",
+                "message": "尝试次数过多，请稍后再试。",
             },
         )
 
@@ -398,7 +398,7 @@ async def auth_login(request: Request, body: LoginRequest):
             record_login_failure(ip)
             return JSONResponse(
                 status_code=400,
-                content={"error": "password_mismatch", "message": "Passwords do not match"},
+                content={"error": "password_mismatch", "message": "两次输入的密码不一致"},
             )
         err = set_initial_password(password)
         if err:
@@ -420,7 +420,7 @@ async def auth_login(request: Request, body: LoginRequest):
     if not session_val:
         return JSONResponse(
             status_code=500,
-            content={"error": "internal_error", "message": "Failed to create session"},
+            content={"error": "internal_error", "message": "创建会话失败"},
         )
 
     resp = JSONResponse(content={"ok": True})
@@ -438,7 +438,7 @@ async def auth_change_password(body: ChangePasswordRequest):
     if not is_password_changeable():
         return JSONResponse(
             status_code=400,
-            content={"error": "not_changeable", "message": "Password cannot be changed via web"},
+            content={"error": "not_changeable", "message": "无法通过网页修改密码"},
         )
 
     current = (body.current_password or "").strip()
@@ -475,7 +475,7 @@ async def auth_logout(request: Request):
     if is_auth_enabled() and not rotate_session_secret():
         return JSONResponse(
             status_code=500,
-            content={"error": "internal_error", "message": "Failed to invalidate session"},
+            content={"error": "internal_error", "message": "注销会话失败"},
         )
     resp = Response(status_code=204)
     resp.delete_cookie(key=COOKIE_NAME, path="/")

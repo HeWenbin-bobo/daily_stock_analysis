@@ -76,6 +76,29 @@ describe('DecisionSignalCard', () => {
     expect(screen.queryByRole('button', { name: '查看 贵州茅台 AI 建议详情' })).not.toBeInTheDocument();
   });
 
+  it('renders JSON-encoded list fields readably instead of raw literals', () => {
+    window.localStorage.setItem('dsa.uiLanguage', 'zh');
+    render(
+      <UiLanguageProvider>
+        <DecisionSignalCard
+          item={{
+            ...signal,
+            catalystSummary: JSON.stringify(['外资加仓银行板块', '中报营收同比增长 1.8%']),
+            watchConditions: JSON.stringify(['量能不足', '筹码数据缺失']),
+            riskSummary: JSON.stringify(['Q3 业绩或逊于预期']),
+          }}
+        />
+      </UiLanguageProvider>,
+    );
+
+    // Individual items must be visible...
+    expect(screen.getByText(/外资加仓银行板块/)).toBeInTheDocument();
+    expect(screen.getByText(/中报营收同比增长 1\.8%/)).toBeInTheDocument();
+    // ...and the raw JSON array literal must not be rendered verbatim.
+    expect(screen.queryByText(/\["外资加仓银行板块"/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\["量能不足"/)).not.toBeInTheDocument();
+  });
+
   it('hides missing optional plan text for sparse legacy signals', () => {
     window.localStorage.setItem('dsa.uiLanguage', 'zh');
     render(
@@ -234,5 +257,23 @@ describe('DecisionSignalDetails', () => {
 
     expect(screen.getByText('10 days')).toBeInTheDocument();
     expect(screen.queryByText('10d')).not.toBeInTheDocument();
+  });
+
+  it('renders portfolio summary JSON-encoded fields readably', () => {
+    window.localStorage.setItem('dsa.uiLanguage', 'zh');
+    render(
+      <UiLanguageProvider>
+        <PortfolioSignalSummary
+          item={{
+            ...signal,
+            riskSummary: JSON.stringify(['放量下跌风险']),
+            watchConditions: JSON.stringify(['跌破均线', '量能萎缩']),
+          }}
+        />
+      </UiLanguageProvider>,
+    );
+
+    expect(screen.getByText(/放量下跌风险/)).toBeInTheDocument();
+    expect(screen.queryByText(/\["放量下跌风险"\]/)).not.toBeInTheDocument();
   });
 });

@@ -451,6 +451,31 @@ class AnalysisHistoryTestCase(unittest.TestCase):
                 response = get_stock_bar(limit=10, db_manager=self.db, **kwargs)
                 self.assertIsNotNone(response)
 
+    def test_history_list_rejects_malformed_dates_as_400(self) -> None:
+        """非法日期必须 400，而不是静默丢弃筛选条件返回未过滤结果。"""
+        if get_history_list is None:
+            self.skipTest("fastapi is not installed in this test environment")
+
+        for field, value in (
+            ("start_date", "notadate"),
+            ("start_date", "2026-13-45"),
+            ("end_date", "9999-99-99"),
+        ):
+            with self.subTest(field=field, value=value):
+                kwargs = {
+                    "stock_code": None,
+                    "report_type": None,
+                    "start_date": None,
+                    "end_date": None,
+                    "page": 1,
+                    "limit": 20,
+                    "db_manager": self.db,
+                    field: value,
+                }
+                with self.assertRaises(Exception) as raised:
+                    get_history_list(**kwargs)
+                self.assertEqual(getattr(raised.exception, "status_code", None), 400)
+
     def _build_result(self) -> AnalysisResult:
         """构造分析结果"""
         return AnalysisResult(

@@ -2144,7 +2144,14 @@ class LocalCliGenerationBackend(GenerationBackend):
         with _local_cli_concurrency_slot(concurrency_limit):
             self._emit_progress(stream_progress_callback, 0)
             try:
-                with tempfile.TemporaryDirectory(prefix="dsa-local-cli-") as cwd:
+                # ``ignore_cleanup_errors``: a grandchild that outlives the CLI
+                # (Windows has no process-group kill) may still hold
+                # ``prompt.txt``, and a cleanup ``PermissionError`` here would
+                # replace the real GenerationError and get relabelled as
+                # ``process_start_failed`` by the outer ``except OSError``.
+                with tempfile.TemporaryDirectory(
+                    prefix="dsa-local-cli-", ignore_cleanup_errors=True
+                ) as cwd:
                     cwd_path = Path(cwd)
                     try:
                         cwd_path.chmod(0o700)

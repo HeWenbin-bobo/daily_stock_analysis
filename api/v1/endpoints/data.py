@@ -31,7 +31,7 @@ def _overview_response(config: Config, *, runtime_scheduler: object = None) -> D
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to build data capability overview",
+                "message": "构建数据能力概览失败",
             },
         )
 

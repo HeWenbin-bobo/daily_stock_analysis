@@ -995,6 +995,35 @@ class PortfolioApiTestCase(unittest.TestCase):
         resp = self.client.get("/api/v1/portfolio/trades", params={"page_size": 101})
         self.assertEqual(resp.status_code, 422)
 
+    def test_csv_parse_rejects_oversized_upload(self) -> None:
+        """Oversized CSV uploads must be rejected with 400, not read fully into memory."""
+        from api.v1.endpoints.portfolio import MAX_CSV_IMPORT_BYTES
+
+        header = "成交日期,证券代码,证券名称,买卖标志,成交数量,成交价格,成交金额,手续费\n"
+        row = "2026-01-01,600519,贵州茅台,买入,100,1329.00,132900.00,5.00\n"
+        oversized = (header + row * (MAX_CSV_IMPORT_BYTES // len(row.encode("utf-8")) + 100)).encode("utf-8")
+        self.assertGreater(len(oversized), MAX_CSV_IMPORT_BYTES)
+
+        resp = self.client.post(
+            "/api/v1/portfolio/imports/csv/parse",
+            data={"broker": "huatai"},
+            files={"file": ("big.csv", oversized, "text/csv")},
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"], "file_too_large")
+
+    def test_csv_parse_accepts_small_upload(self) -> None:
+        header = "成交日期,证券代码,证券名称,买卖标志,成交数量,成交价格,成交金额,手续费\n"
+        row = "2026-01-01,600519,贵州茅台,买入,100,1329.00,132900.00,5.00\n"
+        small = (header + row * 3).encode("utf-8")
+        resp = self.client.post(
+            "/api/v1/portfolio/imports/csv/parse",
+            data={"broker": "huatai"},
+            files={"file": ("small.csv", small, "text/csv")},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["record_count"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

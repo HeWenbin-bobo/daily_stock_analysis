@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import os
 import time
 import threading
 from collections.abc import Awaitable, Callable
@@ -16,10 +17,35 @@ from warnings import warn
 import anyio.to_thread
 import fastapi.testclient
 import httpx
+import pytest
 import starlette.testclient
 from anyio._backends import _asyncio
 
 T = TypeVar("T")
+
+
+@pytest.fixture(autouse=True)
+def _restore_process_env() -> Any:
+    """Snapshot and restore ``os.environ`` around each test.
+
+    Loading configuration calls ``setup_env()`` -> ``load_dotenv()``, which
+    writes the repository's real ``.env`` into ``os.environ`` as a side effect
+    (e.g. constructing ``DatabaseManager`` does this via ``get_config()``).
+    Without restoration that mutation leaks into later tests and makes results
+    order-dependent — for instance a leaked ``SEARXNG_PUBLIC_INSTANCES_ENABLED=true``
+    flips the default that ``test_system_config_service`` asserts is ``false``.
+    Only the delta is reverted so unrelated process state (PATH, etc.) is kept.
+    """
+    snapshot = dict(os.environ)
+    try:
+        yield
+    finally:
+        for key in set(os.environ) - set(snapshot):
+            del os.environ[key]
+        for key, value in snapshot.items():
+            if os.environ.get(key) != value:
+                os.environ[key] = value
+
 
 _original_call_soon_threadsafe = asyncio.BaseEventLoop.call_soon_threadsafe
 

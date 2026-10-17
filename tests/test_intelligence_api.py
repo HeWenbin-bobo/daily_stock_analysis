@@ -79,6 +79,15 @@ class IntelligenceApiTestCase(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json()["error"], "validation_error")
 
+    def test_items_days_upper_bound_rejects_overflow(self) -> None:
+        """`days` must be bounded so `timedelta(days=...)` cannot overflow into a 500."""
+        resp = self.client.get("/api/v1/intelligence/items", params={"days": 1000000000})
+        self.assertEqual(resp.status_code, 422)
+
+    def test_items_days_within_bound_is_accepted(self) -> None:
+        resp = self.client.get("/api/v1/intelligence/items", params={"days": 7})
+        self.assertEqual(resp.status_code, 200)
+
     def test_duplicate_source_name_returns_validation_error(self) -> None:
         payload = {"name": "dupe", "url": "https://feeds.example.com/rss.xml", "scope_type": "market"}
         first = self.client.post("/api/v1/intelligence/sources", json=payload)

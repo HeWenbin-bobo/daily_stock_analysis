@@ -105,10 +105,48 @@ function formatEntryRange(item: DecisionSignalItem): string {
 
 function formatJsonish(value: unknown): string | null {
   if (value === null || value === undefined) return null;
-  if (typeof value === 'string') return value.trim() || null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    // The backend stores list/dict fields (catalyst/watch/risk/invalidation)
+    // as JSON-encoded strings. Render them readably instead of showing the
+    // raw `["...","..."]` literal; plain text strings pass through unchanged.
+    const decoded = decodeJsonEncodedString(trimmed);
+    return decoded ?? trimmed;
+  }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return stringifyJsonish(value);
+}
+
+/**
+ * If `text` is a JSON-encoded array/object, return a readable rendering
+ * (array items joined by newlines; objects pretty-printed). Otherwise return
+ * null so the caller keeps the original text.
+ */
+function decodeJsonEncodedString(text: string): string | null {
+  const first = text[0];
+  if (first !== '[' && first !== '{') return null;
+  let parsed: unknown;
   try {
-    return JSON.stringify(value);
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (Array.isArray(parsed)) {
+    const lines = parsed
+      .map((item) => (typeof item === 'string' ? item : stringifyJsonish(item)))
+      .filter((line) => line.trim().length > 0);
+    return lines.length > 0 ? lines.join('\n') : null;
+  }
+  if (parsed && typeof parsed === 'object') {
+    return stringifyJsonish(parsed);
+  }
+  return null;
+}
+
+function stringifyJsonish(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
   }
@@ -265,11 +303,11 @@ export const DecisionSignalCard: React.FC<DecisionSignalCardProps> = ({ item, on
       ) : null}
 
       <div className="mt-3 grid gap-2">
-        <SignalTextBlock label={t('decisionSignals.reason')} value={item.reason} />
-        <SignalTextBlock label={t('decisionSignals.catalystSummary')} value={item.catalystSummary} tone="info" />
-        <SignalTextBlock label={t('decisionSignals.watchConditions')} value={item.watchConditions} />
-        <SignalTextBlock label={t('decisionSignals.riskSummary')} value={item.riskSummary} tone="warning" />
-        <SignalTextBlock label={t('decisionSignals.invalidation')} value={item.invalidation} tone="danger" />
+        <SignalTextBlock label={t('decisionSignals.reason')} value={formatJsonish(item.reason)} />
+        <SignalTextBlock label={t('decisionSignals.catalystSummary')} value={formatJsonish(item.catalystSummary)} tone="info" />
+        <SignalTextBlock label={t('decisionSignals.watchConditions')} value={formatJsonish(item.watchConditions)} />
+        <SignalTextBlock label={t('decisionSignals.riskSummary')} value={formatJsonish(item.riskSummary)} tone="warning" />
+        <SignalTextBlock label={t('decisionSignals.invalidation')} value={formatJsonish(item.invalidation)} tone="danger" />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-text">
@@ -495,14 +533,16 @@ export const PortfolioSignalSummary: React.FC<PortfolioSignalSummaryProps> = ({ 
     return <span className="text-xs text-muted-text">{t('decisionSignals.portfolioEmpty')}</span>;
   }
   const actionLabel = getActionLabel(item, t);
+  const riskSummary = formatJsonish(item.riskSummary);
+  const watchConditions = formatJsonish(item.watchConditions);
   return (
     <div className="min-w-[11rem] max-w-[18rem] text-left">
       <div className="flex flex-wrap items-center justify-end gap-1.5">
         <Badge variant={getActionVariant(item)}>{actionLabel}</Badge>
         {item.horizon ? <span className="text-[11px] text-secondary-text">{getDecisionSignalHorizonLabel(item.horizon, t)}</span> : null}
       </div>
-      {item.riskSummary ? <p className="mt-1 line-clamp-2 text-[11px] text-warning">{item.riskSummary}</p> : null}
-      {item.watchConditions ? <p className="mt-1 line-clamp-2 text-[11px] text-secondary-text">{item.watchConditions}</p> : null}
+      {riskSummary ? <p className="mt-1 line-clamp-2 text-[11px] text-warning">{riskSummary}</p> : null}
+      {watchConditions ? <p className="mt-1 line-clamp-2 text-[11px] text-secondary-text">{watchConditions}</p> : null}
     </div>
   );
 };

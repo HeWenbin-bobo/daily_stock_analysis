@@ -160,7 +160,11 @@ class RuntimeSchedulerServiceTestCase(unittest.TestCase):
         worker._run_analysis_locked.return_value = True
         worker._last_error = None
         worker._last_skip_reason = "scheduled_occurrence_already_claimed"
-        with patch("src.services.runtime_scheduler.os.setsid"), patch(
+        # ``os.setsid`` only exists on POSIX; the worker guards the call with
+        # ``os.name == "posix"``, so ``create=True`` keeps this test (which is
+        # about the restored occurrence, not session isolation) runnable on
+        # Windows too.
+        with patch("src.services.runtime_scheduler.os.setsid", create=True), patch(
             "src.services.runtime_scheduler.RuntimeSchedulerService", return_value=worker,
         ) as service_type:
             _run_scheduled_analysis_process(queue, None, {"_scheduled_for": due.isoformat(), "no_notify": True})

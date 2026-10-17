@@ -755,3 +755,24 @@ def test_codex_chat_availability_does_not_make_research_available() -> None:
          pytest.raises(Exception) as exc_info:
         asyncio.run(agent_endpoint.agent_research(agent_endpoint.ResearchRequest(question="why")))
     assert getattr(exc_info.value, "status_code", None) == 400
+
+
+def test_chat_sessions_limit_is_bounded(tmp_path: Path) -> None:
+    """`limit` must reject negative/unbounded values instead of slicing oddly."""
+    with patch("api.middlewares.auth.is_auth_enabled", return_value=False), \
+         patch("api.v1.endpoints.agent.get_config", return_value=_litellm_config()):
+        client = TestClient(create_app(static_dir=tmp_path / "static"))
+        for bad in ("-1", "0", "1000000000"):
+            resp = client.get(f"/api/v1/agent/chat/sessions?limit={bad}")
+            assert resp.status_code == 422, bad
+        assert client.get("/api/v1/agent/chat/sessions?limit=50").status_code == 200
+
+
+def test_chat_session_messages_limit_is_bounded(tmp_path: Path) -> None:
+    """Per-session message `limit` must reject negative/unbounded values."""
+    with patch("api.middlewares.auth.is_auth_enabled", return_value=False), \
+         patch("api.v1.endpoints.agent.get_config", return_value=_litellm_config()):
+        client = TestClient(create_app(static_dir=tmp_path / "static"))
+        for bad in ("-5", "100000"):
+            resp = client.get(f"/api/v1/agent/chat/sessions/whatever?limit={bad}")
+            assert resp.status_code == 422, bad

@@ -157,7 +157,7 @@ def list_items(
     scope_value: Optional[str] = Query(None),
     market: Optional[str] = Query(None),
     query: Optional[str] = Query(None),
-    days: Optional[int] = Query(None, ge=1),
+    days: Optional[int] = Query(None, ge=1, le=3650, description="回溯天数上限 10 年"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ) -> IntelligenceItemListResponse:

@@ -126,6 +126,43 @@ def sanitize_decision_signal_payload(obj: Any) -> Any:
     return _sanitize_decision_signal_payload_values(redacted)
 
 
+# URLs that *are* the credential (webhook endpoints) and the request-URL path
+# forms that carry a token. ``requests`` exceptions echo the request URL in
+# their message, so logging ``str(exc)`` leaks the token — these patterns cover
+# both absolute URLs and the relative paths seen in ConnectionError text.
+_CREDENTIAL_PATH_PATTERNS = (
+    # Telegram Bot API: /bot<id>:<token>/sendMessage
+    re.compile(r"/bot\d{5,}:[A-Za-z0-9_\-]+"),
+    # ServerChan: /send/<sendkey>.send
+    re.compile(r"/send/[A-Za-z0-9_\-]+\.send", re.IGNORECASE),
+    # Slack incoming webhook: /services/T.../B.../<secret>
+    re.compile(r"/services/T[A-Za-z0-9]+/B[A-Za-z0-9]+/[A-Za-z0-9_\-]+"),
+    # Feishu bot webhook: /open-apis/bot/v2/hook/<key>
+    re.compile(r"/open-apis/bot/v2/hook/[A-Za-z0-9\-]+"),
+    # WeCom webhook: /cgi-bin/webhook/send?key=<key>
+    re.compile(r"(?:/cgi-bin/webhook/send\?key=)[^\s&,;)\]}]+", re.IGNORECASE),
+    # DingTalk / generic access_token query values
+    re.compile(r"(?:access_token=)[^\s&,;)\]}]+", re.IGNORECASE),
+)
+
+
+def redact_credentials_in_log_text(text: Any) -> str:
+    """Redact webhook/bot credentials from arbitrary log text.
+
+    Unlike :func:`sanitize_diagnostic_text` this never truncates, so it is safe
+    to apply to every log record. It targets the shapes that leak through
+    ``requests`` exception messages (absolute webhook URLs and the relative
+    request paths that embed a token).
+    """
+    sanitized = str(text or "")
+    if not sanitized:
+        return sanitized
+    sanitized = _URL_PATTERN.sub(_redact_sensitive_url_match, sanitized)
+    for pattern in _CREDENTIAL_PATH_PATTERNS:
+        sanitized = pattern.sub(_REDACTED, sanitized)
+    return sanitized
+
+
 def _sanitize_decision_signal_payload_values(obj: Any) -> Any:
     if isinstance(obj, dict):
         return {

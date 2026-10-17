@@ -75,7 +75,7 @@ def run_scheduler_now(
             status_code=409,
             detail={
                 "error": "scheduler_busy",
-                "message": "A scheduled analysis is already running",
+                "message": "已有定时分析正在运行",
                 "reason": result.get("reason", "analysis_already_running"),
             },
         )
@@ -156,7 +156,7 @@ def get_system_config(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to load system configuration",
+                "message": "加载系统配置失败",
             },
         )
 
@@ -185,7 +185,7 @@ def get_setup_status(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to load setup status",
+                "message": "加载初始化状态失败",
             },
         )
 
@@ -216,7 +216,7 @@ def get_generation_backend_status(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to load generation backend status",
+                "message": "加载生成后端状态失败",
             },
         )
 
@@ -248,7 +248,7 @@ def preview_generation_backend_status(
             status_code=400,
             detail={
                 "error": "validation_failed",
-                "message": "System configuration validation failed",
+                "message": "系统配置校验未通过",
                 "issues": exc.issues,
             },
         )
@@ -258,7 +258,7 @@ def preview_generation_backend_status(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to preview generation backend status",
+                "message": "预览生成后端状态失败",
             },
         )
 
@@ -294,7 +294,7 @@ def test_generation_backend(
             status_code=400,
             detail={
                 "error": "validation_failed",
-                "message": "System configuration validation failed",
+                "message": "系统配置校验未通过",
                 "issues": exc.issues,
             },
         )
@@ -312,7 +312,7 @@ def test_generation_backend(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to smoke test generation backend",
+                "message": "生成后端冒烟测试失败",
             },
         )
 
@@ -332,7 +332,7 @@ def get_agent_backend_status(
         logger.error("Failed to load Agent backend status: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "internal_error", "message": "Failed to load Agent backend status"},
+            detail={"error": "internal_error", "message": "加载 Agent 后端状态失败"},
         )
 
 
@@ -357,7 +357,7 @@ def preview_agent_backend_status(
         logger.error("Failed to preview Agent backend status: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail={"error": "internal_error", "message": "Failed to preview Agent backend status"},
+            detail={"error": "internal_error", "message": "预览 Agent 后端状态失败"},
         )
 
 
@@ -391,7 +391,7 @@ def update_system_config(
             status_code=400,
             detail={
                 "error": "validation_failed",
-                "message": "System configuration validation failed",
+                "message": "系统配置校验未通过",
                 "issues": exc.issues,
             },
         )
@@ -400,7 +400,7 @@ def update_system_config(
             status_code=409,
             detail={
                 "error": "config_version_conflict",
-                "message": "Configuration has changed, please reload and retry",
+                "message": "配置已变更，请重新加载后重试",
                 "current_config_version": exc.current_version,
             },
         )
@@ -410,7 +410,7 @@ def update_system_config(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to update system configuration",
+                "message": "更新系统配置失败",
             },
         )
 
@@ -447,7 +447,7 @@ def export_system_config(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to export system configuration",
+                "message": "导出系统配置失败",
             },
         )
 
@@ -510,7 +510,7 @@ def import_system_config(
             status_code=400,
             detail={
                 "error": "validation_failed",
-                "message": "System configuration validation failed",
+                "message": "系统配置校验未通过",
                 "issues": exc.issues,
             },
         )
@@ -519,7 +519,7 @@ def import_system_config(
             status_code=409,
             detail={
                 "error": "config_version_conflict",
-                "message": "Configuration has changed, please reload and retry",
+                "message": "配置已变更，请重新加载后重试",
                 "current_config_version": exc.current_version,
             },
         )
@@ -529,7 +529,7 @@ def import_system_config(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to import system configuration",
+                "message": "导入系统配置失败",
             },
         )
 
@@ -558,7 +558,7 @@ def validate_system_config(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to validate system configuration",
+                "message": "校验系统配置失败",
             },
         )
 
@@ -606,7 +606,7 @@ def test_llm_channel(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to test LLM channel",
+                "message": "测试 LLM 渠道失败",
             },
         )
 
@@ -650,7 +650,7 @@ def test_notification_channel(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to test notification channel",
+                "message": "测试通知渠道失败",
             },
         )
 
@@ -695,7 +695,7 @@ def discover_llm_channel_models(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to discover LLM channel models",
+                "message": "发现 LLM 渠道模型失败",
             },
         )
 
@@ -723,6 +723,6 @@ def get_system_config_schema(
             status_code=500,
             detail={
                 "error": "internal_error",
-                "message": "Failed to load system configuration schema",
+                "message": "加载系统配置结构失败",
             },
         )

@@ -37,7 +37,7 @@ def _validate_analysis_date_range(
             status_code=400,
             detail={
                 "error": "invalid_params",
-                "message": "analysis_date_from cannot be after analysis_date_to",
+                "message": "分析开始日期不能晚于结束日期",
             },
         )
 

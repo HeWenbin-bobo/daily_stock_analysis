@@ -17,9 +17,19 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 if "dotenv" not in sys.modules:
-    dotenv_stub = types.ModuleType("dotenv")
-    dotenv_stub.load_dotenv = lambda *args, **kwargs: None
-    sys.modules["dotenv"] = dotenv_stub
+    # Prefer the real package; only fall back to a stub when it is unavailable.
+    # Installing a stub unconditionally would shadow the real ``dotenv`` in
+    # ``sys.modules`` and break later test modules at collection time
+    # (``ImportError: cannot import name 'dotenv_values'``). The stub must also
+    # expose every attribute the suite imports (``load_dotenv`` and
+    # ``dotenv_values``), not just the one this script uses.
+    try:
+        import dotenv  # noqa: F401
+    except ImportError:
+        dotenv_stub = types.ModuleType("dotenv")
+        dotenv_stub.load_dotenv = lambda *args, **kwargs: None
+        dotenv_stub.dotenv_values = lambda *args, **kwargs: {}
+        sys.modules["dotenv"] = dotenv_stub
 
 if "tushare" not in sys.modules:
     tushare_stub = types.ModuleType("tushare")

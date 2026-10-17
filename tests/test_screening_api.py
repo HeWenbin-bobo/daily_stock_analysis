@@ -2009,8 +2009,11 @@ class ScreeningOpportunitiesApiTestCase(unittest.TestCase):
         self.assertEqual(detail["leader_stocks"][0]["code"], "000001")
         self.assertEqual(len(observed_timeouts), 5)
         self.assertTrue(all(0 < timeout <= 0.25 for timeout in observed_timeouts))
+        # The shared deadline must never grow. Not strictly ``<``: Windows
+        # ``time.monotonic()`` has ~15.6ms resolution while each step sleeps
+        # 5ms, so consecutive samples legitimately come back equal there.
         self.assertTrue(all(
-            later < earlier
+            later <= earlier
             for earlier, later in zip(observed_timeouts, observed_timeouts[1:])
         ))
         fetcher_manager.assert_not_called()

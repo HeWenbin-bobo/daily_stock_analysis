@@ -49,9 +49,40 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# 券商对账单 CSV 体积上限：真实对账单通常远小于此，上限用于阻止未认证大文件
+# 整块读入内存与逐行解析（同 api/v1/endpoints/stocks.py 的文件上传护栏思路）。
+MAX_CSV_IMPORT_BYTES = 10 * 1024 * 1024  # 10MB
+
 
 def _bad_request(exc: Exception) -> HTTPException:
     return api_error(400, "validation_error", str(exc))
+
+
+def _read_upload_capped(file: UploadFile) -> bytes:
+    """读取上传文件内容，超过 ``MAX_CSV_IMPORT_BYTES`` 时抛 400。
+
+    与 ``stocks.py`` 一致：先按 Content-Length 声明拒绝，再限制实际读取字节数，
+    多读 1 字节用于识别被截断的超限文件。
+    """
+    declared = getattr(file, "size", None)
+    if isinstance(declared, int) and declared > MAX_CSV_IMPORT_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "file_too_large",
+                "message": f"文件超过 {MAX_CSV_IMPORT_BYTES // (1024 * 1024)}MB 限制",
+            },
+        )
+    content = file.file.read(MAX_CSV_IMPORT_BYTES)
+    if file.file.read(1):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "file_too_large",
+                "message": f"文件超过 {MAX_CSV_IMPORT_BYTES // (1024 * 1024)}MB 限制",
+            },
+        )
+    return content
 
 
 def _internal_error(message: str, exc: Exception) -> HTTPException:
@@ -567,7 +598,7 @@ def parse_csv_import(
 ) -> PortfolioImportParseResponse:
     importer = PortfolioImportService()
     try:
-        content = file.file.read()
+        content = _read_upload_capped(file)
         parsed = importer.parse_trade_csv(broker=broker, content=content)
         return PortfolioImportParseResponse(
             broker=parsed["broker"],
@@ -577,6 +608,8 @@ def parse_csv_import(
             records=[_serialize_import_record(item) for item in parsed.get("records", [])],
             errors=list(parsed.get("errors", [])),
         )
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise _bad_request(exc)
     except Exception as exc:
@@ -611,7 +644,7 @@ def commit_csv_import(
 ) -> PortfolioImportCommitResponse:
     importer = PortfolioImportService()
     try:
-        content = file.file.read()
+        content = _read_upload_capped(file)
         parsed = importer.parse_trade_csv(broker=broker, content=content)
         result = importer.commit_trade_records(
             account_id=account_id,
@@ -620,6 +653,8 @@ def commit_csv_import(
             dry_run=dry_run,
         )
         return PortfolioImportCommitResponse(**result)
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise _bad_request(exc)
     except Exception as exc:

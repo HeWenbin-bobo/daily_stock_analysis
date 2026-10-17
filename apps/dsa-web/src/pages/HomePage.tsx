@@ -851,18 +851,22 @@ const HomePage: React.FC = () => {
   }, [refreshStockBar, refreshWatchlist]);
 
   const [isDeletingStock, setIsDeletingStock] = useState(false);
+  const [stockDeleteError, setStockDeleteError] = useState<ParsedApiError | null>(null);
   const handleDeleteStock = useCallback(async (stockCode: string) => {
     if (isDeletingStock) return;
     setIsDeletingStock(true);
     try {
       await historyApi.deleteByCode(stockCode);
+      setStockDeleteError(null);
       await refreshStockBar();
       await refreshHistory(true);
       if (stockCode === 'MARKET') {
         await refreshMarketReviewHistory(false);
       }
-    } catch {
-      // error silently ignored
+    } catch (err) {
+      // 删除是用户显式操作，失败必须可见（AGENTS §11），
+      // 与 store 中批量删除的 `set({ error: getParsedApiError(error) })` 保持一致。
+      setStockDeleteError(getParsedApiError(err));
     } finally {
       setIsDeletingStock(false);
     }
@@ -1453,6 +1457,12 @@ const HomePage: React.FC = () => {
           collapsed={isTaskPanelCollapsed}
           onCollapsedChange={handleTaskPanelCollapsedChange}
         />
+        {stockDeleteError ? (
+          <ApiErrorAlert
+            error={stockDeleteError}
+            onDismiss={() => setStockDeleteError(null)}
+          />
+        ) : null}
         <HomeStockWorkspace
           activeTab={sidebarWorkspaceTab}
           onTabChange={setSidebarWorkspaceTab}
@@ -1496,6 +1506,7 @@ const HomePage: React.FC = () => {
       isLoadingTodayAnalysisItems,
       isStockIndexReady,
       isTaskPanelCollapsed,
+      stockDeleteError,
       todayAnalysisLoadFailed,
       mergedStockBarItems,
       openTaskRunFlow,

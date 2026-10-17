@@ -220,6 +220,34 @@ def _extract_guardrail_reason(raw_result: Any) -> Optional[str]:
     return None
 
 
+def _validate_history_date_range(
+    start_date: Optional[str],
+    end_date: Optional[str],
+) -> None:
+    """Reject malformed YYYY-MM-DD date filters with a 400.
+
+    The service layer treats unparseable dates as "no filter" (logs a warning
+    and returns unfiltered results). That silently discards the caller's filter,
+    so the API boundary rejects them explicitly instead — matching
+    ``get_stock_bar``.
+    """
+    from datetime import date as _date
+
+    for value in (start_date, end_date):
+        if not value:
+            continue
+        try:
+            _date.fromisoformat(value)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_request",
+                    "message": "start_date/end_date 必须是 YYYY-MM-DD 格式的合法日期",
+                },
+            )
+
+
 @router.get(
     "",
     response_model=HistoryListResponse,
@@ -257,8 +285,12 @@ def get_history_list(
         HistoryListResponse: 历史记录列表
     """
     try:
+        # 非法日期是客户端输入问题：此处显式拒绝，避免服务层静默丢弃筛选条件
+        # 后返回未过滤结果（与 get_stock_bar 的 400 行为一致）。
+        _validate_history_date_range(start_date, end_date)
+
         service = HistoryService(db_manager)
-        
+
         # 使用 def 而非 async def，FastAPI 自动在线程池中执行
         result = service.get_history_list(
             stock_code=stock_code,
@@ -303,6 +335,9 @@ def get_history_list(
             items=items
         )
         
+    except HTTPException:
+        # 显式的 4xx（如非法日期）不得被兜底 except 改写为 500。
+        raise
     except Exception as e:
         logger.error(f"查询历史列表失败: {e}", exc_info=True)
         raise HTTPException(

@@ -18,6 +18,8 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from src.utils.sanitize import redact_credentials_in_log_text
+
 
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(pathname)s:%(lineno)d | %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -45,8 +47,11 @@ class RelativePathFormatter(logging.Formatter):
         except ValueError:
             # 如果无法转换为相对路径，保持原样
             pass
-        return super().format(record)
-
+        # 凭据绝不出现在日志中：requests 等库的连接异常会把请求 URL
+        # （Webhook / Bot API 路径里带着 token）拼进异常消息，调用方把
+        # str(exc) 写日志时就会泄漏。这里在唯一出口统一脱敏。
+        rendered = super().format(record)
+        return redact_credentials_in_log_text(rendered)
 
 
 # 默认需要降低日志级别的第三方库

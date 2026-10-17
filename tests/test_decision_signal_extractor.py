@@ -690,3 +690,53 @@ def test_extract_and_persist_index_signal_with_market_override(isolated_db) -> N
     latest = service.get_latest_active(stock_code="csi930955", market="cn")
     assert latest["total"] == 1
     assert latest["items"][0]["source_report_id"] == 955
+
+
+def test_watch_conditions_are_capped_like_sibling_summaries() -> None:
+    """`watch_conditions` must be capped at 5 items, matching risk/catalyst summaries.
+
+    LLM-generated dashboards can carry arbitrarily long checklists; without the
+    cap the persisted signal text grows unbounded.
+    """
+    result = _result()
+    result.dashboard = {
+        "battle_plan": {
+            "sniper_points": {"ideal_buy": "1700"},
+            "action_checklist": [f"检查项{i}" for i in range(20)],
+        },
+        "phase_decision": {"watch_conditions": [f"观察条件{i}" for i in range(20)]},
+        "intelligence": {},
+    }
+
+    payload = build_decision_signal_payload_from_report(
+        result,
+        context_snapshot=None,
+        source_report_id=None,
+        trace_id="trace-cap",
+        query_source="",
+        report_type="simple",
+        profile_source=BUILD_PROFILE_SOURCE,
+    )
+
+    assert payload is not None
+    assert payload["watch_conditions"] == [f"观察条件{i}" for i in range(5)]
+
+    # The battle_plan checklist path must also be capped.
+    result.dashboard = {
+        "battle_plan": {
+            "sniper_points": {"ideal_buy": "1700"},
+            "action_checklist": [f"检查项{i}" for i in range(20)],
+        },
+        "intelligence": {},
+    }
+    payload2 = build_decision_signal_payload_from_report(
+        result,
+        context_snapshot=None,
+        source_report_id=None,
+        trace_id="trace-cap2",
+        query_source="",
+        report_type="simple",
+        profile_source=BUILD_PROFILE_SOURCE,
+    )
+    assert payload2 is not None
+    assert payload2["watch_conditions"] == [f"检查项{i}" for i in range(5)]

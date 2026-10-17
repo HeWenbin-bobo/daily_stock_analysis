@@ -37,6 +37,12 @@ _BUILD_METADATA_FILE = "build-info.json"
 _DEPENDENCY_INPUT_FILES = ("package.json", "package-lock.json")
 _DEPENDENCY_FINGERPRINT_FILE = ".dsa-dependency-fingerprint"
 
+# ``npm ci`` / ``npm run build`` run on the startup path (main.py calls
+# prepare_webui_frontend_assets before serving). Without a bound, a stalled
+# registry connection or a hung child process keeps the backend from ever
+# starting. Generous by design: a legit cold install+build stays well under it.
+_FRONTEND_COMMAND_TIMEOUT_SECONDS = 1800
+
 
 def _is_truthy_env(var_name: str, default: str = "true") -> bool:
     """解析常见的环境变量真值/假值表达（大小写不敏感）。"""
@@ -219,9 +225,22 @@ def _run_frontend_commands(commands: Sequence[Sequence[str]], frontend_dir: Path
     try:
         for command in commands:
             logger.info("执行前端命令: %s", " ".join(command))
-            subprocess.run(command, cwd=frontend_dir, check=True)
+            subprocess.run(
+                command,
+                cwd=frontend_dir,
+                check=True,
+                timeout=_FRONTEND_COMMAND_TIMEOUT_SECONDS,
+            )
         logger.info("前端静态资源构建完成")
         return True
+    except subprocess.TimeoutExpired:
+        logger.error(
+            "前端命令超时（>%ss），已放弃等待并跳过本次自动构建；"
+            "请手动构建或设置 WEBUI_AUTO_BUILD=false: %s",
+            _FRONTEND_COMMAND_TIMEOUT_SECONDS,
+            _manual_build_command(frontend_dir),
+        )
+        return False
     except subprocess.CalledProcessError as exc:
         cmd_display = " ".join(exc.cmd) if isinstance(exc.cmd, (list, tuple)) else str(exc.cmd)
         logger.error(

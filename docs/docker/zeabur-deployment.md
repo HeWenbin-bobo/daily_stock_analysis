@@ -254,7 +254,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 
 1. 一个实例用于 API 服务（`python main.py --serve-only`）
 2. 一个实例用于定时任务（`python main.py --schedule`）
-3. 一个实例用于机器人（`python main.py --discord-bot`）
+3. 一个实例用于机器人（`python main.py --serve-only`）
+
+> 机器人 Stream 客户端（钉钉 / 飞书）随 API 服务一起启动，由 `DINGTALK_STREAM_ENABLED` / `FEISHU_STREAM_ENABLED` 等配置项控制，没有独立的 `--discord-bot` 启动参数。Discord 目前不提供 Webhook 适配器（`ALL_PLATFORMS` 仅注册 `dingtalk`）。
 
 确保它们共享同一个 `/app/data` 存储卷，以共享数据库。
 

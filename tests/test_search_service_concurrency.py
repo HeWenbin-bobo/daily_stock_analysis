@@ -352,7 +352,10 @@ class SearchServiceConcurrencyTestCase(unittest.TestCase):
 
         def wait_for_owner(_key, _event, *, timeout_seconds):
             self.assertGreater(timeout_seconds, 0)
-            self.assertLessEqual(timeout_seconds, 0.2)
+            # The budget is derived from ``deadline - time.monotonic()``; float
+            # rounding of that subtraction can land a few ULPs above the original
+            # 0.2 budget (e.g. 0.20000000001164153), so allow a tiny epsilon.
+            self.assertLessEqual(timeout_seconds, 0.2 + 1e-6)
             time.sleep(0.03)
             return None
 

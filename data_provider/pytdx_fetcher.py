@@ -206,21 +206,39 @@ class PytdxFetcher(BaseFetcher):
         
         api = TdxHq_API()
         connected = False
-        
+
+        def _close_client() -> None:
+            # pytdx 的 connect() 会在真正建立连接前先给 self.client 赋值一个
+            # TrafficStatSocket；连接失败时它不会关闭该 socket，下一次 connect()
+            # 又会用新 socket 覆盖 self.client，导致旧 socket 被孤立到进程退出才回收。
+            # 因此每次尝试失败后都必须显式关闭当前 client，避免逐个失败主机泄漏。
+            client = getattr(api, "client", None)
+            if client is None:
+                return
+            try:
+                client.close()
+            except Exception as exc:
+                logger.debug(f"Pytdx 关闭失败连接的 socket 出错: {exc}")
+            finally:
+                api.client = None
+
         try:
             # 尝试连接服务器（自动选择最优）
             for i in range(len(self._hosts)):
                 host_idx = (self._current_host_idx + i) % len(self._hosts)
                 host, port = self._hosts[host_idx]
-                
+
                 try:
                     if api.connect(host, port, time_out=5):
                         connected = True
                         self._current_host_idx = host_idx
                         logger.debug(f"Pytdx 连接成功: {host}:{port}")
                         break
+                    # connect() 返回 False（超时/拒绝）时 socket 已创建但未连接
+                    _close_client()
                 except Exception as e:
                     logger.debug(f"Pytdx 连接 {host}:{port} 失败: {e}")
+                    _close_client()
                     continue
             
             if not connected:

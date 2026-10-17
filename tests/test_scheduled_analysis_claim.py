@@ -3,7 +3,6 @@
 
 import multiprocessing
 import os
-import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -17,6 +16,7 @@ from src.scheduler import Scheduler
 from src.services.scheduled_analysis_claim import (
     ScheduledAnalysisSkipped, claim_scheduled_analysis, run_claimed_scheduled_analysis,
 )
+from tests.sqlite_helper import sqlite_conn
 
 
 DUE = datetime(2026, 10, 2, 18, 0, tzinfo=timezone.utc)
@@ -188,7 +188,7 @@ class ScheduledAnalysisClaimTests(unittest.TestCase):
 
     def test_cleanup_removes_old_claims_but_retains_recent_ones(self):
         self.assertTrue(claim_scheduled_analysis(self.config, self.args, DUE))
-        with sqlite3.connect(self.database) as connection:
+        with sqlite_conn(self.database) as connection:
             connection.execute("UPDATE scheduled_analysis_claims SET claimed_at = 0")
         tomorrow = DUE + timedelta(days=1)
         self.assertTrue(claim_scheduled_analysis(self.config, self.args, tomorrow))

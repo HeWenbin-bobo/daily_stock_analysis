@@ -112,17 +112,17 @@ docker-compose -f ./docker/docker-compose.yml ps
 
 ### 修改端口（可选）
 
-默认端口是 8000。如果想改用其他端口，在 `.env` 里设置：
+默认端口是 8000。若要改用其他端口，在仓库根目录 `.env` 里设置：
 
 ```env
 API_PORT=8888
 ```
 
-然后重新启动容器：
+然后用 `--env-file` 指向该文件重新启动容器（`docker-compose.yml` 位于 `docker/` 子目录，Compose 默认只从 compose 文件所在目录读取 `.env` 变量插值，因此**不加 `--env-file` 时根目录 `.env` 里的 `API_PORT` 不会生效**）：
 
 ```bash
-docker-compose -f ./docker/docker-compose.yml down
-docker-compose -f ./docker/docker-compose.yml up -d
+docker-compose -f ./docker/docker-compose.yml --env-file .env down
+docker-compose -f ./docker/docker-compose.yml --env-file .env up -d
 ```
 
 ---
@@ -242,7 +242,7 @@ sudo firewall-cmd --reload
 检查访问地址里的端口是否和 `.env` / 启动命令里设置的端口一致。
 
 - 直接部署：默认 8000，可通过 `WEBUI_PORT=xxxx` 修改
-- Docker：默认 8000，可通过 `API_PORT=xxxx` 修改
+- Docker：默认 8000，可通过 `API_PORT=xxxx` 修改；使用 `docker-compose -f ./docker/docker-compose.yml up` 时需加 `--env-file .env`，否则 compose 不会从仓库根目录的 `.env` 读取该变量
 
 ### 5. 页面能打开，但 UI 元素异常变大 / 布局错乱
 
