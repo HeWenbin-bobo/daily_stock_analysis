@@ -148,6 +148,14 @@ def create_rule(
     unavailable = UNAVAILABLE_RULE_TYPES.get(rule_type)
     if unavailable:
         raise ValueError(unavailable)
+    # ★ 探索期修复(500)：symbol_filter 直接进 SQLite 绑定参数，list/dict 会抛
+    #   ProgrammingError("type 'list' is not supported")。端点只 `except ValueError`
+    #   → 500（实测 `{"symbol_filter":[1]}`）。放在这里而不是端点，是因为
+    #   create_rule 是所有调用方的共用入口。
+    if symbol_filter is not None and not isinstance(symbol_filter, str):
+        raise ValueError(
+            f"symbol_filter 必须是逗号分隔的字符串，got {type(symbol_filter).__name__}"
+        )
     # ★ v2 迭代2 CRITICAL 回归修复：入库前校验 params 数值字段（非法值如 multiplier="abc" 直接拒绝）
     validate_rule_params(rule_type, params)
     # ★ 探索期修复(异动规则静默失效)：`params=None` 旧实现写成 JSON 字面量
