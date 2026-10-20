@@ -950,6 +950,15 @@ async def _watch_scheduled_persist(sched_task_id: int, analysis_task_id: str, ti
         while time.time() < deadline:
             task = _main_task(analysis_task_id)
             if task is None:
+                # ★ 探索期修复(状态永久卡 running)：主项目任务字典被清理或进程重启后
+                #   `_main_task` 返回 None。旧实现直接 return，last_status 永远停在
+                #   'running'，只有下次重启才会被 reset_stuck_running_tasks 改成
+                #   'stale' —— 期间 UI 一直显示"运行中"，用户无法重跑。
+                logger.warning(
+                    "[sched-watch] analysis task %s vanished; marking scheduled task %s stale",
+                    analysis_task_id, sched_task_id,
+                )
+                db_history.update_task_run(sched_task_id, "stale")
                 return
             if task.get("phase") == "completed" or task.get("status") in ("ok", "failed", "cancelled", "timeout"):
                 result = task.get("result")
@@ -958,6 +967,13 @@ async def _watch_scheduled_persist(sched_task_id: int, analysis_task_id: str, ti
                     db_history.update_task_run(sched_task_id, result.get("status", "ok"))
                 return
             await asyncio.sleep(3)
+        # ★ 探索期修复(状态永久卡 running)：轮询超过 timeout 也属于"未完成"，
+        #   必须显式落一个终态，否则任务永远显示运行中。
+        logger.warning(
+            "[sched-watch] analysis task %s exceeded %.0fs; marking scheduled task %s timeout",
+            analysis_task_id, timeout, sched_task_id,
+        )
+        db_history.update_task_run(sched_task_id, "timeout")
     except Exception as e:
         logger.warning("[sched-watch] task %s persist failed: %s", analysis_task_id, e)
 
