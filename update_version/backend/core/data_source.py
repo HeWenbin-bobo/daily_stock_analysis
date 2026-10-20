@@ -644,6 +644,11 @@ def fetch_kline_with_fallback(
             result = _val
         except Exception as e:
             logger.warning("fetch_kline via %s failed: %s", src, e)
+            # ★ 探索期修复(熔断对超时失效)：同 fetch_quote —— 超时在调用方
+            #   线程抛出，适配器内部的 record_failure 永远执行不到，健康面板
+            #   因此把一直超时的源显示成 100% 健康。只在超时路径补记。
+            if isinstance(e, TimeoutError):
+                adapter.record_failure(str(e)[:200])
             continue
         if result:
             _cache_set(cache_key, result, cache_ttl)
@@ -812,6 +817,15 @@ def fetch_quote_with_fallback(code: str) -> Optional[Dict[str, Any]]:
             result = _val
         except Exception as e:
             logger.warning("fetch_quote via %s failed: %s", src, e)
+            # ★ 探索期修复(熔断对超时失效)：适配器自己在 try/except 里调
+            #   record_failure，但超时是**调用方线程**抛的 —— 那个被抛弃的
+            #   daemon 线程永远走不到 record_failure。实测 baostock 在日志里
+            #   超时 58 次，health 表里却仍是 failure_count=0 / success 9079，
+            #   于是 /ready 与 /data/health 宣称它 100% 健康，熔断判定形同虚设。
+            #   只在超时这一条路径补记，避免与非超时错误重复计数
+            #   （后者已由适配器内部记录）。
+            if isinstance(e, TimeoutError):
+                adapter.record_failure(str(e)[:200])
             continue
         if result is not None:
             if src != _FALLBACK_ORDER[0]:

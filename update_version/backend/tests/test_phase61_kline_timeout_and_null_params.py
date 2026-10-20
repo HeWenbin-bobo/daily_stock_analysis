@@ -45,6 +45,14 @@ class _HangingAdapter:
 
     def __init__(self) -> None:
         self.released = False
+        # 真实适配器继承 DataSourceAdapter，超时路径会调用 record_failure/success
+        self.health: list[tuple[str, str]] = []
+
+    def record_failure(self, err="") -> None:
+        self.health.append(("failure", err))
+
+    def record_success(self) -> None:
+        self.health.append(("success", ""))
 
     def is_available(self) -> bool:
         return True
@@ -256,6 +264,50 @@ def test_scan_budget_is_shorter_than_the_cron_interval() -> None:
     assert 0 < ae._SCAN_FETCH_BUDGET < 300, (
         f"budget {ae._SCAN_FETCH_BUDGET}s does not fit the 5-minute scan interval"
     )
+
+
+# ---------------------------------------------------------------------------
+# 4. A timed-out source must be recorded as unhealthy
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("fetcher", ["fetch_quote_with_fallback", "fetch_kline_with_fallback"])
+def test_source_timeout_is_recorded_as_a_failure(monkeypatch, fetcher) -> None:
+    """The hard timeout fires in the *caller's* thread, so the adapter's own
+    ``record_failure`` never runs. Live evidence: ``baostock`` logged 58 quote
+    timeouts while ``data_source_health`` still showed ``failure_count=0``, so
+    ``/ready`` advertised a permanently-timing-out source as 100% healthy and
+    the circuit breaker never tripped.
+    """
+    recorded: list[tuple[str, str]] = []
+
+    class _SlowAdapter:
+        def is_available(self) -> bool:
+            return True
+
+        def record_failure(self, err=""):
+            recorded.append(("failure", err))
+
+        def record_success(self):
+            recorded.append(("success", ""))
+
+        def fetch_quote(self, code):
+            time.sleep(5)
+            return None
+
+        def fetch_kline(self, code, period="daily", days=120):
+            time.sleep(5)
+            return []
+
+    adapter = _SlowAdapter()
+    monkeypatch.setattr(ds, "_get_adapter", lambda src: adapter if src == ds._FALLBACK_ORDER[0] else None)
+    monkeypatch.setattr(ds, "_QUOTE_SOURCE_TIMEOUT", 0.2)
+    monkeypatch.setattr(ds, "_KLINE_SOURCE_TIMEOUT", 0.2)
+    ds.clear_cache()
+
+    getattr(ds, fetcher)("600519")
+
+    assert recorded, f"{fetcher} timed out but recorded no health event at all"
+    assert recorded[0][0] == "failure", f"expected a failure record, got {recorded}"
+    assert "timed out" in recorded[0][1]
 
 
 if __name__ == "__main__":
