@@ -254,6 +254,20 @@ def create_share(
             f"resource_type 必须是 {', '.join(SUPPORTED_RESOURCE_TYPES)} 之一，"
             f"got {resource_type!r}"
         )
+    # ★ 探索期修复(500)：resource_id / title 直接进 SQLite 绑定参数。
+    #   传 list/dict 时 sqlite3 抛 ProgrammingError("type 'list' is not supported")
+    #   → 端点只 `except ValueError` → 500。实测
+    #   `{"resource_id":[1]}` 与 `{"title":{"a":1}}` 都是 500。
+    #   在这里统一归一（这是所有调用方的共用入口），并明确报错。
+    if isinstance(resource_id, (dict, list, tuple, set)):
+        raise ValueError(f"resource_id 必须是字符串或数字，got {type(resource_id).__name__}")
+    if resource_id is None:
+        raise ValueError("resource_id 不能为空")
+    title = "" if title is None else title
+    if isinstance(title, (dict, list, tuple, set)):
+        raise ValueError(f"title 必须是字符串，got {type(title).__name__}")
+    if not isinstance(title, str):
+        title = str(title)
     # ★ 探索期修复：expires_in_days 传字符串（前端把表单值当字符串发）时，
     #   `"3" <= 0` 抛 TypeError → 端点 500（实测）。统一转 int 再校验。
     if expires_in_days is not None:
