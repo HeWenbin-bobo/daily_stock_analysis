@@ -233,13 +233,20 @@ def test_notification(payload: dict, request: Request):
     if not allowed:
         raise HTTPException(429, f"限流，{retry}s 后重试")
     require_keys(payload, "channel_id")
-    ch_id = payload["channel_id"]
+    # ★ 探索期修复(500)：channel_id 直接进 SQLite 查询，list/dict 会抛
+    #   ProgrammingError → 500（实测 `{"channel_id":[1]}`）。
+    ch_id = _coerce_int(payload["channel_id"], "channel_id")
     # ★ 本轮修复(M4)：校验 channel 属于当前用户
     ch = notifier._get_channel(ch_id)
     if not ch:
         raise HTTPException(404, "channel 不存在")
     _check_resource_owner(request, payload.get("user_id"), ch.get("user_id"))
-    result = notifier.send(ch_id, title=payload.get("title", "测试推送"), content=payload.get("content", "这是一条测试推送"))
+    # ★ 探索期修复(500)：title/content 传容器时同样会在 SQLite 绑定参数失败。
+    title = payload.get("title", "测试推送")
+    content = payload.get("content", "这是一条测试推送")
+    if isinstance(title, (dict, list, tuple, set)) or isinstance(content, (dict, list, tuple, set)):
+        raise HTTPException(400, "title / content 必须是字符串")
+    result = notifier.send(ch_id, title=str(title), content=str(content))
     return {
         "success": result.success,
         "error_message": result.error_message,
