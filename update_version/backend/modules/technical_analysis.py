@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -123,7 +123,7 @@ def analyze_peaks_troughs(
             "period": period,
             "year_high": {"date": year_high_date, "price": round(year_high_price, 4)},
             "year_start_date": this_year_df.iloc[0]["date_dt"].strftime("%Y-%m-%d"),
-            "analysis_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "analysis_date": datetime.now().strftime("%Y-%m-%d"),
             "segments": [],
             "summary": _summary(current_price, []),
             "effective_window": window,
@@ -255,7 +255,7 @@ def analyze_peaks_troughs(
         "period": period,
         "year_high": {"date": year_high_date, "price": round(year_high_price, 4)},
         "year_start_date": this_year_df.iloc[0]["date_dt"].strftime("%Y-%m-%d"),
-        "analysis_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "analysis_date": datetime.now().strftime("%Y-%m-%d"),
         "segments": segments,
         "summary": _summary(current_price, segments),
         "effective_window": effective_window,
