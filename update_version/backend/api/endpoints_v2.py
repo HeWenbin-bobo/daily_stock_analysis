@@ -959,8 +959,11 @@ def llm_usage(user_id: Optional[str] = None, days: int = Query(30, le=365)):
 async def llm_chat(payload: dict, request: Request):
     """LLM 调用（限流 10/min/IP）
 
-    ★ Round 5：改 async + asyncio.to_thread，避免 LLM urlopen 阻塞 event loop 60s；
-    现在上限 20s（llm_router._call_real 已下调）
+    ★ Round 5：改 async + asyncio.to_thread，避免 LLM urlopen 阻塞 event loop。
+    超时由 llm_router 决定，两条协议不同：OpenAI 兼容路径 20s；
+    Anthropic / CC-switch 路径读 LLM_TIMEOUT（默认 300s）且失败会加倍
+    max_tokens 重试一次，所以单次请求最坏可达 2×LLM_TIMEOUT。
+    这也是本端点限流 10/min 的原因之一。
     """
     ip = ratelimit.get_client_ip(request)
     allowed, retry = ratelimit.check_limit(ip, "/api/v2/llm/chat")

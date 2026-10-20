@@ -531,8 +531,21 @@ def list_trades(account_id: int, limit: int = 100) -> List[Dict[str, Any]]:
 # ============================================================================
 # 快照（每日结算）
 # ============================================================================
-def take_snapshot(account_id: int, snapshot_date: Optional[str] = None) -> Dict[str, Any]:
-    """每日快照：记录总资产、持仓市值、现金、沪深 300"""
+def take_snapshot(
+    account_id: int,
+    snapshot_date: Optional[str] = None,
+    *,
+    benchmark_quote: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """每日快照：记录总资产、持仓市值、现金、沪深 300
+
+    ★ 探索期修复(日终结算跑 205s)：``settle_daily`` 逐账户调用本函数，而每个
+      账户都要重新拉一次沪深 300 基准行情（``fetch_quote_with_fallback`` 本身
+      **不缓存**）。实测 17 个账户 → 205s，且账户越多越慢，最终会顶到
+      max_instances=1 的 5 分钟扫描间隔之上。
+      ``benchmark_quote`` 让批量调用方（settle_daily）只取一次并复用；
+      不传时行为与之前完全一致（单账户手动快照仍需现取）。
+    """
     if snapshot_date is None:
         snapshot_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -550,7 +563,10 @@ def take_snapshot(account_id: int, snapshot_date: Optional[str] = None) -> Dict[
     # 选择"标记并把基准视为 0%"而非"完全跳过快照"的理由：
     #   快照本身（总资产/持仓市值/现金）是真实数据，盲目跳过会让用户的每日持仓记录中断；
     #   只把不可信的基准部分置零并打 is_mock 标记，前端就能区分"基准有/无"。
-    benchmark_raw = fetch_quote_with_fallback("000300")
+    benchmark_raw = (
+        benchmark_quote if benchmark_quote is not None
+        else fetch_quote_with_fallback("000300")
+    )
     benchmark_is_mock = bool(benchmark_raw and is_mock_payload(benchmark_raw))
     if benchmark_is_mock:
         benchmark = {}
@@ -634,6 +650,16 @@ def settle_daily() -> Dict[str, Any]:
     accounts = list_accounts()
     today = datetime.now().strftime("%Y-%m-%d")
     summary = {"settled": 0, "errors": 0, "skipped_portfolio": 0}
+    # ★ 探索期修复(日终结算跑 205s)：基准行情只取一次，所有账户复用。
+    #   旧实现每个账户各拉一次沪深 300（fetch_quote_with_fallback 不缓存），
+    #   17 个账户就是 17 次网络往返 —— 实测 205s，逼近 max_instances=1
+    #   的间隔上限，账户再多会直接顶穿。
+    #   取一次失败时传 None，take_snapshot 会各自回退现取（行为不变）。
+    benchmark_quote = None
+    try:
+        benchmark_quote = fetch_quote_with_fallback("000300")
+    except Exception as e:
+        logger.warning("settle: benchmark fetch failed, per-account fallback: %s", e)
     for acc in accounts:
         # ★ 探索期修复：组合持仓账本不是模拟盘，不该产生回测/排行榜用的快照
         try:
@@ -643,7 +669,7 @@ def settle_daily() -> Dict[str, Any]:
         except Exception as e:
             logger.warning("settle: portfolio check failed for %s: %s", acc["id"], e)
         try:
-            take_snapshot(acc["id"], today)
+            take_snapshot(acc["id"], today, benchmark_quote=benchmark_quote)
             summary["settled"] += 1
         except Exception as e:
             logger.exception("Settle account %s failed: %s", acc["id"], e)
