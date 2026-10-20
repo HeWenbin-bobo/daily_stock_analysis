@@ -32,6 +32,9 @@ data/
 logs/
 reports/
 *.log
+# Longbridge OAuth token 缓存是凭据，容器运行时通过 volume 挂载；
+# 不进构建上下文，避免 token 被写进 docker daemon 的 context/缓存。
+longbridge_tokens/
 
 # 忽略测试和文档
 tests/
@@ -40,6 +43,27 @@ test_*.py
 docs/
 *.md
 !README.md
+
+# 忽略历史副本目录（合计约 2.5GB）。这些目录是早期合并留下的整份仓库副本，
+# 不被活代码引用，但 Docker 默认会把整个 context 打包发送给 daemon——
+# 不排除时 docker build 要先传输 3.8GB 才能开始构建（CI 同样受影响）。
+daily_stock_analysis/
+stock_analysis/
+evals/
+
+# update_version 现在有自己的镜像（update_version/Dockerfile），因此不能整目录
+# 排除；只排除它里面不该进镜像的部分。backend/data 存着 SQLite 库与
+# .encryption_key / .llm_usage_hmac_secret（凭据），绝不能被 COPY 进镜像层。
+update_version/backend/data/
+update_version/data/
+update_version/backend/tests/
+update_version/tests/
+update_version/__pycache__/
+update_version/**/__pycache__/
+update_version/**/.omc/
+update_version/frontend/node_modules/
+update_version/frontend/dist/
+update_version/.run_state/
 
 # 忽略不参与 Docker 镜像构建的前端/桌面端产物
 apps/dsa-desktop/

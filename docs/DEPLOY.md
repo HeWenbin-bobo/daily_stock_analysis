@@ -30,6 +30,13 @@ sudo systemctl start docker
 sudo systemctl enable docker
 ```
 
+> **命令写法**：Compose 有两代 CLI，子命令完全一致，只是名字不同。
+> 官方脚本 `get.docker.com` 只装 **v2 插件**，用 `docker compose`（空格）；
+> 部分发行版仓库的 `docker-compose` 包是 **v1**，用 `docker-compose`（连字符）。
+> 本文命令统一写成 `docker-compose ...`，若提示 `command not found`，
+> 把 `docker-compose` 换成 `docker compose` 即可，参数不用改。
+> 用 `docker compose version` 或 `docker-compose version` 可确认本机装的是哪一代。
+
 ### 2. 准备配置文件
 
 ```bash
@@ -371,7 +378,7 @@ deploy:
 ```bash
 # 源服务器：打包
 cd /opt/stock-analyzer
-tar -czvf stock-analyzer-backup.tar.gz .env data/ logs/ reports/
+tar -czvf stock-analyzer-backup.tar.gz .env data/ logs/ reports/ longbridge_tokens/
 
 # 目标服务器：部署
 mkdir -p /opt/stock-analyzer
@@ -380,6 +387,12 @@ git clone <your-repo-url> .
 tar -xzvf stock-analyzer-backup.tar.gz
 docker-compose -f ./docker/docker-compose.yml up -d
 ```
+
+> `longbridge_tokens/` 挂载到容器内 `/home/dsa/.longbridge`，存放长桥 OAuth 的
+> token 缓存（`openapi/tokens/<client_id>`，文件权限 `0600`）。不一起备份的话，
+> 迁移后需要重新授权一次长桥登录。未使用长桥时该目录为空，可以省略；
+> 若目录不存在，Compose 会自动创建并由入口脚本修复属主。
+> 备份包含 `.env`，里面有 API Key——请按凭据对待，不要放到公开位置。
 
 ---
 

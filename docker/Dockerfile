@@ -60,6 +60,10 @@ COPY data_provider/ ./data_provider/
 COPY bot/ ./bot/
 COPY src/ ./src/
 COPY strategies/ ./strategies/
+# Jinja2 报告模板（REPORT_RENDERER_ENABLED=true 时由 src/services/report_renderer.py
+# 从 <项目根>/templates 读取）。缺失时 render() 返回 None 并由 notification 回退到
+# 内置拼装，不会崩，但启用该开关的用户会静默拿不到模板渲染结果。
+COPY templates/ ./templates/
 COPY --from=web-builder /app/static ./static/
 COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
@@ -95,10 +99,15 @@ EXPOSE 8000
 # 数据卷（持久化数据）
 VOLUME ["/app/data", "/app/logs", "/app/reports"]
 
-# 健康检查（FastAPI 模式）
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || curl -f http://localhost:8000/health \
-    || python -c "import sys; sys.exit(0)"
+# 健康检查（FastAPI 模式）。
+# 旧写法以 ``python -c "import sys; sys.exit(0)"`` 兜底，导致服务完全不可达时
+# 健康检查依然返回 0——容器永远 healthy，监控与 ``depends_on: condition`` 都失效。
+# 探测逻辑放在独立文件里：Docker 会把 CMD 的续行合并成单行，内联 Python 的
+# ``for`` / ``try`` 缩进会被破坏并抛 SyntaxError，反而让容器永久 unhealthy。
+# 不跑 Web 的 analyzer 服务在 docker-compose.yml 里显式 disable。
+COPY docker/healthcheck.py /usr/local/bin/docker-healthcheck.py
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD ["python", "/usr/local/bin/docker-healthcheck.py"]
 
 # 启动入口先修复 bind mount 目录权限，再降权为 dsa 执行应用；
 # 文档化 docker-compose exec 命令需显式使用 -u dsa，避免手动进程写入 root-owned 文件。
