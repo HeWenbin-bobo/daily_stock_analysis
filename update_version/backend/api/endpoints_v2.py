@@ -146,6 +146,26 @@ def _coerce_int(value: Any, field: str) -> int:
         raise HTTPException(400, f"{field} 必须是整数")
 
 
+def _coerce_float(value: Any, field: str, *, allow_none: bool = False) -> Optional[float]:
+    """把外部传入的数值转成 float，非法值返回 400 而非 500。
+
+    ★ 探索期修复(endpoint 500)：`/portfolio-p0/trades` 里直接写
+      `float(payload["quantity"])` / `float(payload.get("fee") or 0.0)`，
+      而外层只 `except ValueError` —— `float([100])` / `float({"a":1})` 抛的是
+      **TypeError**，一路冒到全局处理器变成 500。实测
+      `{"quantity":[100]}`、`{"price":{"a":1}}`、`{"fee":[5]}` 三个都是 500。
+      端点层必须是 400：调用方参数错，不是服务端故障。
+    """
+    if value is None and allow_none:
+        return None
+    if isinstance(value, bool) or isinstance(value, (dict, list, tuple, set)):
+        raise HTTPException(400, f"{field} 必须是数字")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"{field} 必须是数字")
+
+
 # ============================================================================
 # Health
 # ============================================================================
@@ -1403,17 +1423,24 @@ def portfolio_p0_record_trade(payload: dict):
     """记录一笔交易（buy/sell，含费税；sell 校验可用数量）。"""
     require_keys(payload, "account_id", "symbol", "trade_date", "side", "quantity", "price")
     from datetime import date as _date
+    # ★ 探索期修复(500)：这些 float() 此前只被 `except ValueError` 兜住，
+    #   而 list/dict 参数抛的是 TypeError → 500。统一走 _coerce_float 转 400。
+    account_id = _coerce_int(payload["account_id"], "account_id")
+    quantity = _coerce_float(payload["quantity"], "quantity")
+    price = _coerce_float(payload["price"], "price")
+    fee = _coerce_float(payload.get("fee") or 0.0, "fee")
+    tax = _coerce_float(payload.get("tax") or 0.0, "tax")
     try:
         trade_date = _date.fromisoformat(str(payload["trade_date"]))
         result = _get_pf_service().record_trade(
-            account_id=int(payload["account_id"]),
+            account_id=account_id,
             symbol=str(payload["symbol"]),
             trade_date=trade_date,
             side=str(payload["side"]),
-            quantity=float(payload["quantity"]),
-            price=float(payload["price"]),
-            fee=float(payload.get("fee") or 0.0),
-            tax=float(payload.get("tax") or 0.0),
+            quantity=quantity,
+            price=price,
+            fee=fee,
+            tax=tax,
             note=payload.get("note"),
         )
     except ValueError as exc:
