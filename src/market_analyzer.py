@@ -549,14 +549,52 @@ Focus on index trend, liquidity, and sector rotation to shape the next-session t
             }
         return mapping[mood_key]
 
+    def _resolve_overview_date(self) -> str:
+        """Date the overview's market data actually belongs to.
+
+        On a non-trading day (weekend/holiday) every quote and daily bar still
+        describes the previous session, so stamping ``datetime.now()`` on the
+        report makes it claim "today" while showing older numbers — the title
+        and the data disagree. Trading days keep the exact previous behaviour;
+        only the non-trading case is redirected to the last session, and any
+        calendar failure falls back to the natural date (fail-open).
+        """
+        from datetime import date as _date
+
+        from src.core.trading_calendar import (
+            _XCALS_AVAILABLE,
+            get_effective_trading_date,
+            is_market_open,
+        )
+
+        now = datetime.now()
+        natural_date = now.date()
+        if not _XCALS_AVAILABLE or is_market_open(self.region, natural_date):
+            return natural_date.strftime("%Y-%m-%d")
+
+        try:
+            effective = get_effective_trading_date(self.region, current_time=now)
+        except Exception as exc:  # noqa: BLE001 - calendar problems must not break reporting
+            logger.warning("大盘复盘交易日解析失败，回退自然日: %s", exc)
+            return natural_date.strftime("%Y-%m-%d")
+
+        if isinstance(effective, _date) and effective < natural_date:
+            logger.info(
+                "大盘复盘运行于非交易日，报告日期回退到最近交易日: natural=%s effective=%s",
+                natural_date,
+                effective,
+            )
+            return effective.strftime("%Y-%m-%d")
+        return natural_date.strftime("%Y-%m-%d")
+
     def get_market_overview(self) -> MarketOverview:
         """
         获取市场概览数据
-        
+
         Returns:
             MarketOverview: 市场概览数据对象
         """
-        today = datetime.now().strftime('%Y-%m-%d')
+        today = self._resolve_overview_date()
         overview = MarketOverview(date=today)
         
         # 1. 获取主要指数行情（按 region 切换 A 股/美股）

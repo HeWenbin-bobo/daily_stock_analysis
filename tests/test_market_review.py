@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import date, datetime
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -924,6 +925,73 @@ class MarketReviewLocalizationTestCase(unittest.TestCase):
                     os.environ.pop("DATABASE_PATH", None)
                 else:
                     os.environ["DATABASE_PATH"] = old_db_path
+
+
+class MarketOverviewDateTestCase(unittest.TestCase):
+    """The overview date must match the session the data actually belongs to."""
+
+    def _analyzer(self, region: str = "cn"):
+        from src.market_analyzer import MarketAnalyzer
+
+        return MarketAnalyzer(region=region)
+
+    def test_trading_day_keeps_natural_date(self) -> None:
+        analyzer = self._analyzer("cn")
+        natural = "2026-10-19"  # Monday, a CN session
+
+        with patch(
+            "src.market_analyzer.datetime",
+            wraps=datetime,
+        ) as fake_dt, patch(
+            "src.core.trading_calendar.is_market_open", return_value=True
+        ), patch(
+            "src.core.trading_calendar.get_effective_trading_date",
+            side_effect=AssertionError("must not consult the session on a trading day"),
+        ):
+            fake_dt.now.return_value = datetime(2026, 10, 19, 15, 30)
+            self.assertEqual(analyzer._resolve_overview_date(), natural)
+
+    def test_non_trading_day_falls_back_to_last_session(self) -> None:
+        analyzer = self._analyzer("cn")
+
+        with patch(
+            "src.market_analyzer.datetime",
+            wraps=datetime,
+        ) as fake_dt, patch(
+            "src.core.trading_calendar.is_market_open", return_value=False
+        ), patch(
+            "src.core.trading_calendar.get_effective_trading_date",
+            return_value=date(2026, 10, 16),
+        ):
+            fake_dt.now.return_value = datetime(2026, 10, 18, 2, 0)  # Sunday
+            self.assertEqual(analyzer._resolve_overview_date(), "2026-10-16")
+
+    def test_calendar_failure_fails_open_to_natural_date(self) -> None:
+        analyzer = self._analyzer("cn")
+
+        with patch(
+            "src.market_analyzer.datetime",
+            wraps=datetime,
+        ) as fake_dt, patch(
+            "src.core.trading_calendar.is_market_open", return_value=False
+        ), patch(
+            "src.core.trading_calendar.get_effective_trading_date",
+            side_effect=RuntimeError("calendar exploded"),
+        ):
+            fake_dt.now.return_value = datetime(2026, 10, 18, 2, 0)
+            self.assertEqual(analyzer._resolve_overview_date(), "2026-10-18")
+
+    def test_missing_calendar_keeps_natural_date(self) -> None:
+        analyzer = self._analyzer("cn")
+
+        with patch(
+            "src.market_analyzer.datetime",
+            wraps=datetime,
+        ) as fake_dt, patch(
+            "src.core.trading_calendar._XCALS_AVAILABLE", False
+        ):
+            fake_dt.now.return_value = datetime(2026, 10, 18, 2, 0)
+            self.assertEqual(analyzer._resolve_overview_date(), "2026-10-18")
 
 
 if __name__ == "__main__":
