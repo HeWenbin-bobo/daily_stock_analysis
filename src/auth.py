@@ -66,16 +66,56 @@ def _get_credential_path() -> Path:
     return _get_data_dir() / ".admin_password_hash"
 
 
-def _is_auth_enabled_from_env() -> bool:
-    """Read ADMIN_AUTH_ENABLED from .env file."""
-    _ensure_env_loaded()
-    env_file = os.getenv("ENV_FILE")
-    env_path = Path(env_file) if env_file else Path(__file__).resolve().parent.parent / ".env"
+def _read_admin_auth_enabled(env_path: Path) -> Optional[bool]:
+    """Read ``ADMIN_AUTH_ENABLED`` from one ``.env`` file, or ``None`` if absent."""
     if not env_path.exists():
-        return False
-    values = dotenv_values(env_path)
-    val = (values.get("ADMIN_AUTH_ENABLED") or "").strip().lower()
-    return val in ("true", "1", "yes")
+        return None
+    try:
+        values = dotenv_values(env_path)
+    except OSError:
+        return None
+    raw = values.get("ADMIN_AUTH_ENABLED")
+    if raw is None:
+        return None
+    return str(raw).strip().lower() in ("true", "1", "yes")
+
+
+def _is_auth_enabled_from_env() -> bool:
+    """Resolve ``ADMIN_AUTH_ENABLED`` from an explicit file, the environment, or ``.env``.
+
+    Precedence matters because the three sources disagree in practice:
+
+    1. An explicitly configured ``ENV_FILE`` wins. It is an operator statement
+       about *which* file holds the settings, so it must outrank an ambient
+       ``ADMIN_AUTH_ENABLED`` that ``setup_env()`` copied out of some other
+       ``.env``.
+    2. Otherwise the process environment wins. Docker (``env_file:`` /
+       ``--env-file`` / ``docker run -e``) delivers configuration as
+       environment variables and ships **no** ``.env`` inside the image; a
+       file-only lookup made ``ADMIN_AUTH_ENABLED=true`` silently ineffective
+       in every container, leaving the web UI open to anyone who could reach
+       the port.
+    3. Finally fall back to the repo's own ``.env`` (local runs).
+
+    Local runs are unaffected: ``setup_env()`` loads ``.env`` into the
+    environment, so step 2 already sees the value.
+    """
+    _ensure_env_loaded()
+
+    explicit_env_file = (os.getenv("ENV_FILE") or "").strip()
+    if explicit_env_file:
+        from_file = _read_admin_auth_enabled(Path(explicit_env_file))
+        if from_file is not None:
+            return from_file
+
+    from_env = (os.getenv("ADMIN_AUTH_ENABLED") or "").strip().lower()
+    if from_env:
+        return from_env in ("true", "1", "yes")
+
+    default_file = _read_admin_auth_enabled(
+        Path(__file__).resolve().parent.parent / ".env"
+    )
+    return bool(default_file)
 
 
 def rotate_session_secret() -> bool:

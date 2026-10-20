@@ -308,6 +308,15 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+
+        # SSE 长连接：Agent 对话与分析任务流都是 text/event-stream。
+        # Nginx 默认 proxy_read_timeout 为 60s，而单次工具调用就可能超过它
+        # （实测 get_daily_history 一次 69s、整轮对话 84s），连接会被切断。
+        # 关闭缓冲让事件立即下发，并把读超时放宽到 30 分钟。
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1800s;
+        proxy_send_timeout 1800s;
     }
 }
 ```

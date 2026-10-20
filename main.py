@@ -1299,7 +1299,7 @@ def _run_analysis_with_runtime_scheduler_lock(
     return bool(lock_acquired and task_result["ok"])
 
 
-def start_api_server(host: str, port: int, config: Config) -> None:
+def start_api_server(host: str, port: int, config: Config) -> Optional[Tuple[Any, Any]]:
     """
     在后台线程启动 FastAPI 服务
 
@@ -1307,6 +1307,13 @@ def start_api_server(host: str, port: int, config: Config) -> None:
         host: 监听地址
         port: 监听端口
         config: 配置对象
+
+    Returns:
+        ``(uvicorn_server, thread)`` so callers can request a graceful stop.
+        Returning the handle matters for shutdown correctness: the server runs
+        on a daemon thread, so letting the process exit without it would skip
+        the lifespan teardown (which releases the SQLite engine and lets WAL
+        checkpoint) and lose the running transaction.
     """
     import socket
     import threading
@@ -1378,7 +1385,7 @@ def start_api_server(host: str, port: int, config: Config) -> None:
             )
         if uvicorn_server.started:
             logger.info(f"FastAPI 服务已启动: http://{host}:{port}")
-            return
+            return uvicorn_server, thread
         if not thread.is_alive():
             break
         time.sleep(0.05)
@@ -1387,11 +1394,40 @@ def start_api_server(host: str, port: int, config: Config) -> None:
         raise RuntimeError(f"FastAPI server failed to start: {host}:{port}; {startup_error[0]}")
     if uvicorn_server.started:
         logger.info(f"FastAPI 服务已启动: http://{host}:{port}")
-        return
+        return uvicorn_server, thread
     if not thread.is_alive():
         raise RuntimeError(f"FastAPI 服务器启动后立即退出: {host}:{port}")
 
     raise RuntimeError(f"FastAPI 服务在 {timeout_seconds:.1f}s 内未完成启动: {host}:{port}")
+
+
+def _stop_api_server(handle: Any, timeout_seconds: float = 10.0) -> None:
+    """Ask the background uvicorn server to shut down gracefully.
+
+    Setting ``should_exit`` makes uvicorn's main loop unwind, which runs the
+    FastAPI lifespan teardown (releasing the SQLite engine, cancelling the
+    stock-index refresh task and stopping the runtime scheduler). Without this
+    the daemon thread is torn down with the process and no cleanup runs.
+    """
+    if handle is None:
+        return
+    # Guard the shape: shutdown must never raise on the exit path, and callers
+    # (or tests) may hand us something that is not the (server, thread) pair.
+    try:
+        uvicorn_server, thread = handle
+    except (TypeError, ValueError):
+        return
+    if uvicorn_server is None:
+        return
+    try:
+        uvicorn_server.should_exit = True
+    except Exception as exc:  # noqa: BLE001 - shutdown must stay best-effort
+        logger.warning("请求 FastAPI 服务停止失败: %s", exc)
+        return
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=timeout_seconds)
+        if thread.is_alive():
+            logger.warning("FastAPI 服务在 %.1fs 内未完成优雅停止", timeout_seconds)
 
 
 def _is_truthy_env(var_name: str, default: str = "true") -> bool:
@@ -1546,6 +1582,41 @@ def _build_schedule_times_provider(default_schedule_time: str):
     return _provider
 
 
+def _install_shutdown_signal_handlers() -> None:
+    """Turn SIGTERM/SIGINT into an orderly shutdown.
+
+    Docker sends SIGTERM on ``docker stop`` / ``docker compose down``. Because
+    the interpreter runs as PID 1 in the container, the kernel applies no
+    default disposition: an unhandled SIGTERM is simply ignored and the
+    container only dies when Docker escalates to SIGKILL. That skips SQLite's
+    WAL checkpoint and made every stop take the full 10s grace period before
+    being killed (observed exit code 137).
+
+    uvicorn is started with ``install_signal_handlers=False`` (see
+    ``start_api_server``), so nothing else claims these signals. We translate
+    them into ``KeyboardInterrupt``, which the existing ``except
+    KeyboardInterrupt`` blocks around every long-running loop already handle.
+    Outside Docker (normal terminal use) SIGINT arrives as
+    ``KeyboardInterrupt`` by default, so raising it here is equivalent.
+    """
+    import signal
+
+    def _raise_keyboard_interrupt(signum, _frame):
+        logger.info("收到退出信号 %s，正在停止...", signal.Signals(signum).name)
+        raise KeyboardInterrupt
+
+    for signal_name in ("SIGTERM", "SIGINT"):
+        sig = getattr(signal, signal_name, None)
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _raise_keyboard_interrupt)
+        except (ValueError, OSError):
+            # Not in the main thread, or the platform rejects the Signal
+            # enum (e.g. Windows lacks SIGTERM semantics). Best effort.
+            pass
+
+
 def main() -> int:
     """
     主入口函数
@@ -1555,6 +1626,7 @@ def main() -> int:
     """
     # 解析命令行参数
     args = parse_arguments()
+    _install_shutdown_signal_handlers()
 
     # 在配置加载前先初始化 bootstrap 日志，确保早期失败也能落盘
     try:
@@ -1667,6 +1739,7 @@ def main() -> int:
         _warn_if_public_webui_without_auth(args.host)
 
     bot_clients_started = False
+    api_server_handle = None
     if start_serve:
         from src.services.runtime_scheduler import (
             CLI_SCHEDULER_OWNER_ENV,
@@ -1714,7 +1787,9 @@ def main() -> int:
         if not prepare_webui_frontend_assets():
             logger.warning("前端静态资源未就绪，继续启动 FastAPI 服务（Web 页面可能不可用）")
         try:
-            start_api_server(host=args.host, port=args.port, config=config)
+            api_server_handle = start_api_server(
+                host=args.host, port=args.port, config=config
+            )
             bot_clients_started = True
         except Exception as e:
             logger.error(f"启动 FastAPI 服务失败: {e}")
@@ -1737,6 +1812,10 @@ def main() -> int:
                 time.sleep(1)
         except KeyboardInterrupt:
             logger.info("\n用户中断，程序退出")
+        finally:
+            # 必须先让 uvicorn 走完 lifespan teardown，再让进程退出：
+            # SQLite 引擎释放与 WAL checkpoint 都在那里完成。
+            _stop_api_server(api_server_handle)
         return 0
 
     try:
@@ -1819,6 +1898,8 @@ def main() -> int:
                         time.sleep(1)
                 except KeyboardInterrupt:
                     logger.info("\n用户中断，程序退出")
+                finally:
+                    _stop_api_server(api_server_handle)
                 return 0
 
             logger.info("模式: 定时任务")
@@ -1930,6 +2011,8 @@ def main() -> int:
                     time.sleep(1)
             except KeyboardInterrupt:
                 pass
+            finally:
+                _stop_api_server(api_server_handle)
 
         return 0
 

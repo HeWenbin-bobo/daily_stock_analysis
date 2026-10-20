@@ -5,7 +5,9 @@ APP_USER="dsa"
 APP_GROUP="dsa"
 APP_UID="1000"
 APP_GID="1000"
-WRITABLE_DIRS="/app/data /app/logs /app/reports /home/dsa/.longbridge"
+# 各镜像的可写挂载点不同（主应用写 /app/data 等，update_version 写自己的
+# backend/data 与 data/），因此允许镜像通过环境变量覆盖，默认保持原行为。
+WRITABLE_DIRS="${DSA_WRITABLE_DIRS:-/app/data /app/logs /app/reports /home/dsa/.longbridge}"
 DATABASE_FILE="${DATABASE_PATH:-/app/data/stock_analysis.db}"
 
 warn() {
@@ -13,10 +15,14 @@ warn() {
 }
 
 can_write_dir_as_app_user() {
+    # A failed probe is an expected outcome (that is how we detect mounts that
+    # still need repairing), so its stderr is suppressed: sh would otherwise
+    # print "cannot create ...: Permission denied" on every single start-up and
+    # make a healthy boot look broken. Only the exit status is meaningful here.
     gosu "$APP_USER:$APP_GROUP" sh -c '
         tmp="$1/.dsa-write-check.$$"
         : > "$tmp" && rm -f "$tmp"
-    ' sh "$1"
+    ' sh "$1" 2>/dev/null
 }
 
 can_write_file_as_app_user() {

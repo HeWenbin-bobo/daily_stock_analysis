@@ -187,6 +187,69 @@ jobs:
           import futu; print('✅ futu')
           print('✅ All Docker imports OK')
           "
+      # Import smoke alone cannot catch runtime defects: the image has shipped
+      # with a healthcheck that never failed, a SIGTERM handler that was never
+      # installed (docker stop fell through to SIGKILL and skipped the SQLite
+      # WAL checkpoint), and ADMIN_AUTH_ENABLED silently ignored because it was
+      # only read from a `.env` file that containers do not have. Everything
+      # below actually starts a container and inspects it.
+      - name: 🩺 Docker auth flag honours process env
+        run: |
+          docker run --rm -e ADMIN_AUTH_ENABLED=true stock-analysis:test \
+            python -c "
+          from src.auth import is_auth_enabled
+          assert is_auth_enabled() is True, 'ADMIN_AUTH_ENABLED=true ignored when set via env'
+          print('✅ Admin auth honours process env')
+          "
+      - name: 🩺 Docker serve mode becomes healthy
+        run: |
+          set -euo pipefail
+          docker run -d --name dsa-ci-server \
+            -e WEBUI_HOST=0.0.0.0 -e ADMIN_AUTH_ENABLED=false \
+            -p 18000:8000 stock-analysis:test \
+            python main.py --serve-only --host 0.0.0.0 --port 8000
+          for i in $(seq 1 40); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' dsa-ci-server 2>/dev/null || echo starting)"
+            [ "$status" = "healthy" ] && break
+            sleep 3
+          done
+          echo "health=$status"
+          [ "$status" = "healthy" ] || { docker logs dsa-ci-server; exit 1; }
+          docker exec dsa-ci-server python -c "
+          import urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5) as r:
+              assert r.status == 200, r.status
+          print('✅ /api/health reachable inside container')
+          "
+
+      - name: 🩺 Docker stops gracefully on SIGTERM
+        run: |
+          set -euo pipefail
+          started=$(date +%s)
+          docker stop --time 30 dsa-ci-server
+          elapsed=$(( $(date +%s) - started ))
+          exit_code="$(docker inspect -f '{{.State.ExitCode}}' dsa-ci-server)"
+          docker rm -f dsa-ci-server
+          echo "stop elapsed=${elapsed}s exit=${exit_code}"
+          # 137 means the process ignored SIGTERM and had to be killed, which
+          # also means SQLite never checkpointed its WAL.
+          [ "$exit_code" = "0" ] || { echo "::error::container exited $exit_code, SIGTERM was not handled"; exit 1; }
+          [ "$elapsed" -lt 15 ] || { echo "::error::graceful stop took ${elapsed}s"; exit 1; }
+
+      - name: 🩺 Docker scheduler mode is not reported unhealthy
+        run: |
+          set -euo pipefail
+          # The image's default CMD is `--schedule`, which binds no HTTP port.
+          # A probe that unconditionally hits /api/health marks it unhealthy forever.
+          docker run -d --name dsa-ci-scheduler stock-analysis:test
+          for i in $(seq 1 40); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' dsa-ci-scheduler 2>/dev/null || echo starting)"
+            [ "$status" = "healthy" ] && break
+            sleep 3
+          done
+          echo "health=$status"
+          docker rm -f dsa-ci-scheduler
+          [ "$status" = "healthy" ] || { echo "::error::scheduler-only container never became healthy"; exit 1; }
 
   desktop-futu-package-windows:
     name: desktop-futu-package-windows
