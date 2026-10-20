@@ -241,6 +241,16 @@ def update_rule(rule_id: int, **fields) -> bool:
     params: list = []
     for k, v in fields.items():
         if k in allowed:
+            # ★ 探索期修复(500)：容器类型会让两条路径分别炸掉 ——
+            #   `rule_type` 走 `v not in RULE_TYPES` 抛 TypeError: unhashable type；
+            #   `name` / `symbol_filter` 直接被 SQLite 当绑定参数抛 ProgrammingError。
+            #   端点只 `except ValueError`（实测 PUT {"name":[1]} / {"rule_type":[1]}
+            #   / {"symbol_filter":[1]} 三个都是 500）。与 create_rule 对齐。
+            if k in ("name", "rule_type", "symbol_filter"):
+                if v is not None and not isinstance(v, str):
+                    raise ValueError(
+                        f"{k} 必须是字符串，got {type(v).__name__}"
+                    )
             # ★ 本轮修复(M5)：rule_type 必须校验，否则脏值会破坏评估器
             if k == "rule_type":
                 if v not in RULE_TYPES:

@@ -43,5 +43,34 @@ def test_none_symbol_filter_still_works() -> None:
     assert ae.get_rule(rid)["symbol_filter"] is None
 
 
+# ---------------------------------------------------------------------------
+# update_rule: the same class of defect on the PUT path
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("field,bad", [
+    ("name", [1]),
+    ("name", {"a": 1}),
+    ("rule_type", [1]),          # 旧实现走 `v not in RULE_TYPES` → TypeError: unhashable
+    ("rule_type", {"a": 1}),
+    ("symbol_filter", [1]),
+    ("symbol_filter", {"a": 1}),
+])
+def test_update_rule_rejects_container_fields(field: str, bad) -> None:
+    rid = ae.create_rule("u", "upd", "limit_up", {})
+    with pytest.raises(ValueError, match=field):
+        ae.update_rule(rid, **{field: bad})
+    # 未被改写
+    assert ae.get_rule(rid)[field if field != "rule_type" else "rule_type"] == (
+        "limit_up" if field == "rule_type" else (None if field == "symbol_filter" else "upd")
+    )
+
+
+def test_update_rule_still_accepts_valid_strings() -> None:
+    rid = ae.create_rule("u", "upd2", "limit_up", {})
+    assert ae.update_rule(rid, name="renamed", symbol_filter="600519")
+    got = ae.get_rule(rid)
+    assert got["name"] == "renamed"
+    assert got["symbol_filter"] == "600519"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
