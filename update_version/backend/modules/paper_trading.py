@@ -523,6 +523,18 @@ def place_order(
             row = conn.execute("SELECT cash FROM paper_account WHERE id=?", (account_id,)).fetchone()
             new_cash = row["cash"] if row else 0
         else:
+            # ★ 探索期修复(负现金)：卖出所得可能**小于佣金** —— 佣金是
+            #   `max(amount*0.0003, 5.0)` 的最低 5 元，而卖出 1 股 ¥1 的股票
+            #   只有 ¥1 收入，于是 `cash + (amount - fee)` 把现金打成负数。
+            #   实测：现金 0 的账户卖出 1 股 @¥1 → cash = -4.0。
+            #   负现金会直接污染排行榜权益与后续买入判断（`cash > 0` 护栏失效），
+            #   且真实券商不会让账户因成交而凭空负债 —— 直接拒绝更诚实。
+            if amount - fee < 0:
+                conn.execute("ROLLBACK")
+                raise ValueError(
+                    f"卖出所得 ¥{amount:.2f} 不足以支付佣金 ¥{fee:.2f}，"
+                    f"该笔订单会亏本成交，已拒绝"
+                )
             # ★ 修复(L3)：卖出分支旧实现 new_cash = account["cash"] + amount - fee
             #   （account 是事务外读的旧值），并发成交下返回值与实际 DB 余额漂移。
             #   改为事务内重读最新余额（与买入分支一致）。
