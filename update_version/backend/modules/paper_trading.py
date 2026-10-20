@@ -149,6 +149,17 @@ def transfer_between_accounts(
     dst = get_account(to_account_id)
     if not src or not dst:
         raise ValueError("账户不存在")
+    # ★ 探索期修复(账本隔离漏洞)：组合持仓账本不是模拟盘，它的 cash 只是名义
+    #   初始资金，真实资产在 portfolio_holding 里。place_order 与 settle_daily
+    #   都拦了 is_portfolio_account，唯独转账路径漏了 —— 实测从「我的持仓」
+    #   转出 ¥10,000 成功（from_new_cash 1,000,000 → 990,000），
+    #   等于可以把组合账本的名义资金搬进模拟盘变现。
+    #   两个方向都禁：转出会让组合账本虚减，转入会让模拟盘凭空多钱。
+    for _aid, _role in ((from_account_id, "转出方"), (to_account_id, "转入方")):
+        if is_portfolio_account(_aid):
+            raise ValueError(
+                f"{_role}是组合持仓账本，不能参与模拟盘转账（请用 /portfolio/holdings 管理）"
+            )
     # 快速预检（真正保证见事务内条件更新，避免 TOCTOU 透支）
     if src["cash"] < amount:
         raise ValueError(f"现金不足：可用 {src['cash']:.0f}，要转 {amount:.0f}")
