@@ -12,7 +12,7 @@ import time
 import logging
 import asyncio
 import threading
-from datetime import datetime, time as dtime
+from datetime import datetime, timedelta, time as dtime
 from typing import Optional, Callable, Dict, Any, List, Set
 
 logger = logging.getLogger(__name__)
@@ -809,6 +809,22 @@ def run_retention_cleanup() -> Dict[str, int]:
                 conn.close()
         except Exception as e:
             logger.warning("retention: %s cleanup failed: %s", table, e)
+    # 社区热榜：每天 top_n(默认 50) 行 × 每日刷新，且**从不清**。
+    #   ★ 探索期修复(只写不清)：本表的时间列是 TEXT 日期（'YYYY-MM-DD'），
+    #     不能套上面那套 unix 时间戳的循环，必须单独按字符串比较。
+    #     榜单只服务"最近几天"的展示，保留 90 天足够。
+    try:
+        conn = get_conn()
+        try:
+            cutoff_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+            cur = conn.execute(
+                "DELETE FROM community_hot_list WHERE rank_date < ?", (cutoff_date,)
+            )
+            result["community_hot_list"] = cur.rowcount
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("retention: community_hot_list cleanup failed: %s", e)
     logger.info("[cron] retention cleanup: %s", result)
     return result
 
