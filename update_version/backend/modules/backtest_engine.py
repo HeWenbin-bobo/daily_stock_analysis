@@ -485,6 +485,15 @@ def _execute_backtest(
         date = k["date"]
         close = k["close"]
 
+        # ★ 探索期修复(回测 500)：停牌/脏数据的 close 可能是 0 ——
+        #   `core.data_source._f()` 解析失败（akshare 的 "-"、None、NaN）时
+        #   返回默认值 0.0，而 K 线拉取不逐根过滤。此前买入分支的
+        #   `int(cash / close / 100)` 直接抛 ZeroDivisionError → 整个回测 500，
+        #   且 hyperopt 调它时会把整轮参数优化打挂。
+        #   这一根没有有效价格，跳过它（不产生交易、也不记入权益曲线）。
+        if not close or close <= 0 or not math.isfinite(close):
+            continue
+
         # ★ 预热段：只喂指标，不交易、不记录 equity（否则会把预热期的假平线算进收益/回撤）
         if i < warmup_bars:
             continue
