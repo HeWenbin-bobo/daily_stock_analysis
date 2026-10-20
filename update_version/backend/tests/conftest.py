@@ -21,12 +21,46 @@ import 一律命中缓存，app 与测试共享同一 E1/M），只做两件事�
 """
 import os
 import sys
+import tempfile
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path[:1]:
     sys.path.insert(0, BACKEND_DIR)
 
+# ★ 探索期修复(数据损坏事故)：把测试数据库重定向到仓库之外的临时目录。
+#
+#   backend/data/ 是 dsa-v2 容器的 **bind mount**。此前 25 个测试文件既没有
+#   设置 V4_DB_PATH、也没有隔离 history.db，在宿主机跑 pytest 时它们会直接
+#   写这个目录；与运行中的容器并发写同一 SQLite 文件，实测把 v2_dev.db 写成
+#   `database disk image is malformed`（损坏后只能逐表 dump 抢救）。
+#
+#   conftest 在测试模块被收集**之前**执行，所以这里设置的环境变量能赶在
+#   `db.migrate` / `db.history` 解析路径之前生效。测试文件里若要用自己的库，
+#   请用 `os.environ.setdefault(...)`（本文件已先设好，setdefault 不会覆盖）。
+_TEST_DB_DIR = tempfile.mkdtemp(prefix="dsa_v2_tests_")
+os.environ.setdefault("V4_DB_PATH", os.path.join(_TEST_DB_DIR, "v2_dev.db"))
+os.environ.setdefault("V4_HISTORY_PATH", os.path.join(_TEST_DB_DIR, "history.db"))
+
 import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_test_schema():
+    """在临时测试库上建好表结构。
+
+    ★ 探索期修复：把 DB 重定向到临时目录后，单独跑某个测试文件（如
+      `pytest tests/test_phase2_smoke.py`）会因为临时库里没有任何表而报
+      `no such table: notification_channel`。全量跑时恰好有别的用例先调了
+      `migrate()`，所以问题被掩盖，属于典型的顺序依赖。
+      这里在会话开始时就按当前 `db.migrate.DB_PATH` 建表（幂等 CREATE IF NOT EXISTS）。
+    """
+    try:
+        from db.migrate import migrate
+        migrate()
+    except Exception as exc:  # noqa: BLE001 - 建表失败就让具体用例暴露真实错误
+        import warnings
+        warnings.warn(f"conftest: test schema migration failed: {exc}")
+    yield
 
 
 @pytest.fixture(autouse=True)

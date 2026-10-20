@@ -1,12 +1,12 @@
-# update_version_v2 — 可上线的产品级股票分析平台
+# update_version — 可上线的产品级股票分析平台
 
-`update_version` 的升级版本，把原项目从「手动触发的工具脚本」升级为「产品化的 Web 应用」。
+把原项目从「手动触发的工具脚本」升级为「产品化的 Web 应用」。
 
 ## 与 update_version 的差异
 
-| 维度 | update_version (v1) | update_version_v2 (v2) |
+| 维度 | update_version (v1) | update_version (v2) |
 |---|---|---|
-| **后端** | 复用主项目 `api/v1/endpoints/hot_analysis.py` | **独立的 FastAPI** 应用（端口 8001） |
+| **后端** | 复用主项目 `api/v1/endpoints/hot_analysis.py` | **独立的 FastAPI** 应用（端口 8002） |
 | **数据库** | SQLite `history.db` | 新增 16 张表（异动/推送/回测/模拟盘/社区/组合/审计/llm_usage） |
 | **定时任务** | 仅手动触发 | **APScheduler 持久化**（4 个内置任务 + 用户自定义） |
 | **通知** | API 字段有 webhook_url 但未实现 | **4 通道推送**（企业微信/钉钉/邮件/Server酱）+ 模板 + 重试 |
@@ -24,9 +24,9 @@
 ## 目录结构
 
 ```
-update_version_v2/
+update_version/
 ├── backend/
-│   ├── app.py                  # FastAPI 入口（端口 8001）
+│   ├── app.py                  # FastAPI 入口（端口 8002）
 │   ├── core/
 │   │   ├── crypto.py           # Fernet 加密 + 脱敏
 │   │   ├── audit.py            # 审计日志
@@ -72,23 +72,62 @@ update_version_v2/
 
 ## 启动方式
 
-### 后端
+### Docker（推荐，前后端同一进程）
 
 ```bash
-cd update_version_v2/backend
+docker compose -f ./update_version/docker-compose.yml up -d --build
+```
+
+访问 http://localhost:8002 —— 前端由后端进程直接托管，不需要另起 Vite。
+
+- 镜像内同时包含主项目的 `src/`、`api/`、`data_provider/`、`bot/`、`strategies/`：
+  `backend/api/endpoints_hot.py` 靠 `Path(__file__).parent.parent.parent.parent`
+  反推仓库根来复用主项目模块，所以目录层级必须与仓库一致，不能只 COPY
+  `update_version/`。其中 `bot/` 是硬依赖（`src/notification.py` 顶层 import
+  `bot.models`），`strategies/` 是 agent 技能目录。
+- 需要持久化的是三个部分：
+  - `backend/data/`（`v2_dev.db`、`.encryption_key`、`.llm_usage_hmac_secret`、
+    `llm_settings.json`）
+  - `data/`（`history.db`）
+  - `data/main/`、`reports/`、`logs/`：主项目模块按**仓库根**写路径，不看
+    update_version 的目录约定（`DATABASE_PATH` → `/app/data`，
+    `NotificationService.save_report_to_file` → `/app/reports`）。不挂载时
+    组合账户/交易/用量统计/ETF 报告在容器重建后全部丢失。
+  全部已挂载并被 `.dockerignore` 排除，不会进镜像层。
+- 镜像额外装了 `optuna`（`endpoints_v2` 模块级 import `hyperopt_engine`）与
+  `reportlab` + `fonts-wqy-zenhei`（主项目 PDF 导出的硬编码字体路径），
+  三者主项目本身都不需要，因此不写进 `requirements.txt`。
+- 镜像是**自检**的：`docker build` 最后会跑两段导入冒烟（主项目链 / backend
+  链各一个进程，因为两边都有 `api` 包会互相遮蔽）。缺 `bot/`、缺主项目模块
+  这类问题会在构建阶段失败，不用等上线后端点 500。
+- 与主应用一致的两处挂载：`../strategies`（只读，改技能 YAML 不用重建镜像）
+  与 `../longbridge_tokens`（OAuth token 缓存；该目录已在 `.dockerignore`
+  中排除，凭据不进构建上下文）。
+- 不需要 Playwright/Chromium：同花顺热度榜直接解析服务端渲染的静态 HTML
+  （`data_provider.hot_lists.parse_ths_rank_html`）。若页面将来改成前端渲染，
+  `fetch_ths_hot` 会自动尝试 Playwright（需自行在镜像里装 chromium），
+  再回退到 akshare 历史接口。
+
+### 后端（本地开发）
+
+```bash
+cd update_version/backend
 python -m db.migrate              # 建表
-python app.py                     # 端口 8001
+python app.py                     # 端口 8002（V4_PORT 可覆盖）
 ```
 
 ### 前端
 
 ```bash
-cd update_version_v2/frontend
+cd update_version/frontend
 npm install                      # 首次
-npm run dev                      # 端口 5173（被占用时自动 5174）
+npm run dev                      # 端口 5174（被占用时自动 +1）
 ```
 
-前端访问：http://localhost:5173
+前端访问：http://localhost:5174
+
+> 本地开发时后端**没有** `frontend/dist` 就会跳过静态托管，只提供 API；
+> 这是预期行为，前端仍走 Vite 的 `/api` 代理。
 
 ## API 端点（共 80+）
 
@@ -145,7 +184,7 @@ npm run dev                      # 端口 5173（被占用时自动 5174）
 ## 测试
 
 ```bash
-cd update_version_v2/backend
+cd update_version/backend
 for t in tests/test_phase*.py tests/test_audit_round1.py; do
   python -X utf8 "$t"
 done
@@ -185,8 +224,41 @@ APScheduler 持久化要求函数是 module-level named function（不能 lambda
 
 ## 跳过的项
 
-- 用户系统 + 鉴权：复用主项目 `api/v1/endpoints/auth.py`
-- PostgreSQL 迁移：开发用 SQLite，生产部署时迁移
-- Tushare Pro / eFinance：骨架已写，akshare 主源 + baostock fallback 已能跑
-- Webhook 实际推送：模板/重试/日志已就绪，需 webhook URL 才推送
-- LLM 调用真限流：agent round 5 已提及，MAX_ANALYSIS_ATTEMPTS=6 + 5min 节流已能抗滥用
+> 这一节区分「不需要做」「做不了」「以后要做时怎么做」。凡是 Docker 部署相关
+> 且确实需要的，都已在镜像/compose 里落实（见上一节），这里只留真正的边界。
+
+- **用户系统 + 鉴权**：复用主项目 `api/v1/endpoints/auth.py`。当前 v2 用
+  `X-User-Id` header + `_require_user_match()` 做「身份自证」，不含登录态。
+  *补齐方式*：把主项目 `api.v1.endpoints.auth` 的 router 挂到 v2 app，
+  `APP_ENV=production` 时强制开启；同时把 `_require_user_match` 的匿名分支
+  从「允许」改为 401。
+- **Playwright / Chromium**：**已不再需要**。同花顺热度榜改为直接解析服务端
+  渲染的静态 HTML（三个 rank 页实测每页 50 行、GBK），`parse_ths_rank_html`
+  覆盖解析，容器内实测抓到 131 只。镜像因此不需要 Chromium（省 ~400MB）。
+  *若页面将来改成前端渲染*：`fetch_ths_hot` 会自动降级到 Playwright，
+  届时在 Dockerfile 里加 `pip install playwright && playwright install --with-deps chromium`
+  并接受镜像体积增长即可，无需改业务代码。
+- **PostgreSQL 迁移**：开发/单机用 SQLite（`v2_dev.db` + `history.db`）。
+  *补齐方式*：`db/migrate.py` 的 `get_conn()` 是唯一连接入口，改为返回
+  SQLAlchemy engine 的 Connection 即可；注意 APScheduler 的
+  `SQLAlchemyJobStore(url=...)` 需同步改 `postgresql://`。并发写场景
+  （多副本）在此之前不要横向扩容。
+- **Tushare Pro / eFinance 直连**：骨架已在，实际只跑 akshare 主源 +
+  baostock fallback。`efinance` 已随 requirements 安装且缓存目录已修权限
+  （见 Dockerfile），配 key 后可直接启用；*Tushare* 仅需在 `.env` 填
+  `TUSHARE_TOKEN`，主项目 fallback 链会自动接管。
+- **Webhook 实际推送**：v2 自带 4 通道推送（企业微信/钉钉/邮件/Server酱），
+  模板/重试/日志已就绪，缺的只是可用的 webhook URL/key。
+  *补齐方式*：`POST /api/v2/notifications/channels` 写入即可，无需改镜像。
+  主项目 `src/notification.py` 的飞书/Telegram 通道未接入 v2（v2 有自己的
+  `core/notifier.py`），需要时按同一模板加一个 channel 实现。
+- **LLM 调用真限流**：`MAX_ANALYSIS_ATTEMPTS=6` + 5min 节流已能抗滥用；
+  多用户并发时*建议*接入主项目 `src/llm` 的配额实现，而非再写一套。
+- **wkhtmltopdf / 分享图**：**确认不需要**。v2 只调
+  `StockAnalysisPipeline.analyze_stock()`（实测该函数 0 处通知/图片调用），
+  不走 `process_single_stock()` 的推送链路；PDF 走 reportlab（已装）。
+  *若将来要在 v2 里发分享图*：镜像需补 `wkhtmltopdf` + `fonts-noto-cjk`，
+  并在 compose 里挂载 `reports/`（已挂）。
+- **Longbridge OAuth**：镜像与 compose 已按主应用配置好
+  `../longbridge_tokens:/home/dsa/.longbridge` 与 entrypoint 权限修复。
+  未启用只是因为根 `.env` 里没填 `LONGBRIDGE_*`。填写后无需重建镜像。
