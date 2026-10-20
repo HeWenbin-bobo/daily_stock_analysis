@@ -67,5 +67,30 @@ def test_deep_research_rejects_non_string_code(bad_code) -> None:
     assert r.status_code == 400, f"code={bad_code!r} -> {r.status_code}: {r.text[:120]}"
 
 
+@pytest.mark.parametrize("bad_cost", ["nan", "NaN", "inf", "-inf", "1e400"])
+def test_non_finite_cost_is_400(bad_cost: str) -> None:
+    """float("nan") is a parseable call but not a valid business value.
+
+    NaN passes every `<= 0` / `> upper` comparison (NaN compares False to
+    everything), then blows up at the SQLite bind or JSON encode step:
+    verified live, {"cost": "nan"} returned 500 internal error.
+    """
+    body = dict(_HOLDING)
+    body["cost"] = bad_cost
+    r = _client().post("/api/v2/portfolio/holdings", json=body)
+    assert r.status_code == 400, f"cost={bad_cost!r} -> {r.status_code}: {r.text[:120]}"
+
+
+def test_coerce_float_rejects_non_finite() -> None:
+    from api.endpoints_v2 import _coerce_float
+    from fastapi import HTTPException
+
+    for bad in ("nan", "inf", float("nan"), float("inf")):
+        with pytest.raises(HTTPException) as exc:
+            _coerce_float(bad, "x")
+        assert exc.value.status_code == 400
+    assert _coerce_float("12.5", "x") == pytest.approx(12.5)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

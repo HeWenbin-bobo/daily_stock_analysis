@@ -5,6 +5,7 @@ update_version - 所有 v2 端点
 - 端点分组：notifications / alerts / backtest / paper / community / portfolio / data / llm / cron / health
 """
 import logging
+import math
 import os
 import hmac
 import json
@@ -161,9 +162,17 @@ def _coerce_float(value: Any, field: str, *, allow_none: bool = False) -> Option
     if isinstance(value, bool) or isinstance(value, (dict, list, tuple, set)):
         raise HTTPException(400, f"{field} 必须是数字")
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         raise HTTPException(400, f"{field} 必须是数字")
+    # ★ 探索期修复(500)：`float("nan")` 是合法调用但不合法业务值。
+    #   NaN 会一路穿透所有 `<= 0` / `> upper` 比较（NaN 参与比较恒为 False），
+    #   最终在 SQLite 绑定或 JSON 序列化处炸成 500 ——
+    #   实测 `{"cost": "nan"}` 返回 500 internal error。
+    #   inf 同理会让后续算术产生 inf/nan，提前拒绝。
+    if not math.isfinite(parsed):
+        raise HTTPException(400, f"{field} 必须是有限数字")
+    return parsed
 
 
 # ============================================================================
