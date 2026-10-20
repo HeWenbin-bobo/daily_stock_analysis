@@ -449,7 +449,7 @@ def test_scan_alerts_uses_bulk_fetch():
     orig_bulk = ds_mod.fetch_quotes_bulk
     orig_single = ds_mod.fetch_quote_with_fallback
 
-    def mock_bulk(codes, parallel=True):
+    def mock_bulk(codes, parallel=True, budget_seconds=None):
         call_count["bulk"] += 1
         return {c: {"code": c, "price": 100, "change_pct": 10.0} for c in codes}
 

@@ -20,6 +20,13 @@ from core.data_source import fetch_quote_with_fallback, fetch_kline_with_fallbac
 
 logger = logging.getLogger(__name__)
 
+# ★ 探索期修复(异动监控停摆)：单轮扫描在拉数据阶段的总预算（秒）。
+#   APScheduler 用 max_instances=1 + coalesce，一轮跑超 5 分钟（扫描间隔）后，
+#   后续每一轮都会被判为 "maximum number of running instances reached" 跳过。
+#   实测 2026-10-20 12:55 起因 K 线无超时停摆超过 3 小时，异动告警全程静默。
+#   这里给行情 + K 线两段各封一个总预算，宁可这一轮少看几只，也不能整个停摆。
+_SCAN_FETCH_BUDGET = 120.0
+
 # ============================================================================
 # 规则定义
 # ============================================================================
@@ -159,6 +166,26 @@ def create_rule(
     return cur.lastrowid or 0
 
 
+def _parse_rule_params(raw: Any) -> Dict[str, Any]:
+    """把 params_json 解析成 dict，永不返回 None。
+
+    ★ 探索期修复(异动规则静默失效)：`update_rule` 的写入端此前补过
+      `params=None → {}`，但**读取端没有对应防护**。存量行一旦是 JSON 字面量
+      "null"（旧版 `json.dumps(None)` 写进去的），读回来就是 None，评估器里
+      第一句 `params.get(...)` 直接抛 AttributeError。
+      实测：rule 34（volume_surge）每 5 分钟扫描都抛 `'NoneType' object has no
+      attribute 'get'`，被 scan_all_alerts 的 try/except 吞成 ERROR 日志，
+      该规则**永远不会触发**，用户侧只看到"没告警"。
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def list_rules(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_conn()
     cur = conn.cursor()
@@ -172,10 +199,7 @@ def list_rules(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     rows = []
     for r in cur.fetchall():
         d = dict(r)
-        try:
-            d["params"] = json.loads(d.pop("params_json", "{}"))
-        except Exception:
-            d["params"] = {}
+        d["params"] = _parse_rule_params(d.pop("params_json", None))
         rows.append(d)
     return rows
 
@@ -188,7 +212,7 @@ def get_rule(rule_id: int) -> Optional[Dict[str, Any]]:
     if not row:
         return None
     d = dict(row)
-    d["params"] = json.loads(d.pop("params_json", "{}"))
+    d["params"] = _parse_rule_params(d.pop("params_json", None))
     return d
 
 
@@ -521,14 +545,34 @@ def scan_all_alerts() -> Dict[str, Any]:
             summary["errors"] += 1
 
     # 2) 批量拉行情（一次并发）
+    #    ★ 探索期修复(异动监控停摆)：此前没传 budget_seconds，30 只自选股 ×
+    #      最坏 2 个数据源 × 15s 硬超时 = 900s，远超 5 分钟的扫描间隔。
     from core.data_source import fetch_quotes_bulk
     all_symbols = list({sym for _, sym in rule_symbols})
-    quotes_map = fetch_quotes_bulk(all_symbols, parallel=True) if all_symbols else {}
+    quotes_map = (
+        fetch_quotes_bulk(all_symbols, parallel=True, budget_seconds=_SCAN_FETCH_BUDGET)
+        if all_symbols else {}
+    )
 
     # 3) 批量拉 K 线（只对需要的 symbol，60s 缓存复用）
+    #    ★ 探索期修复(异动监控停摆)：这里是**串行**循环，单只最坏 2 源 ×15s。
+    #      APScheduler 是 max_instances=1 + coalesce，一旦本轮超过 5 分钟，
+    #      后续每一轮都被判为 "maximum number of running instances reached"
+    #      跳过 —— 实测 2026-10-20 因此静默停摆 3 小时以上。
+    #      用与行情相同的总预算逻辑封顶：超时后剩余 symbol 直接不评估，
+    #      宁可这一轮少看几只，也不能让整个监控停摆。
     from core.data_source import fetch_kline_with_fallback
     klines_map: Dict[str, List[Dict[str, Any]]] = {}
+    kline_deadline = time.monotonic() + _SCAN_FETCH_BUDGET
     for sym in needs_kline_symbols:
+        remaining = kline_deadline - time.monotonic()
+        if remaining <= 0:
+            logger.warning(
+                "scan kline budget %.0fs exhausted; %d/%d symbols skipped this round",
+                _SCAN_FETCH_BUDGET, len(needs_kline_symbols) - len(klines_map),
+                len(needs_kline_symbols),
+            )
+            break
         klines_map[sym] = fetch_kline_with_fallback(sym, days=60)
 
     # 4) 评估 + 触发

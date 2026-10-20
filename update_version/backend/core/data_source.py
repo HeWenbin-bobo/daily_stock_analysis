@@ -529,6 +529,12 @@ def is_mock_payload(payload: Any) -> bool:
 
 # ★ E2E 修复：单数据源行情硬超时（秒）——防止无内部超时的接口把整条 fallback 链拖死
 _QUOTE_SOURCE_TIMEOUT = 15.0
+# ★ 探索期修复(异动监控停摆)：K 线此前**完全没有**硬超时（只有行情有），
+#   baostock 的 socket read 无内部超时时会永久阻塞。实测 2026-10-20 12:55 的
+#   异动扫描卡在 fetch_kline 里超过 3 小时，APScheduler max_instances=1 于是把
+#   之后每一轮都判为 "maximum number of running instances reached" 跳过 ——
+#   异动告警从此完全静默，且日志里只有 WARNING，看不出根因。
+_KLINE_SOURCE_TIMEOUT = 15.0
 
 
 def fetch_quotes_bulk(
@@ -617,7 +623,25 @@ def fetch_kline_with_fallback(
         if adapter is None:
             continue
         try:
-            result = adapter.fetch_kline(code, period=period, days=days)
+            # ★ 探索期修复(异动监控停摆)：与 fetch_quote_with_fallback 相同的
+            #   daemon 线程 + join(timeout) 硬超时。baostock / akshare 的 K 线
+            #   接口都可能无内部超时地永久阻塞，此前一条卡死的连接会让整个
+            #   扫描任务挂住（实测 >3h），拖死后续所有定时轮次。
+            _box: list = []
+            def _fetch():
+                try:
+                    _box.append(("ok", adapter.fetch_kline(code, period=period, days=days)))
+                except BaseException as _e:  # noqa: BLE001
+                    _box.append(("err", _e))
+            _t = threading.Thread(target=_fetch, daemon=True)
+            _t.start()
+            _t.join(_KLINE_SOURCE_TIMEOUT)
+            if _t.is_alive():
+                raise TimeoutError(f"{src} kline timed out after {_KLINE_SOURCE_TIMEOUT}s")
+            _state, _val = _box[0]
+            if _state == "err":
+                raise _val
+            result = _val
         except Exception as e:
             logger.warning("fetch_kline via %s failed: %s", src, e)
             continue
