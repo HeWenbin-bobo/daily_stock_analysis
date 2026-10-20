@@ -72,8 +72,18 @@ def analyze_peaks_troughs(
     last_year = int(df["date_dt"].iloc[-1].year)
     this_year_df = df[df["date_dt"].dt.year == last_year].reset_index(drop=True)
 
+    # ★ 探索期修复：`quarterly`/`yearly` 一年只有 4/1 根 K 线，永远凑不满 5 根，
+    #   接口恒定 400（实测）；`monthly` 在年初、`daily` 在 1 月初也会季节性失败。
+    #   数据点不足时回退到**全量数据**（仍然是有意义的一段区间），而不是直接报错；
+    #   只有全量也不足时才失败。
     if len(this_year_df) < 5:
-        raise ValueError("本年度数据点不足，无法分析")
+        if len(df) < 5:
+            raise ValueError("本年度数据点不足，无法分析")
+        logger.info(
+            "peaks/troughs: 本年度仅 %d 根（period=%s），回退到全量 %d 根",
+            len(this_year_df), period, len(df),
+        )
+        this_year_df = df.copy()
 
     high_idx = int(this_year_df["high"].idxmax())
     year_high_date = this_year_df.loc[high_idx, "date_dt"].strftime("%Y-%m-%d")
