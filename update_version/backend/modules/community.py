@@ -26,46 +26,75 @@ def refresh_daily_hot_list(top_n: int = 50) -> Dict[str, Any]:
     """刷新每日公开榜单（被 cron 调用）
     - 数据源：akshare 全市场活跃度（简化版：用 change_pct 排序）
     - 写入 community_hot_list（按日期）
+
+    ★ 探索期修复(数据丢失)：旧实现**先 DELETE 当日数据**再抓取。任一数据源
+      失败时（实测：akshare 两个接口 + 回退全部网络异常）函数返回
+      `count=0, error=...`，但当天榜单已被删空 —— 首页热榜从"有数据"变成
+      "空白"，且无法自愈（cron 每天只跑一次）。
+      改为：先把新榜单写进临时列表，全部成功后才在同一事务里替换旧数据。
     """
     from datetime import datetime
     today = datetime.now().strftime("%Y-%m-%d")
-
-    # 清掉今天的旧数据
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM community_hot_list WHERE rank_date=?", (today,))
 
-    # 从 akshare 取活跃股
+    # 不在抓取前删除任何数据。抓取失败时旧榜单原样保留。
+    rows: List[Dict[str, Any]] = []
     try:
         import akshare as ak
         df = ak.stock_zh_a_spot_em()
         df = df.sort_values("涨跌幅", ascending=False).head(top_n)
-        inserted = 0
         for rank, (_, row) in enumerate(df.iterrows(), start=1):
             code = str(row.get("代码", ""))
             if not code:
                 continue
-            cur.execute(
-                """INSERT INTO community_hot_list
-                   (rank_date, symbol, rank, score, change_pct, mention_count)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (today, code, rank,
-                 float(row.get("最新价", 0) or 0),
-                 float(row.get("涨跌幅", 0) or 0),
-                 max(1, top_n - rank + 1)),  # 简单反比
-            )
-            inserted += 1
-        logger.info("Refreshed hot list: %d entries for %s", inserted, today)
-        return {"date": today, "count": inserted}
+            rows.append({
+                "code": code,
+                "rank": rank,
+                "score": float(row.get("最新价", 0) or 0),
+                "change_pct": float(row.get("涨跌幅", 0) or 0),
+                "mention_count": max(1, top_n - rank + 1),
+            })
     except Exception as e:
         # ★ Round 19 修复：stock_zh_a_spot_em 偶发 RemoteDisconnected 时，
         #   回退到主项目 hot_lists 的活跃榜（自带 retry + 缓存），保证热力图有数据
         logger.warning("refresh_daily_hot_list spot_em failed (%s), trying fallback", e)
-        return _refresh_hot_list_fallback(cur, today, top_n)
+        rows = _fetch_hot_list_fallback_rows(today, top_n)
+
+    if not rows:
+        logger.warning("refresh_daily_hot_list: 所有数据源失败，保留 %s 的旧榜单", today)
+        return {"date": today, "count": 0, "error": "all hot-list sources failed"}
+
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        cur.execute("DELETE FROM community_hot_list WHERE rank_date=?", (today,))
+        for item in rows:
+            cur.execute(
+                """INSERT INTO community_hot_list
+                   (rank_date, symbol, rank, score, change_pct, mention_count)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (today, item["code"], item["rank"], item["score"],
+                 item["change_pct"], item["mention_count"]),
+            )
+        cur.execute("COMMIT")
+    except Exception:
+        try:
+            cur.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+
+    logger.info("Refreshed hot list: %d entries for %s", len(rows), today)
+    return {"date": today, "count": len(rows)}
 
 
-def _refresh_hot_list_fallback(cur, today: str, top_n: int = 50) -> Dict[str, Any]:
-    """主路径失败时的回退：优先主项目 fetch_full_market_hot，再试 ak.stock_zh_a_spot。"""
+def _fetch_hot_list_fallback_rows(today: str, top_n: int = 50) -> List[Dict[str, Any]]:
+    """主路径失败时的回退：优先主项目 fetch_full_market_hot，再试 ak.stock_zh_a_spot。
+
+    ★ 探索期重构：旧签名是 `_refresh_hot_list_fallback(cur, today, top_n)`，
+      直接拿调用方的 cursor 写库 —— 无法与"先抓取成功、再原子替换"配合。
+      现在只负责**取数**，写库统一由 `refresh_daily_hot_list` 在一个事务里完成。
+    """
     rows = None
     try:
         # 主项目 data_provider.hot_lists 自带重试 + 降级（同花顺/东方财富/全市场活跃）
@@ -98,29 +127,30 @@ def _refresh_hot_list_fallback(cur, today: str, top_n: int = 50) -> Dict[str, An
             logger.warning("ultimate fallback stock_zh_a_spot failed: %s", e2)
 
     if not rows:
-        return {"date": today, "count": 0, "error": "all hot-list sources failed"}
+        return []
 
     # 用批量行情补 change_pct / price（避免 N+1）
     symbols = [str(r["code"]) for r in rows]
-    quotes_map = fetch_quotes_bulk(symbols, parallel=True)
-    inserted = 0
+    try:
+        quotes_map = fetch_quotes_bulk(symbols, parallel=True)
+    except Exception as e:
+        logger.warning("fallback quote enrich failed: %s", e)
+        quotes_map = {}
+
+    out: List[Dict[str, Any]] = []
     for rank, item in enumerate(rows, start=1):
-        code = str(item["code"])
+        code = str(item.get("code") or "")
         if not code:
             continue
         q = quotes_map.get(code) or {}
-        cur.execute(
-            """INSERT INTO community_hot_list
-               (rank_date, symbol, rank, score, change_pct, mention_count)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (today, code, rank,
-             float(q.get("price", 0) or 0),
-             float(q.get("change_pct", 0) or 0),
-             max(1, top_n - rank + 1)),
-        )
-        inserted += 1
-    logger.info("Refreshed hot list via fallback: %d entries for %s", inserted, today)
-    return {"date": today, "count": inserted}
+        out.append({
+            "code": code,
+            "rank": rank,
+            "score": float(q.get("price", 0) or 0),
+            "change_pct": float(q.get("change_pct", 0) or 0),
+            "mention_count": max(1, top_n - rank + 1),
+        })
+    return out
 
 
 def get_daily_hot_list(
@@ -181,6 +211,19 @@ def _gen_token(length: int = 12) -> str:
     return secrets.token_urlsafe(length)[:length]
 
 
+# 支持分享的资源类型 —— 必须与 _load_resource 的 DB_MAP 保持一致。
+# ★ 探索期修复：create_share 此前不校验 resource_type，`resource_type="nope"`
+#   会成功建分享（返回 share_token），但 resolve_share 时 _load_resource 返回
+#   None → 用户拿到一条"分享成功但内容为空"的死链，且公开页仍渲染 200。
+SUPPORTED_RESOURCE_TYPES = (
+    "analysis_run",
+    "backtest_result",
+    "market_review",
+    "paper_account",
+    "watchlist",
+)
+
+
 def create_share(
     user_id: str,
     resource_type: str,    # analysis_run / backtest_result / market_review
@@ -191,8 +234,20 @@ def create_share(
     expires_in_days: Optional[int] = None,
 ) -> Dict[str, Any]:
     """生成分享短链"""
-    if expires_in_days is not None and expires_in_days <= 0:
-        raise ValueError("expires_in_days 必须 > 0")
+    if resource_type not in SUPPORTED_RESOURCE_TYPES:
+        raise ValueError(
+            f"resource_type 必须是 {', '.join(SUPPORTED_RESOURCE_TYPES)} 之一，"
+            f"got {resource_type!r}"
+        )
+    # ★ 探索期修复：expires_in_days 传字符串（前端把表单值当字符串发）时，
+    #   `"3" <= 0` 抛 TypeError → 端点 500（实测）。统一转 int 再校验。
+    if expires_in_days is not None:
+        try:
+            expires_in_days = int(expires_in_days)
+        except (TypeError, ValueError):
+            raise ValueError(f"expires_in_days 必须是整数，got {expires_in_days!r}")
+        if expires_in_days <= 0:
+            raise ValueError("expires_in_days 必须 > 0")
     conn = get_conn()
     cur = conn.cursor()
     now = time.time()
@@ -224,6 +279,19 @@ def create_share(
         "expires_at": expires_at,
         "title": title,
     }
+
+
+def get_share_owner(token: str) -> Optional[str]:
+    """只取分享的 owner，不做公开/过期过滤（供撤销等归属校验使用）。
+
+    ★ resolve_share() 会拒绝私有/过期分享（那是**公开访问**的正确语义），
+      但撤销接口需要能校验私有分享的归属，不能用它判存在。
+    """
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT user_id FROM shared_report WHERE share_token=?", (token,)
+    ).fetchone()
+    return row["user_id"] if row else None
 
 
 def resolve_share(token: str) -> Optional[Dict[str, Any]]:

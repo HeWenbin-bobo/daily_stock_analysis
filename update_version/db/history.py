@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -15,13 +16,23 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # 数据库路径：update_version/data/history.db
+# ★ 探索期修复(数据损坏事故)：支持 V4_HISTORY_PATH 覆盖。
+#   默认路径位于容器的 bind mount 目录，宿主机跑测试时若不重定向，
+#   会与运行中的容器并发写同一 SQLite 文件而写坏库。
 _DB_DIR = Path(__file__).resolve().parent.parent / "data"
-_DB_PATH = _DB_DIR / "history.db"
+_DB_PATH = Path(os.environ.get("V4_HISTORY_PATH") or (_DB_DIR / "history.db"))
 
 
 def _ensure_db_dir() -> None:
-    """确保数据库目录存在。"""
-    _DB_DIR.mkdir(parents=True, exist_ok=True)
+    """确保数据库目录存在。
+
+    ★ 探索期修复：V4_HISTORY_PATH 可指向任意位置，此时要创建的是
+      `_DB_PATH.parent` 而不是默认的 `_DB_DIR`。旧写法在覆盖路径指向
+      尚不存在的子目录时，`sqlite3.connect` 抛 `unable to open database file`。
+    """
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if _DB_DIR != _DB_PATH.parent:
+        _DB_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @contextmanager

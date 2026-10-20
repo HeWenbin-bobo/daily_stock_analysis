@@ -225,7 +225,7 @@ export function useHotAnalysis() {
         error:
           err?.response?.data?.detail ||
           err?.message ||
-          '请求失败，请确认后端已启动（端口 8001）',
+          '请求失败，请确认后端已启动（端口 8002）',
       })
     }
   }
@@ -527,7 +527,7 @@ export function useHotAnalysis() {
         error.value = '预览已取消或超时（180s），请重试'
         progressTip.value = '抓榜已取消'
       } else {
-        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8001）')
+        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8002）')
         progressTip.value = '抓榜失败'
       }
       phase.value = 'idle'
@@ -747,7 +747,7 @@ export function useHotAnalysis() {
           phase.value = 'idle'
         }
       } else {
-        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8001）')
+        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8002）')
         progressTip.value = '分析失败'
       }
     } finally {
@@ -798,7 +798,7 @@ export function useHotAnalysis() {
           phase.value = 'idle'
         }
       } else {
-        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8001）')
+        error.value = extractErrorMessage(e, '请求失败，请确认后端已启动（端口 8002）')
         progressTip.value = '分析失败'
       }
     } finally {

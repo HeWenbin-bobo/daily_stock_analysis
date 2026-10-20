@@ -199,7 +199,13 @@ onMounted(async () => {
                 <n-text depth="2">{{ report.price_range.overvalued_zone || '-' }}</n-text>
               </div>
               <n-alert v-if="report.cap_verify?.ok" type="info" :show-icon="true" style="margin-top: 10px" title="市值验算（financial_rigor）">
-                计算市值 {{ report.cap_verify.computed_cap }} vs 报告市值 {{ report.cap_verify.reported_cap }}，偏差 {{ report.cap_verify.diff_pct }}%
+                <!-- ★ skipped：没有报告市值可比对时不显示"偏差 %"，否则会渲染成"偏差 0%"误导用户 -->
+                <template v-if="report.cap_verify.skipped">
+                  计算市值 {{ report.cap_verify.computed_cap }}（{{ report.cap_verify.note || '无报告市值可比对' }}）
+                </template>
+                <template v-else>
+                  计算市值 {{ report.cap_verify.computed_cap }} vs 报告市值 {{ report.cap_verify.reported_cap }}，偏差 {{ report.cap_verify.diff_pct }}%
+                </template>
               </n-alert>
             </n-card>
           </n-gi>
