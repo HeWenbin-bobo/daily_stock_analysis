@@ -324,9 +324,18 @@ def test_v2_compose_allows_time_for_cron_shutdown() -> None:
     compose = _v2_compose()
     service = compose["services"]["v2"]
 
-    # Docker 默认只等 10s；lifespan 里要关 APScheduler，给足余量。
+    # Docker 默认只等 10s；cron 任务本身实测耗时（cron_run_log）：
+    # builtin_paper_settle 205s / builtin_community_rank 129s /
+    # builtin_market_review_evening 49.5s。被 SIGKILL 掐在 SQLite 写入中途
+    # 会损坏库，因此宽限期必须覆盖最长的那个任务，而不只是"不等于 10s"。
     assert service["stop_grace_period"] != "10s"
     assert "stop_grace_period" in service
+    grace = service["stop_grace_period"]
+    seconds = int(grace[:-1]) if grace.endswith("s") and grace[:-1].isdigit() else 0
+    assert seconds >= 205, (
+        f"stop_grace_period={grace} is shorter than the slowest cron job (205s); "
+        "a SIGKILL mid-write can corrupt SQLite"
+    )
 
 
 def test_v2_app_serves_frontend_and_respects_port_env() -> None:

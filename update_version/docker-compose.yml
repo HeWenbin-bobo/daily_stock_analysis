@@ -63,8 +63,16 @@ services:
     ports:
       - "${V4_PORT:-8002}:8002"
 
-    # app.py 收到 SIGTERM 会走 lifespan 的 cron_mod.shutdown()，通常秒级完成。
-    stop_grace_period: 60s
+    # app.py 收到 SIGTERM 会走 lifespan 的 cron_mod.shutdown(wait=False)，
+    # 但**正在执行的任务不会被中断** —— shutdown(wait=False) 只是不再等它，
+    # 进程仍要等 uvicorn 收尾完才真正退出。
+    # 实测各任务的耗时（cron_run_log）：builtin_paper_settle 205s、
+    # builtin_community_rank 129s、builtin_market_review_evening 49.5s。
+    # 只给 60s 时，日终结算（15:30 触发）如果正好在停机窗口内，会被
+    # SIGKILL 掐断在 SQLite 写入中途 —— 与主镜像 docker-compose.yml 里
+    # analyzer 同样的取舍，那里为同一原因给了 300s。
+    # 代价是停机最多多等 5 分钟；不变量是"宁可慢一点也不能写坏库"。
+    stop_grace_period: 300s
 
     deploy:
       resources:
