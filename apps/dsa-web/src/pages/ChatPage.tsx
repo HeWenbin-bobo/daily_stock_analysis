@@ -483,20 +483,38 @@ const ChatPage: React.FC = () => {
     setSidebarOpen(false);
   }, [requestScrollToBottom, sessionId, switchSession]);
 
+  const showSendFeedback = useCallback((nextToast: { type: 'success' | 'error'; message: string }, durationMs: number) => {
+    if (sendToastTimerRef.current !== null) {
+      window.clearTimeout(sendToastTimerRef.current);
+    }
+    setSendToast(nextToast);
+    sendToastTimerRef.current = window.setTimeout(() => {
+      setSendToast(null);
+      sendToastTimerRef.current = null;
+    }, durationMs);
+  }, []);
+
   const confirmDelete = useCallback(() => {
     if (!deleteConfirmId) return;
-    agentApi.deleteChatSession(deleteConfirmId)
+    const targetSessionId = deleteConfirmId;
+    setDeleteConfirmId(null);
+    agentApi.deleteChatSession(targetSessionId)
       .then(() => {
         loadSessions();
-        if (deleteConfirmId === sessionId) {
+        if (targetSessionId === sessionId) {
           handleStartNewChat();
         }
       })
       .catch((error) => {
-        console.error('Failed to delete chat session:', error);
+        // 'Failed to delete chat session' previously only reached the console,
+        // so a failed delete looked like a no-op. Surface it to the user.
+        const parsed = getParsedApiError(error);
+        showSendFeedback({
+          type: 'error',
+          message: parsed.message || '删除会话失败',
+        }, 5000);
       });
-    setDeleteConfirmId(null);
-  }, [deleteConfirmId, sessionId, loadSessions, handleStartNewChat]);
+  }, [deleteConfirmId, sessionId, loadSessions, handleStartNewChat, showSendFeedback]);
 
   // Handle follow-up from report page: ?stock=600519&name=贵州茅台&recordId=xxx
   useEffect(() => {
@@ -617,17 +635,6 @@ const ChatPage: React.FC = () => {
     setSelectedSkillIds([q.skill]);
     handleSend(q.label, [q.skill], q.stockContext);
   };
-
-  const showSendFeedback = useCallback((nextToast: { type: 'success' | 'error'; message: string }, durationMs: number) => {
-    if (sendToastTimerRef.current !== null) {
-      window.clearTimeout(sendToastTimerRef.current);
-    }
-    setSendToast(nextToast);
-    sendToastTimerRef.current = window.setTimeout(() => {
-      setSendToast(null);
-      sendToastTimerRef.current = null;
-    }, durationMs);
-  }, []);
 
   const toggleThinking = (msgId: string) => {
     setExpandedThinking((prev) => {
