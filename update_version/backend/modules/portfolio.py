@@ -173,6 +173,13 @@ def get_overview(user_id: str) -> Dict[str, Any]:
         h["position_weight"] = round((h["market_value"] / total_market_value) * 100, 2) if total_market_value > 0 else 0
 
     # 行业分布
+    # ★ 探索期修复：真实数据源（akshare/baostock 适配器）都不返回 industry，
+    #   只有 mock 行情有 —— 旧实现把缺失一律记为 "未知"，于是所有持仓都归到
+    #   同一个"未知"行业 → `industry_pct={"未知":100.0}` → 每次 get_overview 都
+    #   误报"行业占比 100%，超过 60% 警戒线"。用户很快会学会忽略所有告警。
+    #   改为：缺失行业的持仓**不参与**集中度统计（breakdown 里仍保留可视化用的
+    #   分组，但风险判定只对已知行业生效）。
+    UNKNOWN_INDUSTRY = "未知"
     industry_breakdown: Dict[str, float] = {}
     for h in holdings:
         ind = h["industry"]
@@ -193,6 +200,8 @@ def get_overview(user_id: str) -> Dict[str, Any]:
                 "message": f"⚠️ {h['symbol']} {h['name']} 占比 {h['position_weight']:.1f}%，超过 30% 警戒线",
             })
     for ind, pct in industry_pct.items():
+        if ind == UNKNOWN_INDUSTRY:
+            continue  # 行业数据缺失，不能据此判定集中度
         if pct > 60:
             warnings.append({
                 "level": "high",
@@ -311,8 +320,16 @@ def suggest_rebalance(
     if target_weights:
         # 用户自定义目标
         # ★ 迭代4 修复(H4)：target_weights 校验/钳制，负值拒绝、>100 或超警戒线钳到 [0, max_position_pct]
+        # ★ 探索期修复：target_weights 传 list/scalar 时 `.items()` 抛 AttributeError
+        #   → 端点 500；非数字权重抛裸 ValueError（`could not convert string to float`），
+        #   文案对用户不友好。统一成明确的 ValueError（端点层转 400）。
+        if not isinstance(target_weights, dict):
+            raise ValueError("target_weights 必须是对象（symbol -> 权重%）")
         for sym, w in target_weights.items():
-            wv = float(w)
+            try:
+                wv = float(w)
+            except (TypeError, ValueError):
+                raise ValueError(f"target_weights[{sym}] 必须是数字，got {w!r}")
             if wv < 0:
                 raise ValueError(f"target_weights[{sym}] 不能为负")
             target_pcts[sym] = min(max_position_pct, wv) if wv > max_position_pct else wv
