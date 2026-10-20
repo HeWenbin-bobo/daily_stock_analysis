@@ -13,7 +13,7 @@ import logging
 import secrets
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,22 @@ def _get_verify_key() -> bytes:
     return get_signing_key()
 
 
+def canonical_body(body: Any) -> str:
+    """把任意 JSON 值规范成参与签名/校验的字符串。
+
+    ★ 探索期修复(签名永远校验失败)：sign 与 verify 此前用了不同的 json.dumps
+      参数 —— sign 用 `ensure_ascii=False`（字典按插入序输出），verify 端点用
+      `ensure_ascii=False, sort_keys=True`。于是 `{"z":1,"a":2}` 这种键序非字母序
+      的 body，签出来的 HMAC 与校验时重算的 HMAC 不同：
+      `/webhooks/sign` 签出的签名拿去 `/webhooks/verify` 恒返回 valid:false。
+      字符串 body 不受影响，所以原有测试（只测字符串）没发现。
+      现在两端共用本函数，序列化规则只有一处。
+    """
+    if isinstance(body, str):
+        return body
+    return json.dumps(body, ensure_ascii=False, sort_keys=True)
+
+
 def sign_payload(body: str, timestamp: Optional[int] = None) -> str:
     """计算 body 的 HMAC-SHA256 签名（sign 端点用管理密钥）
 
@@ -77,8 +93,7 @@ def sign_payload(body: str, timestamp: Optional[int] = None) -> str:
     """
     if timestamp is None:
         timestamp = int(time.time())
-    text = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
-    msg = f"{timestamp}.".encode("utf-8") + text.encode("utf-8")
+    msg = f"{timestamp}.".encode("utf-8") + canonical_body(body).encode("utf-8")
     digest = hmac.new(get_signing_key(), msg, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
 

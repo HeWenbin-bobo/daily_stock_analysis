@@ -1181,7 +1181,10 @@ def webhooks_verify(payload: dict, request: Request):
     if body is None:
         raise HTTPException(400, "body 不能为 null")
     if not isinstance(body, str):
-        body = json.dumps(body, ensure_ascii=False, sort_keys=True)
+        # ★ 探索期修复：与 sign 端共用 canonical_body —— 此前这里多加了
+        #   sort_keys=True，而 sign 没有，字典 body 签出的签名在本端点恒 invalid。
+        from core.webhook_signing import canonical_body
+        body = canonical_body(body)
     if not isinstance(sig, str):
         raise HTTPException(400, "signature 必须是字符串")
     ok = verify_signature(body, ts, sig, max_age=max_age)
