@@ -397,6 +397,14 @@ export function useHotAnalysis() {
         progressTip.value = '恢复进度失败（SSE 超时）。任务仍在后台运行，稍后可在历史记录中查看结果。'
       }
     }, 1000)
+    // ★ 探索期修复(定时器泄漏)：上面这一行创建了 interval，但恢复路径先把
+    //   `currentStopTimer` 设成了 no-op（见上两行），于是 unmount 时只做
+    //   `currentStopTimer = null`，**没有任何地方 clearInterval** ——
+    //   每次刷新页面恢复任务都会留一个每秒跑一次、永不停止的定时器，
+    //   且它在组件销毁后仍会写已卸载的 ref。
+    //   改成让 currentStopTimer 真正能停掉它（多条退出路径都会 clearInterval，
+    //   clearInterval 幂等，重复调用无害）。
+    currentStopTimer = () => clearInterval(timeoutTimer)
     eventSource = createProgressStream(
       savedTaskId,
       (progress) => {
