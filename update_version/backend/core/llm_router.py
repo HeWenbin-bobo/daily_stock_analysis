@@ -28,6 +28,12 @@ class Provider(Enum):
     # ★ v3 融合：跟随本机 Claude Code switch 代理（LLM API key 全空时的兜底）
     #   读 ~/.claude/settings.json 的 ANTHROPIC_BASE_URL + 模型名（如 deepseek-v4-flash-vip）
     CC_SWITCH = "cc_switch"
+    # ★ 探索期修复：跟随主项目的 LLM_CHANNELS 配置（见 _get_channel_config）。
+    #   此前 v2 自带的 llm_router 只认上面 5 个 provider，而 .env 里配的是
+    #   LLM_CHANNELS=minimax + LLM_MINIMAX_* —— v2 原生的 LLM 功能
+    #   （/llm/chat、/technical/llm-insight、策略 DSL 编译、深度研究）
+    #   全部静默降级成 [MOCK-LLM] 占位文本。这里补上。
+    CHANNEL = "channel"
 
 
 # 任务复杂度 → 推荐模型
@@ -43,6 +49,10 @@ class LLMConfig:
     api_key: str
     base_url: str
     model: str
+    # ★ 探索期修复：protocol ∈ {"openai"(默认), "anthropic"}。
+    #   LLM_CHANNELS 的通道可能是 Anthropic 兼容协议（如 minimax/anthropic），
+    #   端点路径与请求体都不同，必须由配置携带而不是靠 provider 硬编码。
+    protocol: str = "openai"
 
 
 # 各 provider 配置（key 从环境变量读；缺失则降级到 mock）
@@ -75,6 +85,53 @@ def _get_config(provider: Provider) -> Optional[LLMConfig]:
         cfg = _get_cc_switch_config()
         if cfg is not None:
             return cfg
+    elif provider == Provider.CHANNEL:
+        return _get_channel_config()
+    return None
+
+
+def _get_channel_config() -> Optional[LLMConfig]:
+    """按主项目的 `LLM_CHANNELS` 约定读取第一个可用通道。
+
+    主项目 `src/config.py` 的格式（这里只实现 v2 需要的子集）：
+        LLM_CHANNELS=minimax,deepseek
+        LLM_MINIMAX_PROTOCOL=anthropic      # 缺省 openai
+        LLM_MINIMAX_BASE_URL=https://api.minimaxi.com/anthropic
+        LLM_MINIMAX_API_KEY=sk-xxx          # 或 LLM_MINIMAX_API_KEYS=k1,k2
+        LLM_MINIMAX_MODELS=MiniMax-M3       # 逗号分隔，取第一个
+
+    ★ 探索期修复：v2 自带的 llm_router 完全不读这套配置，而 `.env` 里正是这样配的
+      —— 于是 `/llm/chat`、`/technical/llm-insight`、策略 DSL 编译、深度研究
+      全部静默返回 `[MOCK-LLM]` 占位文本（实测）。这里补上，并支持 anthropic 协议
+      （请求走 `{base_url}/v1/messages`，与 CC switch 同一套格式）。
+    """
+    raw = (os.environ.get("LLM_CHANNELS") or "").strip()
+    if not raw:
+        return None
+    for name in raw.split(","):
+        ch = name.strip()
+        if not ch:
+            continue
+        upper = ch.upper()
+        enabled = (os.environ.get(f"LLM_{upper}_ENABLED") or "true").strip().lower()
+        if enabled in ("false", "0", "no", "off"):
+            continue
+        key = (os.environ.get(f"LLM_{upper}_API_KEY") or "").strip()
+        if not key:
+            multi = [k.strip() for k in (os.environ.get(f"LLM_{upper}_API_KEYS") or "").split(",") if k.strip()]
+            key = multi[0] if multi else ""
+        if not key:
+            continue
+        base = (os.environ.get(f"LLM_{upper}_BASE_URL") or "").strip().rstrip("/")
+        models = [m.strip() for m in (os.environ.get(f"LLM_{upper}_MODELS") or "").split(",") if m.strip()]
+        if not base or not models:
+            continue
+        protocol = (os.environ.get(f"LLM_{upper}_PROTOCOL") or "openai").strip().lower()
+        if protocol not in ("openai", "anthropic"):
+            logger.warning("LLM channel %s: 未知 protocol %r，按 openai 处理", ch, protocol)
+            protocol = "openai"
+        logger.info("LLM channel resolved: %s (%s, %s)", ch, models[0], protocol)
+        return LLMConfig(key, base, models[0], protocol=protocol)
     return None
 
 
@@ -132,6 +189,8 @@ _COST_PER_1K_TOKENS = {
     Provider.GEMINI: (0.0001, 0.0004),
     # 本机 CC switch 代理（deepseek-v4-flash-vip，近似 deepseek 价格）
     Provider.CC_SWITCH: (0.001, 0.002),
+    # LLM_CHANNELS 通道（价格因供应商而异，取中等保守值；真实计费以供应商为准）
+    Provider.CHANNEL: (0.01, 0.03),
 }
 # gpt-4o 的价格（按 OPENAI_MODEL 覆盖）
 _OPENAI_COST_BY_MODEL = {
@@ -219,12 +278,15 @@ def chat(
 
     if config is None:
         _llm_fallback_total += 1
-        # 降级链：先尝试 prefer_provider，再按 openai → qwen → deepseek → gemini → CC switch
+        # 降级链：先尝试 prefer_provider，再按 channel → openai → qwen → deepseek → gemini → CC switch
         # ★ v3 融合：最后尝试本机 CC switch 代理（LLM API key 全空时跟随本地配置）
+        # ★ 探索期修复：`LLM_CHANNELS`（.env 里实际配置的那套）排在 openai 之前 ——
+        #   否则只要有任何一家遗留 key，用户的显式配置反而被忽略。
         fallback_chain = []
         if prefer_provider is not None:
             fallback_chain.append(prefer_provider)
-        for p in [Provider.OPENAI, Provider.QWEN, Provider.DEEPSEEK, Provider.GEMINI, Provider.CC_SWITCH]:
+        for p in [Provider.CHANNEL, Provider.OPENAI, Provider.QWEN,
+                  Provider.DEEPSEEK, Provider.GEMINI, Provider.CC_SWITCH]:
             if p not in fallback_chain:
                 fallback_chain.append(p)
         for fallback in fallback_chain:
@@ -299,7 +361,9 @@ def _call_real(
 
     # ★ v3 融合：CC switch 走 Anthropic 兼容协议（/v1/messages），
     #   其余 provider 走 OpenAI 兼容格式（/chat/completions）
-    if provider == Provider.CC_SWITCH:
+    # ★ 探索期修复：判断依据改为 `config.protocol` —— LLM_CHANNELS 里的通道
+    #   （如 minimax）也可能是 anthropic 协议，只看 provider 会走错端点。
+    if provider == Provider.CC_SWITCH or config.protocol == "anthropic":
         # ★ 修复：CC switch 代理（glm 等思考模型）返回 thinking + text 双块结构；
         #   思考块可能耗尽 max_tokens（stop_reason=="max_tokens"），响应只有
         #   thinking 块、text 块缺失 → content="" 静默返回，deep_research 等
