@@ -1167,6 +1167,16 @@ def market_review_generate(payload: dict = {}, request: Request = None):
             raise HTTPException(429, f"限流，{retry}s 后重试")
     review_date = payload.get("review_date")
     region = payload.get("region", "cn")
+    # ★ 探索期修复(500)：`key = (review_date, region)` 会把它放进 dict 当键。
+    #   list/dict 不可哈希 → TypeError: unhashable type: 'list'（实测
+    #   `{"review_date":[1]}` → 500）。这里先要求二者是字符串。
+    if review_date is not None:
+        if not isinstance(review_date, str) or not review_date.strip():
+            raise HTTPException(400, "review_date 必须是 YYYY-MM-DD 字符串")
+        review_date = _safe_review_date(review_date.strip())
+    if not isinstance(region, str) or not region.strip():
+        raise HTTPException(400, "region 必须是非空字符串")
+    region = region.strip()
     key = (review_date, region)
     # ★ 本轮修复(M2)：之前 dict 永远空、if key in 恒为 False，去重完全 no-op。
     #   现在持锁期间写入 inflight 标记，finally 保证清理（避免一次异常把 key 永久留在 dict 里
@@ -1294,6 +1304,17 @@ async def market_review_batch(payload: dict, request: Request = None):
     days = payload.get("days", 7)
     region = payload.get("region", "cn")
     persist = payload.get("persist", True)
+    # ★ 探索期修复(500)：`days` 会一路传到 range()/timedelta，list 抛
+    #   TypeError: 'list' object cannot be interpreted as an integer
+    #   （实测 `{"days":[7]}` → 500）。这里在端点层归一。
+    if isinstance(days, bool) or isinstance(days, (dict, list, tuple, set)):
+        raise HTTPException(400, "days 必须是整数")
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "days 必须是整数")
+    if days < 1 or days > 365:
+        raise HTTPException(400, "days 必须在 1~365 之间")
     return await asyncio.to_thread(
         market_review_service.batch_generate_recent_reviews,
         days=days, region=region, persist=persist,

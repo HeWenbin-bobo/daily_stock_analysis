@@ -525,6 +525,10 @@ def compare_backtest_results(payload: dict):
     b_id = payload.get("result_id_b")
     if not a_id or not b_id:
         raise HTTPException(400, "result_id_a + result_id_b 必填")
+    # ★ 探索期修复(500)：list/dict 传进 SQLite 绑定参数会抛 ProgrammingError
+    #   （实测 `{"result_id_a":[1]}` → 500 "type 'list' is not supported"）。
+    a_id = _coerce_int(a_id, "result_id_a")
+    b_id = _coerce_int(b_id, "result_id_b")
     return be.compare_backtest_results(a_id, b_id)
 
 
