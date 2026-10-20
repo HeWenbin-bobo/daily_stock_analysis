@@ -7,6 +7,7 @@ update_version - 所有 v2 端点
 import logging
 import os
 import hmac
+import json
 import asyncio
 import threading
 import time
@@ -430,10 +431,13 @@ async def run_backtest(payload: dict, request: Request):
     """
     _require_rate_limit(request, "/api/v2/backtest/run")
     require_keys(payload, "user_id", "strategy_id", "symbol")
+    # ★ 探索期修复：strategy_id 传 dict/list 时 sqlite3 绑定参数抛
+    #   ProgrammingError → 500（实测 `{"strategy_id": {}}`）。先归一为整数。
+    strategy_id = _coerce_int(payload["strategy_id"], "strategy_id")
     # ★ 本轮修复(HIGH)：strategy_id 必须属于 payload.user_id（与 compile/delete 对齐）
-    strategy = be.get_strategy(payload["strategy_id"])
+    strategy = be.get_strategy(strategy_id)
     if not strategy:
-        raise HTTPException(404, f"strategy {payload['strategy_id']} 不存在")
+        raise HTTPException(404, f"strategy {strategy_id} 不存在")
     if strategy.get("user_id") != payload["user_id"]:
         raise HTTPException(403, "无权运行他人策略的回测")
     # ★ 迭代2 修复：initial_capital 校验（0 或负数会导致 total_return_pct 除零 500）
@@ -500,16 +504,18 @@ async def run_hyperopt(payload: dict, request: Request):
     """
     _require_rate_limit(request, "/api/v2/backtest/hyperopt")
     require_keys(payload, "user_id", "strategy_id", "symbol")
-    strategy = be.get_strategy(payload["strategy_id"])
+    # ★ 探索期修复：同 backtest/run，strategy_id 需先归一为整数
+    strategy_id = _coerce_int(payload["strategy_id"], "strategy_id")
+    strategy = be.get_strategy(strategy_id)
     if not strategy:
-        raise HTTPException(404, f"strategy {payload['strategy_id']} 不存在")
+        raise HTTPException(404, f"strategy {strategy_id} 不存在")
     if strategy.get("user_id") != payload["user_id"]:
         raise HTTPException(403, "无权优化他人策略")
     try:
         result = await asyncio.to_thread(
             he.run_hyperopt,
             user_id=payload["user_id"],
-            strategy_id=payload["strategy_id"],
+            strategy_id=strategy_id,
             symbol=payload["symbol"],
             epochs=int(payload.get("epochs", 100)),
             loss_fn=payload.get("loss_fn", "sharpe"),
@@ -566,8 +572,22 @@ def apply_hyperopt_params(run_id: int, payload: dict):
 # ★ P2：清理脏 run（防 API 超时留永久 running 记录）
 @router.post("/backtest/hyperopt/cleanup")
 def cleanup_hyperopt_runs(payload: dict):
-    """把超过 stale 秒数仍 running 的 run 标记 interrupted（默认 1 小时）。"""
-    stale = float(payload.get("stale_seconds", 3600))
+    """把超过 stale 秒数仍 running 的 run 标记 interrupted（默认 1 小时）。
+
+    ★ 探索期修复：`float(payload.get(...))` 未捕获异常 ——
+      `{"stale_seconds": "abc"}` 与 `{"stale_seconds": null}` 都抛 TypeError/ValueError
+      → 500（实测）。`null` 尤其容易触发：前端把未填字段序列化成 null。
+    """
+    raw = payload.get("stale_seconds", 3600)
+    if raw is None or raw == "":
+        stale = 3600.0
+    else:
+        try:
+            stale = float(raw)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "stale_seconds 必须是数字")
+    if stale <= 0:
+        raise HTTPException(400, "stale_seconds 必须 > 0")
     return {"interrupted": he.cleanup_stale_runs(stale)}
 
 
@@ -586,11 +606,16 @@ def create_paper_account(payload: dict):
         raise HTTPException(400, "initial_capital 必须是数字")
     if initial_capital <= 0:
         raise HTTPException(400, "initial_capital 必须 > 0")
-    acc_id = pt.create_account(
-        user_id=payload["user_id"],
-        name=payload["name"],
-        initial_capital=initial_capital,
-    )
+    # ★ 探索期修复：create_account 会把类型/范围校验错误抛成 ValueError
+    #   （name/user_id 非字符串、资金越界），端点不接住就会变 500。
+    try:
+        acc_id = pt.create_account(
+            user_id=payload["user_id"],
+            name=payload["name"],
+            initial_capital=initial_capital,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     # ★ 修复(M3)：资金类操作补审计（旧实现完全无审计，无法追溯账户创建）
     audit.record(action="create_paper_account", user_id=payload["user_id"], resource_id=str(acc_id))
     return {"account_id": acc_id}
@@ -1113,6 +1138,10 @@ def webhooks_sign(payload: dict, request: Request):
     _require_admin(request)
     from core.webhook_signing import sign_payload
     body = payload.get("body", "")
+    # ★ 探索期修复：body 可能是对象/数字，sign_payload 已能接受任意 JSON 值，
+    #   但 None 会变成 "null" 字面量——明确拒绝，避免签出与调用方理解不一致的签名。
+    if body is None:
+        raise HTTPException(400, "body 不能为 null")
     # ★ Round 19 修复(M8)：timestamp 非法值返回 400 而非 500
     try:
         ts = int(payload.get("timestamp", time.time()))
@@ -1142,6 +1171,16 @@ def webhooks_verify(payload: dict, request: Request):
     if max_age <= 0 or max_age > 86400:
         raise HTTPException(400, "max_age 必须在 1-86400 秒之间")
     sig = payload.get("signature", "")
+    # ★ 探索期修复：body/signature 类型未校验 → 实测 `{"body":123}`、
+    #   `{"signature":123}`、`{"body":{...}}` 全部 500（body.encode / compare_digest
+    #   抛 AttributeError·TypeError）。这里统一转成字符串（body 允许任意 JSON，
+    #   序列化后参与签名；signature 必须是字符串）。
+    if body is None:
+        raise HTTPException(400, "body 不能为 null")
+    if not isinstance(body, str):
+        body = json.dumps(body, ensure_ascii=False, sort_keys=True)
+    if not isinstance(sig, str):
+        raise HTTPException(400, "signature 必须是字符串")
     ok = verify_signature(body, ts, sig, max_age=max_age)
     return {"valid": ok, "max_age": max_age}
 
@@ -1150,7 +1189,25 @@ def webhooks_verify(payload: dict, request: Request):
 # 社区分享撤销
 # ============================================================================
 @router.delete("/community/shares/{token}")
-def community_share_revoke(token: str, user_id: str):
+def community_share_revoke(token: str, user_id: str, request: Request):
+    """撤销分享。
+
+    ★ 探索期修复(越权)：旧实现只用 query 里的 `user_id` 与分享记录的 user_id
+    比对，而 `GET /community/shares/{token}`（公开接口）会把 `user_id` 一并返回。
+    实测：拿到任意分享链接 → 读出 user_id → `DELETE ...?user_id=<对方>
+    ` 即可删除他人的分享（200 + 之后 404）。现在要求服务端身份
+    （X-User-Id header）与分享归属一致。
+    """
+    share = cm.resolve_share(token) or {}
+    owner = share.get("user_id")
+    if owner is None:
+        # resolve_share 对私有/过期分享返回 None，改用只取 owner 的查询
+        owner = cm.get_share_owner(token)
+    if owner is None:
+        raise HTTPException(404, "分享不存在或无权删除")
+    if owner != user_id:
+        raise HTTPException(403, "无权删除他人分享")
+    _require_user_match(request, user_id)
     if not cm.delete_share_by_token(token, user_id):
         raise HTTPException(404, "分享不存在或无权删除")
     return {"revoked": token}

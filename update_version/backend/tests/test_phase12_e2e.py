@@ -233,11 +233,36 @@ def test_paper_trading_flow():
 def test_community_flow():
     # ★ 本轮修复回归测试：create_share 现在会校验 resource_id 是否真的属于
     #   payload.user_id（此前完全不校验，任何人可分享他人 backtest_result /
-    #   paper_account）。用 test_backtest_flow 已经跑出来的真实 result_id，
-    #   而不是一个不存在的占位 id="123"（旧写法在修复前恰好能"骗过"校验缺失）。
+    #   paper_account）。
+    #
+    # ★ 2026-10 探索期修复：此用例原先复用 test_backtest_flow 留下的
+    #   backtest_result。但 delete_strategy 现在是级联删除（策略删除会连带清掉
+    #   结果，修复孤儿数据），所以那个前提不再成立。
+    #   改为在这里自建一条属于 u1 的真实回测结果，用例不再依赖别的用例的副作用。
+    import datetime
     from modules import backtest_engine as be_mod
+
+    base = datetime.date(2024, 1, 1)
+    kline = [{
+        "date": (base + datetime.timedelta(days=i)).strftime("%Y-%m-%d"),
+        "open": 100 + i * 0.3, "high": 105 + i * 0.3, "low": 95 + i * 0.3,
+        "close": 100 + i * 0.3, "volume": 1000000,
+    } for i in range(120)]
+    orig_fetch = be_mod.fetch_kline_with_fallback
+    be_mod.fetch_kline_with_fallback = lambda *a, **kw: kline
+    try:
+        sid = be_mod.create_strategy("u1", "community_flow_strategy", "收盘价 > 0 买入")
+        be_mod.update_strategy(sid, compiled_dsl={
+            "entry": [{"indicator": "close", "operator": ">", "value": 0}],
+            "exit": [],
+            "stop_loss_pct": -50.0, "take_profit_pct": 999.0, "hold_days": 30,
+        })
+        be_mod.run_backtest("u1", strategy_id=sid, symbol="600519")
+    finally:
+        be_mod.fetch_kline_with_fallback = orig_fetch
+
     owned_results = be_mod.list_results(user_id="u1")
-    assert owned_results, "test_backtest_flow 必须先跑出至少一条 u1 的 backtest_result"
+    assert owned_results, "本用例应已创建至少一条 u1 的 backtest_result"
     real_result_id = owned_results[0]["id"]
 
     # 非拥有者尝试分享别人的 backtest_result → 403（归属校验生效）

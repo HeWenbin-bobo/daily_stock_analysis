@@ -18,6 +18,36 @@ from db.migrate import get_conn
 
 logger = logging.getLogger(__name__)
 
+
+def _f(value: Any, default: float = 0.0) -> float:
+    """安全转 float —— 复用主项目 data_provider.realtime_types.safe_float。
+
+    ★ 探索期修复：akshare 在停牌/无报价行返回 "-"（字符串），旧代码
+      `float(r.get("最新价", 0) or 0)` 对 "-" 抛 ValueError（`"-" or 0` 仍是 "-"），
+      被外层 `except` 捕获后整只股票行情失败并 `record_failure` ——
+      一只停牌股就能把主源健康度打成不可用，批量行情里还会拖垮整批。
+      safe_float 已处理 None / "" / "-" / "--"，这里再兜住 NaN（NaN 会污染
+      后续的均值/回测计算，且 `nan != nan` 使比较判断全部失效）。
+    """
+    try:
+        from data_provider.realtime_types import safe_float
+        parsed = safe_float(value, default=None)
+    except Exception:  # noqa: BLE001 - 主项目模块不可用时退回本地实现
+        try:
+            if value is None:
+                return default
+            if isinstance(value, str) and value.strip() in ("", "-", "--"):
+                return default
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return default
+    if parsed is None:
+        return default
+    result = float(parsed)
+    if result != result:  # NaN
+        return default
+    return result
+
 # 数据源结果缓存上限（防止冷 key 累积 OOM）；可通过 DATA_SOURCE_CACHE_MAXSIZE 覆盖
 _CACHE_MAXSIZE = int(os.environ.get("DATA_SOURCE_CACHE_MAXSIZE", "2048"))
 
@@ -75,10 +105,10 @@ class AkshareAdapter(DataSourceAdapter):
             return {
                 "code": code,
                 "name": r.get("名称"),
-                "price": float(r.get("最新价", 0) or 0),
-                "change_pct": float(r.get("涨跌幅", 0) or 0),
-                "volume": float(r.get("成交量", 0) or 0),
-                "amount": float(r.get("成交额", 0) or 0),
+                "price": _f(r.get("最新价")),
+                "change_pct": _f(r.get("涨跌幅")),
+                "volume": _f(r.get("成交量")),
+                "amount": _f(r.get("成交额")),
                 "source": "akshare",
             }
         except Exception as e:
@@ -99,12 +129,12 @@ class AkshareAdapter(DataSourceAdapter):
             for _, row in df.iterrows():
                 result.append({
                     "date": str(row["日期"]),
-                    "open": float(row["开盘"]),
-                    "high": float(row["最高"]),
-                    "low": float(row["最低"]),
-                    "close": float(row["收盘"]),
-                    "volume": float(row["成交量"]),
-                    "amount": float(row.get("成交额", 0) or 0),
+                    "open": _f(row["开盘"]),
+                    "high": _f(row["最高"]),
+                    "low": _f(row["最低"]),
+                    "close": _f(row["收盘"]),
+                    "volume": _f(row["成交量"]),
+                    "amount": _f(row.get("成交额")),
                 })
             self.record_success()
             return result
@@ -304,12 +334,12 @@ class BaostockAdapter(DataSourceAdapter):
                     row = rs.get_row_data()
                     result.append({
                         "date": row[0],
-                        "open": float(row[1] or 0),
-                        "high": float(row[2] or 0),
-                        "low": float(row[3] or 0),
-                        "close": float(row[4] or 0),
-                        "volume": float(row[5] or 0),
-                        "amount": float(row[6] or 0),
+                        "open": _f(row[1]),
+                        "high": _f(row[2]),
+                        "low": _f(row[3]),
+                        "close": _f(row[4]),
+                        "volume": _f(row[5]),
+                        "amount": _f(row[6]),
                     })
                 if period == "quarterly":
                     result = _aggregate_kline_bars(result, group_size=3)
@@ -354,36 +384,39 @@ def _get_adapter(name: str) -> Optional[DataSourceAdapter]:
 # 健康度（写入 SQLite）
 # ============================================================================
 def update_health(source_name: str, *, success: bool, error: str = "") -> None:
+    """累加数据源健康度计数。
+
+    ★ 探索期修复：旧实现是「SELECT 判断存在 → INSERT 或 UPDATE」的两步序列。
+      `fetch_quotes_bulk` 会开 8 个并发 worker，首次遇到某个数据源时多个线程
+      同时 SELECT 到空 → 同时 INSERT → `UNIQUE constraint failed:
+      data_source_health.source_name`（实测 12 并发下 11 次失败）。
+      异常被外层 except 吞成一条 warning，计数直接丢失，`get_health` 的熔断
+      判断因此失真（源已恢复却仍被跳过）。
+      改成 SQLite 的原子 UPSERT（3.24+，本项目 schema 已在用 ON CONFLICT）。
+    """
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT success_count, failure_count FROM data_source_health WHERE source_name=?", (source_name,))
-        row = cur.fetchone()
         now = time.time()
-        if row is None:
-            cur.execute(
-                """INSERT INTO data_source_health
-                   (source_name, success_count, failure_count, last_success_at, last_failure_at, last_error, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (source_name, 1 if success else 0, 0 if success else 1,
-                 now if success else None, now if not success else None,
-                 error if not success else None, now),
-            )
-        else:
-            if success:
-                cur.execute(
-                    """UPDATE data_source_health SET
-                       success_count=success_count+1, last_success_at=?, updated_at=?
-                       WHERE source_name=?""",
-                    (now, now, source_name),
-                )
-            else:
-                cur.execute(
-                    """UPDATE data_source_health SET
-                       failure_count=failure_count+1, last_failure_at=?, last_error=?, updated_at=?
-                       WHERE source_name=?""",
-                    (now, error, now, source_name),
-                )
+        conn.execute(
+            """INSERT INTO data_source_health
+               (source_name, success_count, failure_count,
+                last_success_at, last_failure_at, last_error, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(source_name) DO UPDATE SET
+                 success_count = success_count + excluded.success_count,
+                 failure_count = failure_count + excluded.failure_count,
+                 last_success_at = COALESCE(excluded.last_success_at, last_success_at),
+                 last_failure_at = COALESCE(excluded.last_failure_at, last_failure_at),
+                 last_error      = COALESCE(excluded.last_error, last_error),
+                 updated_at      = excluded.updated_at""",
+            (source_name,
+             1 if success else 0,
+             0 if success else 1,
+             now if success else None,
+             now if not success else None,
+             None if success else error,
+             now),
+        )
     except Exception as e:
         logger.warning("Failed to update health for %s: %s", source_name, e)
 
@@ -397,41 +430,47 @@ def get_health(source_name: str, window_seconds: int = 300) -> float:
     """
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT last_success_at, last_failure_at, success_count, failure_count
-               FROM data_source_health WHERE source_name=?""",
-            (source_name,),
-        )
-        row = cur.fetchone()
-        if row is None:
-            return 1.0  # 未测试视为可用
-        last_s, last_f, s_cnt, f_cnt = row
-        total = (s_cnt or 0) + (f_cnt or 0)
-        if total == 0:
-            return 1.0
-        # 最近一次成功 / 失败的时间窗：若都在窗口内，按最后事件打分
-        now = time.time()
-        last_event_in_window = (
-            (last_s is not None and last_s >= now - window_seconds)
-            or (last_f is not None and last_f >= now - window_seconds)
-        )
-        if last_f is None:
-            return 1.0
-        # ★ 修复(M9-2)：主源永久熔断 —— 只要 last_success_at=None 就恒返回 0.3，
-        #   与失败发生多久无关，导致主源首次启动失败后永远被跳过（即使已恢复）。
-        #   现在：最后一次失败若已超出 window_seconds，视为熔断已冷却，恢复可用。
-        if last_s is None:
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT last_success_at, last_failure_at, success_count, failure_count
+                   FROM data_source_health WHERE source_name=?""",
+                (source_name,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return 1.0  # 未测试视为可用
+            last_s, last_f, s_cnt, f_cnt = row
+            total = (s_cnt or 0) + (f_cnt or 0)
+            if total == 0:
+                return 1.0
+            # 最近一次成功 / 失败的时间窗：若都在窗口内，按最后事件打分
+            now = time.time()
+            last_event_in_window = (
+                (last_s is not None and last_s >= now - window_seconds)
+                or (last_f is not None and last_f >= now - window_seconds)
+            )
+            if last_f is None:
+                return 1.0
+            # ★ 修复(M9-2)：主源永久熔断 —— 只要 last_success_at=None 就恒返回 0.3，
+            #   与失败发生多久无关，导致主源首次启动失败后永远被跳过（即使已恢复）。
+            #   现在：最后一次失败若已超出 window_seconds，视为熔断已冷却，恢复可用。
+            if last_s is None:
+                if last_f < now - window_seconds:
+                    # 失败已过期（窗口外）→ 允许重试主源；历史成功率低于 0.5 时给中等分
+                    return 0.5 if total > 0 and (s_cnt or 0) / total < 0.5 else 0.7
+                return 0.3
+            if last_s >= last_f:
+                return 0.7 if last_event_in_window else 0.9
+            # 最后一次失败更近：若失败也在窗口外，说明已稳定一段时间，给中间分
             if last_f < now - window_seconds:
-                # 失败已过期（窗口外）→ 允许重试主源；历史成功率低于 0.5 时给中等分
-                return 0.5 if total > 0 and (s_cnt or 0) / total < 0.5 else 0.7
-            return 0.3
-        if last_s >= last_f:
-            return 0.7 if last_event_in_window else 0.9
-        # 最后一次失败更近：若失败也在窗口外，说明已稳定一段时间，给中间分
-        if last_f < now - window_seconds:
-            return 0.6
-        return 0.3 if last_event_in_window else 0.5
+                return 0.6
+            return 0.3 if last_event_in_window else 0.5
+        finally:
+            # ★ 探索期修复(fd 泄漏)：sqlite3.Connection 被 GC 跟踪，引用计数归零
+            #   也不会立刻释放 fd，必须显式 close。get_health 被 is_available()
+            #   高频调用（每次 fetch 前都会问一遍）。
+            conn.close()
     except Exception:
         return 1.0
 
@@ -854,11 +893,18 @@ def get_health_cached(source_name: str, window_seconds: int = 300) -> float:
 
 
 def get_health_report() -> Dict[str, Any]:
-    """所有数据源的健康度摘要"""
+    """所有数据源的健康度摘要
+
+    ★ 探索期修复(fd 泄漏)：连接必须显式 close（sqlite3.Connection 被 GC 跟踪，
+      引用计数归零不立刻释放 fd）。这是 /ready 的核心路径。
+    """
     conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM data_source_health")
-    rows = [dict(r) for r in cur.fetchall()]
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM data_source_health")
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
     return {
         "sources": rows,
         "primary": _FALLBACK_ORDER[0],

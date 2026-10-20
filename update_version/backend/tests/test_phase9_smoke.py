@@ -8,8 +8,37 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 for k in ("DEEPSEEK_API_KEY", "QWEN_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY"):
     os.environ.pop(k, None)
 
-from db.migrate import migrate, get_conn
-from core import llm_router as llm
+# ★ 探索期修复：还必须清掉 LLM_CHANNELS 与其通道级 key。
+#   主项目 `src/config.py` 会 `load_dotenv()`，把仓库根的真实 `.env` 注入
+#   `os.environ`；只要本测试会话里加载过任何主项目模块（例如 endpoints_hot 的
+#   `_load_main_hot_analysis()`），`.env` 里的 `LLM_CHANNELS=minimax` 就会生效，
+#   于是 llm.chat() 走真实通道（provider="channel"）而非 mock ——
+#   本文件"无 key 应回退 mock"的断言随测试顺序时而失败。
+#
+#   ⚠️ 只在模块级清一次不够：pytest 收集期执行到这里时，主项目模块可能还没被
+#   导入（load_dotenv 尚未发生）。必须**每个测试前**再清一次，见下面的
+#   autouse fixture。本文件的目的就是验证"完全无凭据时"的降级行为。
+_CHANNEL_ENV_PREFIXES = ("LLM_", "DEEPSEEK_", "QWEN_", "DASHSCOPE_", "OPENAI_", "GEMINI_", "MINIMAX_")
+
+
+def _clear_llm_env() -> None:
+    for k in [k for k in os.environ if k.startswith(_CHANNEL_ENV_PREFIXES) or k == "ANTHROPIC_BASE_URL"]:
+        os.environ.pop(k, None)
+
+
+_clear_llm_env()
+
+import pytest  # noqa: E402
+
+from db.migrate import migrate, get_conn  # noqa: E402
+from core import llm_router as llm  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_llm_credentials():
+    """每个用例前清空所有 LLM 凭据（含 .env 经 load_dotenv 注入的那些）。"""
+    _clear_llm_env()
+    yield
 
 
 def _reset_usage():

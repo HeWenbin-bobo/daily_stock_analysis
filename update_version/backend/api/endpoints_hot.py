@@ -9,6 +9,7 @@ import asyncio
 import importlib.util
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -48,7 +49,21 @@ router = APIRouter()
 # v2 api 包。并发请求下 del sys.modules[name] 会让另一个线程正在使用的模块对象被替换，
 # 可能引发偶发 AttributeError / ModuleNotFoundError 500；且每次全量 re-exec 的 CPU 开销在并发下放大。
 _MAIN_HOT_MOD = None
-_MAIN_HOT_MOD_LOCK = threading.Lock()
+# ★ 探索期修复(并发)：改用 RLock。`_import_main_hot_analysis()` 会临时删/恢复
+#   `sys.modules["api*"]` 并重排 `sys.path`，这是**进程级共享状态**：
+#   两个线程同时进入时，一个线程刚删掉 v4 的 api.*、另一个正在 import 主项目链
+#   → 可能拿到半初始化的模块或 ModuleNotFoundError（偶发 500，难复现）。
+#   之前只有 `_load_main_hot_analysis()` 加锁，而 analyze_single / preview / run
+#   三个端点**直接**调 `_import_main_hot_analysis()`，等于完全没保护。
+#   现在把锁下沉到 `_import_main_hot_analysis()` 内部；用 RLock 让
+#   `_load_main_hot_analysis()` 的"持锁再调用"不会自锁。
+_MAIN_HOT_MOD_LOCK = threading.RLock()
+
+# ★ 探索期修复：持有 asyncio.create_task 返回值的强引用。
+#   asyncio 事件循环只保存任务的**弱引用**，若调用方不保留引用，
+#   任务可能在跑完前被 GC 回收（"Task was destroyed but it is pending"），
+#   后台落库 watcher 就静默消失了。done callback 负责移除。
+_BACKGROUND_TASKS: set = set()
 
 
 def _import_main_hot_analysis():
@@ -65,24 +80,30 @@ def _import_main_hot_analysis():
       - 主项目子模块（api.v1.*）按全名留在 sys.modules，之后 import 走
         全名缓存命中；全新子模块经父包 __path__（指向主项目）解析，
         与顶层 api 坑位归谁无关。
+
+    ★ 探索期修复(并发)：整个过程在 `_MAIN_HOT_MOD_LOCK` 内执行 ——
+      它临时改写 `sys.modules["api*"]` 与 `sys.path`，是进程级共享状态，
+      并发调用会让另一线程拿到半初始化的模块（偶发 500）。锁是 RLock，
+      因此 `_load_main_hot_analysis()` 持锁再调用这里不会自锁。
     """
-    _MAIN_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-    v4_snap = {
-        n: m for n, m in sys.modules.items()
-        if (n == "api" or n.startswith("api."))
-        and "update_version" in str(getattr(m, "__file__", "") or "")
-    }
-    while str(_MAIN_ROOT) in sys.path:
-        sys.path.remove(str(_MAIN_ROOT))
-    sys.path.insert(0, str(_MAIN_ROOT))
-    for n in list(v4_snap):
-        del sys.modules[n]
-    try:
-        import api.v1.endpoints.hot_analysis as _hot_mod
-        import api.v1.schemas.hot_analysis as _schemas_mod
-    finally:
-        sys.modules.update(v4_snap)
-    return _hot_mod, _schemas_mod
+    with _MAIN_HOT_MOD_LOCK:
+        _MAIN_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+        v4_snap = {
+            n: m for n, m in sys.modules.items()
+            if (n == "api" or n.startswith("api."))
+            and "update_version" in str(getattr(m, "__file__", "") or "")
+        }
+        while str(_MAIN_ROOT) in sys.path:
+            sys.path.remove(str(_MAIN_ROOT))
+        sys.path.insert(0, str(_MAIN_ROOT))
+        for n in list(v4_snap):
+            del sys.modules[n]
+        try:
+            import api.v1.endpoints.hot_analysis as _hot_mod
+            import api.v1.schemas.hot_analysis as _schemas_mod
+        finally:
+            sys.modules.update(v4_snap)
+        return _hot_mod, _schemas_mod
 
 
 def _load_main_hot_analysis():
@@ -485,6 +506,36 @@ def _main_task(task_id: str):
         return None
 
 
+# ★ 探索期修复：后台分析任务此前**没有并发上限**。
+#   限流是 3 次/分钟/IP，但换 IP / 多用户即可累积；而每个任务最长可跑
+#   max_runtime_seconds（默认 10800s = 3h，上限 200000s ≈ 55h），
+#   每个任务会占线程池 + LLM 配额 + 内存，容器限额 2G 下几个长任务就能压垮。
+#   这里按主项目 `_tasks` 里 status == "running" 的条目计数
+#   （主项目只把 running 用作非终态；终态是 ok/timeout/cancelled/failed/completed）。
+_MAX_CONCURRENT_ANALYSES = int(os.environ.get("V4_MAX_CONCURRENT_ANALYSES", "3"))
+# 统计时忽略"刚被放弃但还没被 GC"的僵尸任务：超过这个时长仍未终结说明卡死，
+# 不应长期占住并发名额（主项目自己的 _cleanup_old_tasks 是 24h，太久了）。
+_RUNNING_TASK_STALE_SECONDS = float(os.environ.get("V4_RUNNING_TASK_STALE_SECONDS", "21600"))
+
+
+def _running_analysis_count(_hot_mod) -> int:
+    """当前仍在跑的分析任务数（跳过明显卡死的僵尸条目）。"""
+    try:
+        tasks = list(_hot_mod._tasks.values())
+    except Exception:
+        return 0
+    now = time.time()
+    running = 0
+    for t in tasks:
+        if not isinstance(t, dict) or t.get("status") != "running":
+            continue
+        created = t.get("_created_ts")
+        if created and (now - created) > _RUNNING_TASK_STALE_SECONDS:
+            continue
+        running += 1
+    return running
+
+
 def _persist_async_result(task_id: str, result: dict) -> None:
     """主项目 async 任务完成/取消时，把结果落库到 v2 历史库（与 /run 同步一致）。
 
@@ -580,11 +631,23 @@ async def hot_analysis_run_async(payload: dict, request: Request = None):
             require_all_rounds=payload.get("require_all_rounds", True),
             max_concurrency=payload.get("max_concurrency", 1),
         )
+        # ★ 探索期修复：并发上限（见 _running_analysis_count 的注释）。
+        running = _running_analysis_count(_hot_mod)
+        if running >= _MAX_CONCURRENT_ANALYSES:
+            raise HTTPException(
+                429,
+                f"当前已有 {running} 个分析任务在运行（上限 {_MAX_CONCURRENT_ANALYSES}），请稍后再试",
+            )
         resp = await _hot_mod.run_async_analysis(req)
         task_id = resp.get("task_id")
         if task_id:
             # 后台兜底落库：即使 SSE 客户端中途断开也要写进 v2 历史库
-            asyncio.create_task(_watch_main_task_persist(task_id))
+            # ★ 探索期修复：create_task 的返回值必须持有引用 —— asyncio 只保留
+            #   弱引用，任务可能在执行完之前被 GC 回收（"Task was destroyed but it
+            #   is pending"）。放进模块级集合，done callback 里移除。
+            t = asyncio.create_task(_watch_main_task_persist(task_id))
+            _BACKGROUND_TASKS.add(t)
+            t.add_done_callback(_BACKGROUND_TASKS.discard)
         return resp
     except HTTPException:
         raise
@@ -684,6 +747,23 @@ async def hot_analysis_task_cancel(task_id: str):
 # ============================================================================
 # 历史 + 自选 + 模板 + 定时任务
 # ============================================================================
+# ★ 探索期修复：SQLite 的 INTEGER 是 64 位有符号。`page=10**21` 会让
+#   `(page-1)*page_size` 溢出，sqlite3 抛 `OverflowError: Python int too large
+#   to convert to SQLite INTEGER` → 端点 500（实测）。
+#   任何传进 SQL 的整数参数都要先夹到这个范围内。
+_SQLITE_INT_MAX = 2**63 - 1
+
+
+def _clamp_sql_int(value: int, field: str, *, low: int = 1) -> int:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(400, f"{field} 必须是整数")
+    if n < low or n > _SQLITE_INT_MAX:
+        raise HTTPException(400, f"{field} 超出范围（{low}~{_SQLITE_INT_MAX}）")
+    return n
+
+
 @router.get("/hot-analysis/history")
 def hot_analysis_history(limit: int = Query(50, le=200), offset: int = 0, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200)):
     # 兼容两种调用：limit+offset（旧）或 page+page_size（新）
@@ -696,6 +776,11 @@ def hot_analysis_history(limit: int = Query(50, le=200), offset: int = 0, page: 
     else:
         page_size_eff = page_size
         page_eff = page
+    # ★ 探索期修复：Pydantic 的 ge=1 不设上限，超大 page 会让 offset 溢出 SQLite
+    page_eff = _clamp_sql_int(page_eff, "page")
+    if page_eff > 10_000_000:
+        # 再大的页码对任何真实数据集都无意义，直接空页比打爆 SQL 好
+        return {"items": [], "total": 0, "page": page_eff, "page_size": page_size_eff}
     runs, total = db_history.get_analysis_history(page=page_eff, page_size=page_size_eff)
     return {
         "items": runs,
@@ -707,6 +792,8 @@ def hot_analysis_history(limit: int = Query(50, le=200), offset: int = 0, page: 
 
 @router.get("/hot-analysis/history/{run_id}")
 def hot_analysis_history_detail(run_id: int):
+    # ★ 探索期修复：超长 run_id 传进 SQL 会抛 OverflowError → 500
+    run_id = _clamp_sql_int(run_id, "run_id")
     run = db_history.get_analysis_run(run_id)
     if not run:
         raise HTTPException(404, "run 不存在")
@@ -715,6 +802,7 @@ def hot_analysis_history_detail(run_id: int):
 
 @router.delete("/hot-analysis/history/{run_id}")
 def hot_analysis_history_delete(run_id: int):
+    run_id = _clamp_sql_int(run_id, "run_id")
     if not db_history.delete_analysis_run(run_id):
         raise HTTPException(404, "run 不存在")
     return {"deleted": run_id}
@@ -732,6 +820,13 @@ def hot_analysis_watchlist_add(payload: dict):
     notes = payload.get("notes", "")
     if not code:
         raise HTTPException(400, "code 必填")
+    # ★ 探索期修复：name/notes 传 list/dict 时 sqlite3 绑定参数抛
+    #   ProgrammingError → 500（实测 `{"name": []}`）。这里做类型归一。
+    for field, value in (("code", code), ("name", name), ("notes", notes)):
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise HTTPException(400, f"{field} 必须是字符串")
     wid = db_history.add_to_watchlist(code, name, notes)
     return {"watchlist_id": wid}
 
@@ -779,6 +874,36 @@ def hot_analysis_scheduled_tasks_save(payload: dict):
     task_id = payload.get("task_id")
     if not name or not cron_expr:
         raise HTTPException(400, "name + cron_expr 必填")
+    # ★ 探索期修复：name/config 的类型与范围此前完全不校验 —— 实测
+    #   `config=[1,2]`（数组）、`config.rounds=-5`、`max_runtime_seconds=1e12`、
+    #   name 长 5000 字符全部 200 入库。这些值在真正触发任务时才会炸
+    #   （`config.get` 对 list 抛 AttributeError / 负轮次让分析直接空跑），
+    #   而用户是在"保存成功"之后很久才收到报错。
+    if not isinstance(name, str) or len(name.strip()) > 200:
+        raise HTTPException(400, "name 必须是字符串且不超过 200 字符")
+    if not isinstance(config, dict):
+        raise HTTPException(400, "config 必须是对象")
+    # ★ 边界必须与 api/v1/schemas/hot_analysis.py 的 HotAnalysisRunRequest 一致，
+    #   否则"保存成功、触发时才 422" —— 用户要等下一个 cron 周期才发现配置无效。
+    _NUMERIC_BOUNDS = {
+        "hot_list_n": (20, 1000),
+        "max_intersection": (1, 300),
+        "rounds": (1, 5),
+        "max_runtime_seconds": (30, 200000),
+        "inter_round_sleep": (0, 10),
+        "llm_timeout_seconds": (30, 600),
+        "min_score": (0, 100),
+        "max_concurrency": (1, 8),
+    }
+    for field, (low, high) in _NUMERIC_BOUNDS.items():
+        if field not in config:
+            continue
+        try:
+            value = float(config[field])
+        except (TypeError, ValueError):
+            raise HTTPException(400, f"config.{field} 必须是数字")
+        if value < low or value > high:
+            raise HTTPException(400, f"config.{field} 必须在 {low}~{high} 之间，got {value}")
     # ★ Round 49 修复：保存前校验 cron 表达式合法性（与 /cron/user-jobs 对齐）。
     #   旧实现无校验 → 非法 cron 静默入库，resync_user_scheduled_tasks 解析失败仅
     #   log warning，任务永不执行且用户无感知（保存时显示成功）。这里用
