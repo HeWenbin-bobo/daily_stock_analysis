@@ -1322,22 +1322,30 @@ async def run_etf_rotation_endpoint(request: Request, force: bool = False):
 
     def _run():
         _MAIN_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-        v4_snap = {
-            n: m for n, m in sys.modules.items()
-            if (n == "src" or n.startswith("src."))
-            and "update_version" in str(getattr(m, "__file__", "") or "")
-        }
-        while str(_MAIN_ROOT) in sys.path:
-            sys.path.remove(str(_MAIN_ROOT))
-        sys.path.insert(0, str(_MAIN_ROOT))
-        for n in list(v4_snap):
-            del sys.modules[n]
-        try:
-            from src.config import get_config
-            from src.services.etf_rotation_service import run_etf_rotation
-            report = run_etf_rotation(get_config(), send_notification=False)
-        finally:
-            sys.modules.update(v4_snap)
+        # ★ 探索期修复(并发)：这段临时改写 `sys.path` 与 `sys.modules["src*"]`，
+        #   是**进程级共享状态**。此前它完全没加锁，与
+        #   `_import_main_hot_analysis()` / `_get_intent_resolver()` 用各自不同的
+        #   锁（或压根没有）各改各的 —— 两个线程同时进入时，一个刚 del 掉
+        #   src.*、另一个正在 import 主项目链，会拿到半初始化模块或
+        #   ModuleNotFoundError（偶发 500，难复现）。
+        #   统一用 `_MAIN_HOT_MOD_LOCK`（RLock：允许在已持锁路径内再进入）。
+        with _MAIN_HOT_MOD_LOCK:
+            v4_snap = {
+                n: m for n, m in sys.modules.items()
+                if (n == "src" or n.startswith("src."))
+                and "update_version" in str(getattr(m, "__file__", "") or "")
+            }
+            while str(_MAIN_ROOT) in sys.path:
+                sys.path.remove(str(_MAIN_ROOT))
+            sys.path.insert(0, str(_MAIN_ROOT))
+            for n in list(v4_snap):
+                del sys.modules[n]
+            try:
+                from src.config import get_config
+                from src.services.etf_rotation_service import run_etf_rotation
+                report = run_etf_rotation(get_config(), send_notification=False)
+            finally:
+                sys.modules.update(v4_snap)
         return report
 
     try:
