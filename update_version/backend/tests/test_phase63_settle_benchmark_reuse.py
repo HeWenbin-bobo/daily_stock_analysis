@@ -45,7 +45,7 @@ def test_settle_daily_fetches_benchmark_once(monkeypatch) -> None:
     summary = pt.settle_daily()
 
     assert summary["settled"] == len(accounts)
-    assert calls == ["000300"], (
+    assert calls == [pt._BENCHMARK_CODE], (
         f"benchmark fetched {len(calls)} times for {len(accounts)} accounts: {calls}"
     )
 
@@ -65,7 +65,7 @@ def test_take_snapshot_still_fetches_when_called_alone(monkeypatch) -> None:
 
     doc = pt.take_snapshot(1)
 
-    assert fetched == ["000300"], f"expected one fetch, got {fetched}"
+    assert fetched == [pt._BENCHMARK_CODE], f"expected one fetch, got {fetched}"
     assert doc["benchmark_equity"] == pytest.approx(1010.0)
 
 
@@ -96,7 +96,7 @@ def test_settle_daily_fetches_once_even_when_the_benchmark_fails(monkeypatch) ->
 
     pt.settle_daily()
 
-    assert calls == ["000300"], f"retried the benchmark {len(calls)} times: {calls}"
+    assert calls == [pt._BENCHMARK_CODE], f"retried the benchmark {len(calls)} times: {calls}"
     assert seen and all(v is None for v in seen), (
         "each account must receive the already-failed benchmark (None), not a re-fetch"
     )
@@ -117,7 +117,7 @@ def test_take_snapshot_refetches_when_no_benchmark_supplied(monkeypatch) -> None
 
     pt.take_snapshot(1)
 
-    assert fetched == ["000300"], f"standalone snapshot did not fetch: {fetched}"
+    assert fetched == [pt._BENCHMARK_CODE], f"standalone snapshot did not fetch: {fetched}"
 
 
 if __name__ == "__main__":

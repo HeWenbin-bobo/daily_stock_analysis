@@ -24,6 +24,15 @@ INITIAL_CAPITAL_DEFAULT = 1_000_000.0
 # 用 None 当"未传"会让 settle_daily 在所有源都失败时退回逐账户重取 ——
 # 恰恰是最慢的场景。见 take_snapshot 的 docstring。
 _UNSET_BENCHMARK: Any = object()
+
+# 沪深300 基准的取数代码。
+# ★ 探索期修复(基准线永远等于初始资金)：此前直接传 "000300"。baostock 把纯
+#   数字当成**股票**代码，指数必须写成 `sh.000300`，于是 `000300` 每次都取不到
+#   真实行情，回落到 mock → `is_mock_payload()` 判真 → 快照里基准按 0% 处理 →
+#   `benchmark_equity` 恒等于 initial_capital，"相对基准超额收益"从未真正生效。
+#   实测：`000300` 10.4s → mock=True（price 148.82 是伪造的）；
+#         `sh.000300` 0.5s → mock=False（price 4152.1，真实点数）。
+_BENCHMARK_CODE = "sh.000300"
 # 初始资金上限：与 place_order / add_holding 的 1e9 护栏同量级。
 # 旧实现只校验 > 0，`initial_capital=1e300` 会被接受并直接成为排行榜榜首
 # （实测 leaderboard 返回 total_equity=1e300 / total_return_pct=0.0），
@@ -569,7 +578,7 @@ def take_snapshot(
     #   快照本身（总资产/持仓市值/现金）是真实数据，盲目跳过会让用户的每日持仓记录中断；
     #   只把不可信的基准部分置零并打 is_mock 标记，前端就能区分"基准有/无"。
     benchmark_raw = (
-        fetch_quote_with_fallback("000300")
+        fetch_quote_with_fallback(_BENCHMARK_CODE)
         if benchmark_quote is _UNSET_BENCHMARK
         else benchmark_quote
     )
@@ -663,7 +672,7 @@ def settle_daily() -> Dict[str, Any]:
     #   取一次失败时传 None，take_snapshot 会各自回退现取（行为不变）。
     benchmark_quote = None
     try:
-        benchmark_quote = fetch_quote_with_fallback("000300")
+        benchmark_quote = fetch_quote_with_fallback(_BENCHMARK_CODE)
     except Exception as e:
         logger.warning("settle: benchmark fetch failed, per-account fallback: %s", e)
     for acc in accounts:

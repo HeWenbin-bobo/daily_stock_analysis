@@ -179,7 +179,9 @@ def test_take_snapshot():
     # ★ 第三轮：改用 patch fetch_quotes_bulk（新接口）— 兼容并行/串行调用
     quote_table = {
         "600519": {"code": "600519", "price": 110.0},
-        "000300": {"code": "000300", "price": 4000.0, "change_pct": 0.5},
+        # 基准代码用常量，别写死：baostock 取指数需要带前缀（sh.000300），
+        # 旧字面量 "000300" 会被当成股票而永远回落 mock。
+        pt._BENCHMARK_CODE: {"code": pt._BENCHMARK_CODE, "price": 4000.0, "change_pct": 0.5},
     }
     import unittest.mock
     with unittest.mock.patch("modules.paper_trading.fetch_quotes_bulk") as mock_bulk, \
