@@ -10,6 +10,7 @@ import time
 import json
 import logging
 import smtplib
+import ssl
 import asyncio
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -121,27 +122,85 @@ TEMPLATES = {
 
 
 def render_template(template_name: str, context: Dict[str, Any]) -> Dict[str, str]:
-    """渲染模板 → {title, content}"""
+    """渲染模板 → {title, content}
+
+    ★ 探索期修复：缺字段时旧实现把**原始模板**拼上 Python repr 直接发出去，
+      用户会收到 `📊 今日大盘复盘（{date}） [缺失: 'date']` 这种东西 ——
+      既没渲染、又把内部异常文本暴露给终端用户。改为：
+        - 缺失占位符渲染成空串（含 `:.2f` 之类的格式说明也能安全处理）；
+        - 末尾追加一条**人类可读**的提示（不含 Python repr），
+          让用户知道这份通知不完整；
+        - 完整缺失清单只进日志。
+    """
     tpl = TEMPLATES.get(template_name)
     if not tpl:
         return {"title": context.get("title", template_name), "content": context.get("content", "")}
-    # title 和 content 分别 try，互不影响
+
+    class _Missing:
+        """缺失字段的占位：任何格式说明符都渲染成空串。
+
+        模板里有 `{day_pnl_pct:.2f}` 这类格式说明，直接给 "" 会抛
+        `ValueError: Unknown format code 'f' for object of type 'str'`。
+        """
+
+        def __format__(self, _spec):  # noqa: D105
+            return ""
+
+        def __str__(self):  # noqa: D105
+            return ""
+
+        def __repr__(self):  # noqa: D105
+            return ""
+
+    missing: List[str] = []
+
+    class _SafeContext(dict):
+        def __missing__(self, key):  # noqa: D105
+            missing.append(key)
+            return _Missing()
+
+    values = _SafeContext(context)
     try:
-        title = tpl["title"].format(**context)
-    except KeyError as e:
-        logger.warning("Template %s title missing key: %s", template_name, e)
-        title = tpl["title"] + f" [缺失: {e}]"
-    try:
-        content = tpl["content"].format(**context)
-    except KeyError as e:
-        logger.warning("Template %s content missing key: %s", template_name, e)
-        content = tpl["content"] + f"\n\n[未填字段: {e}]"
-    return {"title": title, "content": content}
+        title = tpl["title"].format_map(values)
+        content = tpl["content"].format_map(values)
+    except (KeyError, IndexError, ValueError, AttributeError) as e:
+        logger.warning("Template %s render failed: %s: %s", template_name, type(e).__name__, e)
+        return {"title": tpl["title"], "content": tpl["content"]}
+
+    if missing:
+        keys = sorted(set(missing))
+        logger.warning("Template %s missing keys: %s", template_name, keys)
+        content = content.rstrip() + "\n\n（本通知缺少部分字段，未填字段已留空，详见服务日志）"
+    return {"title": title.strip(), "content": content.strip()}
 
 
 # ============================================================================
 # 各通道实现
 # ============================================================================
+def _urlopen_no_redirect(request, *, timeout: int = 15):
+    """打开 URL 但**不跟随重定向**。
+
+    ★ 探索期修复(SSRF 绕过)：`_validate_webhook_url` 只在注册通道时校验一次
+      target 的 scheme/host。但 urllib 默认 opener 带 HTTPRedirectHandler，
+      攻击者可以注册一个公网 https 地址（通过校验），该地址返回
+      `302 Location: http://169.254.169.254/...`（云元数据）或
+      `http://127.0.0.1:8002/...`（内网服务），urllib 会**自动跟随**并把
+      POST 改成 GET 打到内网 —— 校验形同虚设。
+
+      webhook 的正常用法不需要重定向，直接禁用最稳妥；若将来确实需要跟随，
+      必须在每一跳重新跑 `_validate_webhook_url`。
+    """
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
+            raise urllib.error.HTTPError(
+                req.full_url, code,
+                f"redirect to {newurl} refused (SSRF guard)", headers, fp,
+            )
+
+    opener = urllib.request.build_opener(_NoRedirect)
+    return opener.open(request, timeout=timeout)
+
+
 def _send_wechat_work(webhook_url: str, title: str, content: str) -> NotifyResult:
     """企业微信 markdown"""
     payload = {
@@ -157,7 +216,7 @@ def _send_wechat_work(webhook_url: str, title: str, content: str) -> NotifyResul
             data=data,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen_no_redirect(req, timeout=15) as resp:
             body = resp.read().decode("utf-8")
             status = resp.status
             try:
@@ -189,7 +248,7 @@ def _send_dingtalk(webhook_url: str, title: str, content: str) -> NotifyResult:
             data=data,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen_no_redirect(req, timeout=15) as resp:
             body = resp.read().decode("utf-8")
             status = resp.status
             try:
@@ -231,12 +290,18 @@ def _send_email(smtp_target: str, title: str, content: str) -> NotifyResult:
         msg.attach(MIMEText(content, "plain", "utf-8"))
 
         if port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=15)
+            # ★ 探索期修复(安全)：smtplib 的 context=None 走
+            #   ssl._create_stdlib_context()，在 CPython 3.12 上等价于
+            #   _create_unverified_context（实测 `is` 为 True）→ **不校验证书**，
+            #   攻击者可中间人冒充任意 SMTP 服务器并拿到邮箱密码。
+            #   显式传 create_default_context() 强制校验。
+            server = smtplib.SMTP_SSL(host, port, timeout=15,
+                                      context=ssl.create_default_context())
         else:
             server = smtplib.SMTP(host, port, timeout=15)
         server.ehlo()
         if port != 465:
-            server.starttls()
+            server.starttls(context=ssl.create_default_context())
             server.ehlo()
         server.login(user, password)
         server.sendmail(user, [to_addr], msg.as_string())
@@ -253,7 +318,7 @@ def _send_serverchan(send_key: str, title: str, content: str) -> NotifyResult:
     try:
         data = urllib.parse.urlencode(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with _urlopen_no_redirect(req, timeout=15) as resp:
             body = resp.read().decode("utf-8")
             status = resp.status
             try:
@@ -475,6 +540,53 @@ def _validate_webhook_url(target: str) -> None:
         raise ValueError("webhook target 指向内网/回环地址，已拒绝（SSRF 防护）")
 
 
+def _validate_email_target(target: str) -> None:
+    """校验 email 通道的 target 格式：'host:port:user:password:to@example.com'。
+
+    ★ 探索期修复：旧实现不校验，`target="not-an-email"` 也 200 入库，
+      真正推送时才报"格式错误"，用户以为配置成功。
+    注意密码里含冒号的场景本就无法用该格式表达，故要求恰好 5 段。
+    """
+    import re as _re
+
+    # ★ 探索期修复：target 传 list/dict 时 `target.split` 抛 AttributeError
+    #   （端点只捕获 ValueError → 500，实测 `{"target": ["x"]}`）。
+    if not isinstance(target, str):
+        raise ValueError("email target 必须是字符串（host:port:user:password:to@example.com）")
+    parts = target.split(":")
+    if len(parts) != 5:
+        raise ValueError("email target 格式必须是 host:port:user:password:to@example.com")
+    host, port, user, password, to_addr = parts
+    if not host.strip():
+        raise ValueError("email target 缺少 SMTP host")
+    if not port.isdigit() or not (0 < int(port) < 65536):
+        raise ValueError("email target 的 port 必须是 1~65535 的整数")
+    if not user.strip():
+        raise ValueError("email target 缺少 SMTP 用户名")
+    if not password:
+        raise ValueError("email target 缺少 SMTP 密码")
+    if not _re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", to_addr):
+        raise ValueError("email target 的收件地址格式不正确")
+
+
+def _validate_quiet_hours(start: Optional[str], end: Optional[str]) -> None:
+    """校验静默时段格式（HH:MM）。
+
+    ★ 探索期修复：_in_quiet_hours 用字符串比较，写错格式（"99:99"/"abc"）
+      永远静默返回 False —— 用户以为设置了免打扰，实际照常推送。
+      要么都为空（不启用），要么两个都必须是合法 HH:MM。
+    """
+    import re as _re
+
+    if not start and not end:
+        return
+    if not start or not end:
+        raise ValueError("quiet_hours 的起止时间必须同时设置（或都不设置）")
+    for name, value in (("quiet_hours_start", start), ("quiet_hours_end", end)):
+        if not _re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(value)):
+            raise ValueError(f"{name} 必须是 HH:MM 格式（00:00~23:59），got {value!r}")
+
+
 def add_channel(
     user_id: str,
     channel_type: str,
@@ -502,6 +614,14 @@ def add_channel(
         import re as _re
         if not _re.fullmatch(r"[A-Za-z0-9_\-]+", target):
             raise ValueError("serverchan 的 send_key 只能包含字母、数字、下划线、连字符")
+    if channel_type == ChannelType.EMAIL.value:
+        # ★ 探索期修复：email 的 target 是 'host:port:user:pass:to' 五段格式，
+        #   旧实现完全不校验 → `target="not-an-email"` 也返回 200 入库，
+        #   真正推送时才在 _send_email 里报"格式错误"，用户以为配好了。
+        _validate_email_target(target)
+    # ★ 探索期修复：quiet_hours 写错格式（"99:99" / "abc"）时 _in_quiet_hours
+    #   用字符串比较，永远静默返回 False —— 用户以为设置了免打扰，实际照推。
+    _validate_quiet_hours(quiet_hours_start, quiet_hours_end)
     conn = get_conn()
     encrypted = encrypt_str(target)
     cur = conn.cursor()
