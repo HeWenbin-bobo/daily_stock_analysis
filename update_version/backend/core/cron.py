@@ -860,7 +860,28 @@ def add_user_job(
         except Exception as e:
             logger.warning("add_user_job: invalid cron expr %r: %s", cron_expr, e)
             return False
-    # 2. 写 SQLite 元数据
+    # 2. 归属校验：job_id 是调用方完全可控的字符串，同时又是主键。
+    #    ★ 探索期修复(越权覆盖)：DELETE 端点早就补了 _check_resource_owner，但
+    #      写入端没有 —— `INSERT OR REPLACE` 会让 B 用同一个 job_id 直接接管
+    #      A 的任务，owner/func/cron 全被改写。实测：
+    #        alice 建 shared_job_probe → bob 用同 id 提交 → 记录变成
+    #        user_id=bob, func=run_paper_settle, cron='0 3 * * *'。
+    #      bob 于是可以借 alice 的任务名安排任意白名单函数，alice 也失去自己
+    #      的任务。非本人一律拒绝（而不是静默覆盖）。
+    try:
+        conn = get_conn()
+        existing = conn.execute(
+            "SELECT user_id FROM cron_user_jobs WHERE job_id=?", (job_id,)
+        ).fetchone()
+    except Exception as e:
+        logger.exception("Failed to read user job meta: %s", e)
+        return False
+    if existing is not None and existing["user_id"] != user_id:
+        logger.warning(
+            "add_user_job rejected: %r belongs to another user", job_id
+        )
+        return False
+    # 3. 写 SQLite 元数据
     try:
         conn = get_conn()
         conn.execute(
