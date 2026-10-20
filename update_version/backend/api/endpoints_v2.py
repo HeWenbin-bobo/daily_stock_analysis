@@ -474,10 +474,14 @@ def list_backtest_results(user_id: Optional[str] = None, strategy_id: Optional[i
 
 
 @router.get("/backtest/results/{result_id}")
-def get_backtest_result(result_id: int):
+def get_backtest_result(result_id: int, request: Request = None, user_id: str = ""):
     r = be.get_result(result_id)
     if not r:
         raise HTTPException(404, "result 不存在")
+    # ★ 探索期修复(IDOR)：按 id 直读的 GET 此前完全无归属校验 —— 任何人猜到
+    #   result_id 就能读走他人的回测结果（含全部交易与权益曲线）。
+    #   _check_resource_owner 在无 X-User-Id header 时放行，桌面单用户场景零破坏。
+    _check_resource_owner(request, user_id or None, r.get("user_id"))
     return r
 
 
@@ -645,10 +649,13 @@ def delete_paper_account(account_id: int, request: Request):
 
 
 @router.get("/paper/accounts/{account_id}/overview")
-def get_paper_account_overview(account_id: int):
+def get_paper_account_overview(account_id: int, request: Request = None, user_id: str = ""):
     overview = pt.get_account_overview(account_id)
     if not overview:
         raise HTTPException(404, "账户不存在")
+    # ★ 探索期修复(IDOR)：按 id 直读的 GET 无归属校验 —— 实测带 X-User-Id: bob
+    #   读到了 conc10 账户 90 的余额与最新快照。写端点早有 M4 校验，读端点漏了。
+    _check_resource_owner(request, user_id or None, (overview.get("account") or {}).get("user_id"))
     return overview
 
 
@@ -678,7 +685,12 @@ def place_paper_order(account_id: int, payload: dict, request: Request):
 
 
 @router.get("/paper/accounts/{account_id}/trades")
-def list_paper_trades(account_id: int, limit: int = Query(100, le=500)):
+def list_paper_trades(account_id: int, limit: int = Query(100, le=500), request: Request = None, user_id: str = ""):
+    # ★ 探索期修复(IDOR)：同上，按 id 直读的 GET 需校验归属
+    acc = pt.get_account(account_id)
+    if not acc:
+        raise HTTPException(404, "账户不存在")
+    _check_resource_owner(request, user_id or None, acc.get("user_id"))
     return {"trades": pt.list_trades(account_id, limit)}
 
 
@@ -699,7 +711,12 @@ async def take_paper_snapshot(account_id: int, payload: dict = {}, request: Requ
 
 
 @router.get("/paper/accounts/{account_id}/snapshots")
-def list_paper_snapshots(account_id: int, limit: int = Query(365, le=1000)):
+def list_paper_snapshots(account_id: int, limit: int = Query(365, le=1000), request: Request = None, user_id: str = ""):
+    # ★ 探索期修复(IDOR)：同上，按 id 直读的 GET 需校验归属
+    acc = pt.get_account(account_id)
+    if not acc:
+        raise HTTPException(404, "账户不存在")
+    _check_resource_owner(request, user_id or None, acc.get("user_id"))
     return {"snapshots": pt.list_snapshots(account_id, limit)}
 
 
