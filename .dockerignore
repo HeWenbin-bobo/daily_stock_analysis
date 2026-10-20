@@ -51,6 +51,20 @@ daily_stock_analysis/
 stock_analysis/
 evals/
 
+# update_version 现在有自己的镜像（update_version/Dockerfile），因此不能整目录
+# 排除；只排除它里面不该进镜像的部分。backend/data 存着 SQLite 库与
+# .encryption_key / .llm_usage_hmac_secret（凭据），绝不能被 COPY 进镜像层。
+update_version/backend/data/
+update_version/data/
+update_version/backend/tests/
+update_version/tests/
+update_version/__pycache__/
+update_version/**/__pycache__/
+update_version/**/.omc/
+update_version/frontend/node_modules/
+update_version/frontend/dist/
+update_version/.run_state/
+
 # 忽略不参与 Docker 镜像构建的前端/桌面端产物
 apps/dsa-desktop/
 node_modules/

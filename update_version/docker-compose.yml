@@ -1,0 +1,87 @@
+# ===================================
+# update_version (v2) - Docker Compose
+# ===================================
+#
+# 使用方式:
+#   docker compose -f ./update_version/docker-compose.yml up -d --build
+#
+# 与主应用（docker/docker-compose.yml）相互独立：不同的镜像、端口和数据库，
+# 可以单独启停，也允许两者同时运行。
+
+name: dsa-update-version
+
+services:
+  v2:
+    build:
+      context: ..
+      dockerfile: update_version/Dockerfile
+    image: dsa-update-version:latest
+    container_name: dsa-v2
+    restart: unless-stopped
+
+    # 与主应用共用同一份根目录 .env：LLM key、数据源 key 等都在里面。
+    # Docker 只把它当环境变量注入，不会在镜像里留下 .env 文件。
+    env_file:
+      - ../.env
+
+    volumes:
+      # backend/data 存 SQLite 库（v2_dev.db）、.encryption_key、
+      # .llm_usage_hmac_secret、llm_settings.json —— 全部需要跨容器重建保留。
+      - ./backend/data:/app/update_version/backend/data
+      # update_version/data 存 history.db（本地分析历史）。
+      - ./data:/app/update_version/data
+      # 主项目模块按仓库根写路径，不看 update_version 的目录约定：
+      #   - DatabaseManager（PortfolioService / llm usage）用 DATABASE_PATH，
+      #     根 .env 里是 ./data/stock_analysis.db → 容器内 /app/data/stock_analysis.db
+      #   - llm usage HMAC 密钥也在 DATABASE_PATH 同目录
+      # 不挂载时组合账户/交易/用量统计只写容器层，docker compose up --build
+      # 重建即全部丢失（实测 P0 账户与自选股重建后归零）。
+      - ./data/main:/app/data
+      # ETF 轮动报告落盘 /app/reports，/etf-rotation/history 从这里读。
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      # 与主应用同样的两处只读/凭据挂载：
+      #   - strategies：交易技能 YAML，只读挂载后无需重建镜像即可增删技能
+      #   - longbridge_tokens：Longbridge OAuth token 缓存，凭据只存在于宿主机
+      #     （.dockerignore 已排除，不进构建上下文）
+      - ../strategies:/app/strategies:ro
+      - ../longbridge_tokens:/home/dsa/.longbridge
+
+    environment:
+      - TZ=Asia/Shanghai
+      - V4_HOST=0.0.0.0
+      - V4_PORT=8002
+      # 根 .env 的 DATABASE_PATH=./data/... 是相对路径，容器里相对 /app 解析，
+      # 正好落在下面挂载的 /app/data 上；这里显式写死是为了不随 .env 漂移。
+      - DATABASE_PATH=/app/data/stock_analysis.db
+      # 端口注意：下面 ports 的 ${V4_PORT:-8002} 属于 compose 变量插值，只读取
+      # shell 环境变量或与本文件同目录的 .env —— 根目录 .env 不参与插值。
+      # 改端口：V4_PORT=9002 docker compose -f ./update_version/docker-compose.yml up -d
+      # 直接部署（同源）时前端由本服务托管，不需要 CORS；
+      # 若前端单独部署在别的域名，请设置 APP_ENV=production 与 APP_CORS_ORIGINS。
+
+    ports:
+      - "${V4_PORT:-8002}:8002"
+
+    # app.py 收到 SIGTERM 会走 lifespan 的 cron_mod.shutdown()，通常秒级完成。
+    stop_grace_period: 60s
+
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "python", "/usr/local/bin/docker-healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3

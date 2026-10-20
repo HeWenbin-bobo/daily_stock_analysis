@@ -227,3 +227,111 @@ def test_docker_entrypoint_skips_owner_chmod_when_chown_fails(tmp_path: Path) ->
     assert not (log_dir / "chmod.log").exists()
     assert "skipping owner-only chmod" in result.stderr
     assert "still not writable by dsa" in result.stderr
+
+
+# ============================================================================
+# update_version (v2) 镜像
+# ============================================================================
+
+def _v2_compose() -> dict:
+    text = (REPO_ROOT / "update_version" / "docker-compose.yml").read_text(encoding="utf-8")
+    return yaml.safe_load(text)
+
+
+def test_v2_dockerfile_keeps_repo_layout_for_main_root_imports() -> None:
+    """update_version 反推仓库根来 import 主项目模块，层级错一位就起不来。"""
+    dockerfile = (REPO_ROOT / "update_version" / "Dockerfile").read_text(encoding="utf-8")
+
+    # backend/api/endpoints_hot.py 用 4 层 parent 定位仓库根，
+    # 因此镜像里必须 /app/{src,api,data_provider} 与 /app/update_version/backend 并存。
+    assert "COPY src/ ./src/" in dockerfile
+    assert "COPY api/ ./api/" in dockerfile
+    assert "COPY data_provider/ ./data_provider/" in dockerfile
+    assert "COPY update_version/backend/ ./update_version/backend/" in dockerfile
+    # bot/ 不是可选：src/notification.py 顶层 import bot.models，缺了它
+    # /hot-analysis/preview、/run-async、PDF 导出整条链路直接 500。
+    assert "COPY bot/ ./bot/" in dockerfile
+    # strategies/ 是 agent 技能目录，缺失只会静默跳过技能分析。
+    assert "COPY strategies/ ./strategies/" in dockerfile
+
+
+def test_v2_dockerfile_installs_pdf_dependencies() -> None:
+    """PDF 导出走主项目 reportlab 实现，字体路径写死为 wqy-zenhei。"""
+    dockerfile = (REPO_ROOT / "update_version" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "reportlab" in dockerfile
+    assert "fonts-wqy-zenhei" in dockerfile
+
+
+def test_v2_dockerfile_provides_main_project_runtime_dirs() -> None:
+    """主项目模块按仓库根写 /app/{data,logs,reports}，不看 update_version 约定。"""
+    dockerfile = (REPO_ROOT / "update_version" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "/app/data /app/logs /app/reports" in dockerfile
+    assert "/app/data" in dockerfile.split("DSA_WRITABLE_DIRS=")[1].split("\n")[0]
+
+
+def test_v2_dockerfile_installs_optuna_because_startup_imports_it() -> None:
+    """endpoints_v2 在模块级 import hyperopt_engine，后者顶层 import optuna。
+
+    主项目 requirements.txt 不需要 optuna，所以它只能装在 v2 镜像里；
+    漏装的表现是应用启动即 ImportError。
+    """
+    dockerfile = (REPO_ROOT / "update_version" / "Dockerfile").read_text(encoding="utf-8")
+    requirements = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    assert "optuna" in dockerfile
+    assert "optuna" not in requirements.lower()
+
+
+def test_v2_dockerfile_does_not_bake_credentials_or_databases() -> None:
+    """backend/data 存 .encryption_key 与 SQLite 库，绝不能被 COPY 进镜像层。"""
+    dockerignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+    assert "update_version/backend/data/" in dockerignore
+    assert "update_version/data/" in dockerignore
+    assert "update_version/frontend/node_modules/" in dockerignore
+    # 整目录排除会连源码一起丢掉
+    assert not re.search(r"^update_version/$", dockerignore, re.MULTILINE)
+
+
+def test_v2_compose_mounts_persistent_state_and_env() -> None:
+    compose = _v2_compose()
+    service = compose["services"]["v2"]
+
+    assert "../.env" in service["env_file"]
+    assert not any(str(volume).startswith("../.env:") for volume in service["volumes"])
+    volumes = service["volumes"]
+    assert "./backend/data:/app/update_version/backend/data" in volumes
+    assert "./data:/app/update_version/data" in volumes
+    # 主项目模块（PortfolioService / llm usage / ETF 报告）按仓库根写路径，
+    # 不挂载时组合账户、交易、用量与报告在容器重建后全部丢失。
+    assert "./data/main:/app/data" in volumes
+    assert "./reports:/app/reports" in volumes
+    assert service["environment"]
+    assert "DATABASE_PATH=/app/data/stock_analysis.db" in service["environment"]
+
+
+def test_v2_compose_health_probe_matches_its_own_endpoint() -> None:
+    """v2 没有 /api/health，探针必须指向 /health，否则容器永远 unhealthy。"""
+    dockerfile = (REPO_ROOT / "update_version" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "DSA_HEALTH_PATH=/health" in dockerfile
+    assert "DSA_HEALTH_PORT=8002" in dockerfile
+
+
+def test_v2_compose_allows_time_for_cron_shutdown() -> None:
+    compose = _v2_compose()
+    service = compose["services"]["v2"]
+
+    # Docker 默认只等 10s；lifespan 里要关 APScheduler，给足余量。
+    assert service["stop_grace_period"] != "10s"
+    assert "stop_grace_period" in service
+
+
+def test_v2_app_serves_frontend_and_respects_port_env() -> None:
+    app_py = (REPO_ROOT / "update_version" / "backend" / "app.py").read_text(encoding="utf-8")
+
+    # 没有静态托管时只能靠 vite dev server，无法作为容器对外提供服务。
+    assert "_mount_frontend" in app_py
+    assert "V4_PORT" in app_py
