@@ -92,12 +92,21 @@ def _check_resource_owner(
     payload_user_id: Optional[str],
     resource_user_id: Optional[str],
 ) -> None:
-    """★ 本轮修复(M4)：向后兼容的资源归属校验（替代/补充 _require_user_match）
+    """按 user_id 做资源归属校验（向后兼容模式）。
 
-    与 _require_user_match 的核心区别：**不要求前端必须发 X-User-Id header**。
+    与 `_require_user_match` 的核心区别：**不要求前端必须发 X-User-Id header**。
     实测当前前端（update_version/frontend/src/api/）从未携带 X-User-Id，
-    若对写端点套用 _require_user_match 严格模式，会把所有现有写操作打成 401，
+    若对写端点套用 `_require_user_match` 严格模式，会把所有现有写操作打成 401，
     直接搞坏应用。
+
+    ⚠️ 这不是认证边界，只是"声明了身份就按身份校验"的一致性检查。
+    v2 没有登录/会话层，`X-User-Id` 是调用方自填的请求头：
+      - 不带头 → 直接放行（本函数的设计取舍，见下方第 3 条）
+      - 带头但与 owner 不符 → 403
+      - 伪造成 owner 的值 → 通过
+    所以它能拦住"带错身份的手滑调用"，**拦不住"根本不声明身份"的调用者**。
+    真正的边界要么是绑定 localhost、要么是给 v2 补认证层 —— 见
+    update_version/docker-compose.yml 的 ports 注释。
 
     工作模式（按优先级）：
     1) 若 X-User-Id header 存在 → 它是 authoritative server-side uid；
@@ -107,8 +116,6 @@ def _check_resource_owner(
        effective_uid = payload_user_id
     3) 若两者都不存在 → 无任何 user 信息可校验，直接放行（极端兼容）
     4) resource_user_id 与 effective_uid 不匹配 → 403
-
-    适用：写端点（POST/PUT/DELETE），GET 类公开端点不受影响。
     """
     server_uid = getattr(request.state, "user_id", None) if request else None
     if server_uid is not None:
@@ -235,10 +242,14 @@ def list_alert_rule_types():
 
 
 @router.get("/alerts/rules/{rule_id}")
-def get_alert_rule(rule_id: int):
+def get_alert_rule(rule_id: int, request: Request = None, user_id: str = ""):
     rule = ae.get_rule(rule_id)
     if not rule:
         raise HTTPException(404, "rule 不存在")
+    # 归属一致性检查（非安全边界，见 _check_resource_owner 的说明）。
+    # ★ 探索期修复(IDOR)：按 id 直读需校验归属 —— 实测带 X-User-Id: bob
+    #   读到了 u_cd 的规则 32（含 symbol_filter / 冷却时间等配置）。
+    _check_resource_owner(request, user_id or None, rule.get("user_id"))
     return rule
 
 
@@ -478,6 +489,8 @@ def get_backtest_result(result_id: int, request: Request = None, user_id: str = 
     r = be.get_result(result_id)
     if not r:
         raise HTTPException(404, "result 不存在")
+    # 归属一致性检查（非安全边界，见 _check_resource_owner 的说明）：
+    # 声明了身份就按身份校验；不声明仍放行。
     # ★ 探索期修复(IDOR)：按 id 直读的 GET 此前完全无归属校验 —— 任何人猜到
     #   result_id 就能读走他人的回测结果（含全部交易与权益曲线）。
     #   _check_resource_owner 在无 X-User-Id header 时放行，桌面单用户场景零破坏。
@@ -653,6 +666,7 @@ def get_paper_account_overview(account_id: int, request: Request = None, user_id
     overview = pt.get_account_overview(account_id)
     if not overview:
         raise HTTPException(404, "账户不存在")
+    # 归属一致性检查（非安全边界，见 _check_resource_owner 的说明）。
     # ★ 探索期修复(IDOR)：按 id 直读的 GET 无归属校验 —— 实测带 X-User-Id: bob
     #   读到了 conc10 账户 90 的余额与最新快照。写端点早有 M4 校验，读端点漏了。
     _check_resource_owner(request, user_id or None, (overview.get("account") or {}).get("user_id"))
@@ -686,7 +700,7 @@ def place_paper_order(account_id: int, payload: dict, request: Request):
 
 @router.get("/paper/accounts/{account_id}/trades")
 def list_paper_trades(account_id: int, limit: int = Query(100, le=500), request: Request = None, user_id: str = ""):
-    # ★ 探索期修复(IDOR)：同上，按 id 直读的 GET 需校验归属
+    # 归属一致性检查（非安全边界，见 _check_resource_owner 的说明）。
     acc = pt.get_account(account_id)
     if not acc:
         raise HTTPException(404, "账户不存在")
@@ -712,7 +726,7 @@ async def take_paper_snapshot(account_id: int, payload: dict = {}, request: Requ
 
 @router.get("/paper/accounts/{account_id}/snapshots")
 def list_paper_snapshots(account_id: int, limit: int = Query(365, le=1000), request: Request = None, user_id: str = ""):
-    # ★ 探索期修复(IDOR)：同上，按 id 直读的 GET 需校验归属
+    # 归属一致性检查（非安全边界，见 _check_resource_owner 的说明）。
     acc = pt.get_account(account_id)
     if not acc:
         raise HTTPException(404, "账户不存在")
