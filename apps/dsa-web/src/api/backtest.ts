@@ -11,6 +11,12 @@ import type {
 
 // ============ API ============
 
+// A default run evaluates up to `limit` (200) stored analyses and re-fetches
+// daily bars per candidate; it measured ~590s against a warm local backend.
+// The shared 30s axios budget made every default run show "request failed"
+// while the server kept working. Bound it above the observed worst case.
+const BACKTEST_RUN_TIMEOUT_MS = 900000;
+
 export const backtestApi = {
   /**
    * Trigger backtest evaluation
@@ -28,6 +34,7 @@ export const backtestApi = {
     const response = await apiClient.post<Record<string, unknown>>(
       '/api/v1/backtest/run',
       requestData,
+      { timeout: BACKTEST_RUN_TIMEOUT_MS },
     );
     return toCamelCase<BacktestRunResponse>(response.data);
   },
