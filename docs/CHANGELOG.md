@@ -68,6 +68,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [文档] 修正两处指向不存在 CLI 参数的文档：`docs/FAQ.md` / `docs/FAQ_EN.md` 的「只运行大盘复盘」由 `python main.py --market-only` 改为实际存在的 `--market-review`；`docs/docker/zeabur-deployment.md` 的多实例部署删除不存在的 `python main.py --discord-bot`，改为 `--serve-only` 并说明 bot Stream 客户端随 API 服务启动、由 `*_STREAM_ENABLED` 配置控制（Discord 目前无 Webhook 适配器）。
 
 
+- [修复] `update_version` 镜像补齐 `bot/`：`src/notification.py` 顶层 `from bot.models import ...`，缺包时 `/hot-analysis/preview`、`/run-async`、PDF 导出直接 500（`No module named 'bot'`），ETF 轮动报告也保存失败；同时补 `strategies/`（agent 技能目录），避免技能分析静默跳过。
+- [修复] `update_version` compose 补齐主项目模块的持久化挂载：`/app/data`（`DATABASE_PATH` → 组合账户/交易/LLM 用量）、`/app/reports`（ETF 报告）、`/app/logs`。此前这些只写容器层，`docker compose up --build` 重建后组合账户与自选股全部归零。
+- [修复] `update_version` 镜像补装 `reportlab` 与 `fonts-wqy-zenhei`：主项目 PDF 导出在模块级 import reportlab，且中文字体路径写死为 `/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc`，缺失时大盘复盘 PDF 固定 500 或中文渲染成空白。
+- [修复] `update_version` 镜像预建并授权 `/app/{data,logs,reports}`，修复非 root 用户运行主项目模块（DatabaseManager / NotificationService）时的写权限失败；`efinance` 缓存目录属主同上，避免行情 fallback 链首选项每次 PermissionError。
+- [修复] `update_version/backend/app.py` 改为 `uvicorn.run(app, ...)` 而不是 `uvicorn.run("app:app", ...)`：后者会再 import 一次模块，导致服务端出现两份 `create_app()`（日志两条 "serving frontend"、中间件与静态挂载重复注册）。
+- [修复] 同花顺热度榜改为直接解析服务端渲染的静态 HTML（三个 rank 页实测每页 50 行、GBK 编码），不再依赖 Playwright/Chromium：此前容器内未装 playwright 时该榜恒为空，`/hot-analysis/preview` 只剩 2/4 榜单可用。Playwright 降为可选后备（页面若改成前端渲染仍可用），akshare 历史接口保留为末级兜底。实测容器内抓取 131 只。
+- [改进] `update_version` 镜像新增构建期导入自检（对齐主镜像 CI 的 Docker smoke imports）：缺 `bot/` 一类问题现在在 `docker build` 阶段就失败，而不是上线后端点 500。自检分两个进程执行——主项目 `api` 与 backend `api` 同名，同进程内会互相遮蔽。
+- [改进] `update_version` compose 对齐主应用挂载：`../strategies` 只读（改技能无需重建镜像）、`../longbridge_tokens`（OAuth token 缓存凭据只留在宿主机）；`.dockerignore` 增加 `longbridge_tokens/`，避免凭据进入构建上下文。
+- [修复] `update_version` 资金账本混用（Critical）：组合持仓与模拟盘共用 `paper_account`/`paper_trade`，组合里录入的「真实持仓」可在模拟盘按调用方自选价格卖出变现并进入排行榜。新增 `is_portfolio_account()` 与账本过滤，`place_order` 拒绝组合账本、`settle_daily`/`leaderboard` 排除，删除账户级联清理交易与快照。
+- [修复] `update_version` 回测 DSL 把 LLM 产出直接执行：字符串阈值抛 `TypeError`（端点 500）、`take_profit_pct=-5` 让止盈反向。新增 `normalize_dsl()` 统一规范化（类型转换、区间限制、方向纠正、白名单校验），编译与执行前各做一次。
+- [修复] `update_version` 定时任务可被劫持：`POST /cron/user-jobs` 允许 `job_id="builtin_*"` 覆盖内置调度（实测把「工作日 10:00 大盘复盘」改成「每 5 分钟异动扫描」）。同时修复 `_run_user_scheduled_task` 用临时 loop 立刻 `close()` 导致后台分析被销毁（定时分析从未真正执行）。
+- [修复] `update_version` 限流器撞上限即崩：`dict.popitem(last=False)` 在普通 dict 上抛 `TypeError`，异常发生在持锁路径内，之后所有限流端点永久 500。另补齐 5 个「代码在用、配置未定义」的限流 key（deep-research / hyperopt / technical 三项），此前它们全部落到默认 60/min。
+- [修复] `update_version` 安全加固：SMTP 用 `context=None`（CPython 3.12 等价于不校验证书，可 MITM 窃取邮箱密码）改为显式 `create_default_context()`；webhook 禁用 302 重定向（否则注册时通过 SSRF 校验、发送时可被重定向到内网/云元数据）；分享撤销要求服务端身份（此前公开接口泄露 `user_id`，任何人可删他人分享）。
+- [修复] `update_version` fd 泄漏：`sqlite3.Connection` 引用计数归零不会立刻释放 fd，而 `/ready`（Docker healthcheck 每 30s 调用）的三条连接路径都不 close —— 实测 100 次请求 fd 16→59 且空闲不回落。改为显式关闭后 16→17。
+- [修复] `update_version` 一批端点返回 500 而非 4xx：畸形类型（`strategy_id` 为 dict、`name` 为 list、`target` 为 list、`body`/`signature` 非字符串、`stale_seconds=null` 等）以及 `create_account` 抛出的 `ValueError` 未被端点转换。全量 POST 端点畸形 payload 扫描已从 21 个 500 降到 0。
+- [修复] `update_version` 数据一致性：策略/规则/账户删除不级联（schema 无外键）导致回测结果、异动触发历史、交易快照变成孤儿；热榜刷新「先删后抓」，全源失败时当日数据被删空；指标预热窗口被 `start_date` 截断导致同一策略 46 笔交易变 0 笔；`quarterly`/`yearly` 波峰波谷接口恒定 400。
+- [修复] `update_version` 展示/计算错误：行业字段缺失时「行业集中度 100%」每次都误报；快照基准权益硬编码 100 万（1 万本金账户显示 100 万基准）；`_rank_top_n` 在板块数不足时同一板块同时出现在领涨与领跌；深研报告 `stock_name` 因运算符优先级变空串；市值验算在无报告市值时返回「偏差 0% / 一致」。
+- [修复] `update_version` 输入校验：`place_order` 未校验 `price <= 0`（零成本建仓/负价污染账本）、初始资金无上限（`1e300` 直接成为排行榜榜首）、`north_flow` 规则永远无法触发（上游接口已下线）却仍可创建、`cooldown_minutes`/`params=None`/`expires_in_days` 等类型与范围缺口、定时任务 `config` 无任何校验。
+- [修复] 测试隔离：`update_version/backend/tests/conftest.py` 在收集测试前把 `V4_DB_PATH`/`V4_HISTORY_PATH` 指向临时目录，`db/history.py` 新增 `V4_HISTORY_PATH` 支持，`app.py` 的 cron jobstore 改用 `db.migrate.DB_PATH`。此前宿主机跑 pytest 会直接写容器的 bind-mount 数据库，实测把 `v2_dev.db` 写坏（`database disk image is malformed`）。
+- [修复] `update_version` 自带 LLM 路由不识别 `LLM_CHANNELS`（重大功能缺口）：`.env` 里配的是 `LLM_CHANNELS=minimax` + `LLM_MINIMAX_*`，而 `core/llm_router.py` 只认 deepseek/qwen/openai/gemini/cc_switch，导致 `/llm/chat`、`/technical/llm-insight`、策略 DSL 编译、深度研究全部静默返回 `[MOCK-LLM]` 占位文本。新增 `Provider.CHANNEL` 与 `_get_channel_config()`（按主项目 `LLM_CHANNELS` 约定解析，支持 openai/anthropic 双协议），降级链中排在 openai 之前；`_call_real` 按 `config.protocol` 选端点。实测三个功能均返回真实模型输出。
+- [修复] `update_version` 数据保留：`audit.cleanup_old()` 早已实现但从未被调度，`audit_log`/`cron_run_log`/`notification_log` 只增不减。新增内置 cron `builtin_retention_cleanup`（每天 03:10）按保留期清理（注意 `cron_run_log` 的时间列是 `started_at` 而非 `created_at`）。
+- [修复] `update_version` 孤儿定时任务：APScheduler 的 jobstore 不会因 DB 行被删除而移除任务，实测 `scheduled_tasks` 已空但 jobstore 仍有 4 个 `user_scheduled_*`（到点触发反复报错）。`register_user_scheduled_tasks()` 现按当前有效 job_id 对账删除。
+- [修复] `update_version` 异动规则 `opening_spike` 会用陈旧 K 线产生方向错误的告警：旧实现无条件把最后一根 K 线的 open 当作"今日开盘"，盘前/数据源未更新时（实测昨日 open=90、今日现价 95，实际跌 13.6%）却报"开盘异动 +5.56%"。现在只有 `date == today` 才使用该 bar，否则回退 `change_pct` 近似。
+- [修复] `update_version` 后台分析任务缺少并发上限：限流是 3 次/分钟/IP，换 IP 或多用户即可累积；单个任务最长可跑 3 小时（上限约 55 小时），每个占线程池 + LLM 配额 + 内存，容器限额 2G 下几个长任务即可压垮。现按主项目 `_tasks` 中 `status == "running"` 计数，默认上限 3（`V4_MAX_CONCURRENT_ANALYSES` 可调），超出返回 429；超过 `V4_RUNNING_TASK_STALE_SECONDS`（默认 6h）仍未终结的僵尸任务不计入名额。
 ## [3.33.0] - 2026-10-15
 
 ### 发布亮点
