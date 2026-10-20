@@ -59,12 +59,28 @@ _TRADING_DAY_CACHE: Dict[str, Any] = {}
 _TRADING_DAY_CACHE_LOCK: threading.Lock = threading.Lock()
 # akshare 不可用时的缓存哨兵值：表示"当日已确认 akshare 失败，后续查询走 weekday 规则"
 _WEEKDAY_FALLBACK: Any = object()
+# ★ 探索期修复(定时任务被挂起的上游拖死)：交易日历拉取硬超时（秒）。
+#   akshare 无内部超时，这条链路挡在 10:00 / 18:00 大盘复盘的最前面。
+_TRADING_CALENDAR_TIMEOUT = 20.0
 
 
 def _fetch_trading_days_sina() -> Set[str]:
-    """从新浪交易日历拉取所有交易日，返回 set of 'YYYY-MM-DD' 字符串。失败抛异常。"""
-    import akshare as ak
-    df = ak.tool_trade_date_hist_sina()
+    """从新浪交易日历拉取所有交易日，返回 set of 'YYYY-MM-DD' 字符串。失败抛异常。
+
+    ★ 探索期修复(定时任务被挂起的上游拖死)：akshare 无内部超时，这个调用在
+      `run_market_review_daily`（10:00 / 18:00）和启动补跑线程的最前面。
+      一旦 socket 挂住，任务永不返回，APScheduler max_instances=1 会把之后
+      每一次触发都判为 "maximum number of running instances reached" 跳过，
+      大盘复盘从此不再生成，日志里只有 WARNING。
+      封顶后超时按普通失败处理，走已有的 weekday 回退分支。
+    """
+    from core.data_source import call_with_timeout
+
+    def _fetch():
+        import akshare as ak
+        return ak.tool_trade_date_hist_sina()
+
+    df = call_with_timeout(_fetch, _TRADING_CALENDAR_TIMEOUT, "tool_trade_date_hist_sina")
     if df is None or df.empty or "trade_date" not in df.columns:
         raise RuntimeError("akshare tool_trade_date_hist_sina returned empty/invalid result")
     # trade_date 可能是 Timestamp 或 str，统一转成 'YYYY-MM-DD'

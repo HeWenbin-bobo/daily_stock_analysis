@@ -537,6 +537,37 @@ _QUOTE_SOURCE_TIMEOUT = 15.0
 _KLINE_SOURCE_TIMEOUT = 15.0
 
 
+def call_with_timeout(fn: Callable[[], Any], timeout: float, label: str) -> Any:
+    """在 daemon 线程里跑 ``fn``，超过 ``timeout`` 秒就放弃并抛 TimeoutError。
+
+    ★ 探索期修复(定时任务被挂起的上游拖死)：akshare / baostock 的接口普遍
+      没有内部超时，socket read 会永久阻塞。这类调用分布在行情、K 线、
+      交易日历、社区热榜多条链路上，各自手写一遍 daemon 线程样板既啰嗦又
+      容易漏（漏掉一处就够让一个 cron 任务永久占住 max_instances=1 的槽位，
+      后续每一轮都被跳过 —— 实测异动扫描因此静默停摆 3 小时以上）。
+
+    为什么不用 ThreadPoolExecutor：`with` 块退出会 join 挂起的 worker，
+    超时形同虚设。这里让放弃的线程自然泄漏为 daemon，进程退出时一并回收。
+    """
+    box: list = []
+
+    def _run() -> None:
+        try:
+            box.append(("ok", fn()))
+        except BaseException as exc:  # noqa: BLE001 - 原样转交给调用方
+            box.append(("err", exc))
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        raise TimeoutError(f"{label} timed out after {timeout}s")
+    state, value = box[0]
+    if state == "err":
+        raise value
+    return value
+
+
 def fetch_quotes_bulk(
     codes: List[str],
     parallel: bool = True,
@@ -623,25 +654,14 @@ def fetch_kline_with_fallback(
         if adapter is None:
             continue
         try:
-            # ★ 探索期修复(异动监控停摆)：与 fetch_quote_with_fallback 相同的
-            #   daemon 线程 + join(timeout) 硬超时。baostock / akshare 的 K 线
-            #   接口都可能无内部超时地永久阻塞，此前一条卡死的连接会让整个
-            #   扫描任务挂住（实测 >3h），拖死后续所有定时轮次。
-            _box: list = []
-            def _fetch():
-                try:
-                    _box.append(("ok", adapter.fetch_kline(code, period=period, days=days)))
-                except BaseException as _e:  # noqa: BLE001
-                    _box.append(("err", _e))
-            _t = threading.Thread(target=_fetch, daemon=True)
-            _t.start()
-            _t.join(_KLINE_SOURCE_TIMEOUT)
-            if _t.is_alive():
-                raise TimeoutError(f"{src} kline timed out after {_KLINE_SOURCE_TIMEOUT}s")
-            _state, _val = _box[0]
-            if _state == "err":
-                raise _val
-            result = _val
+            # ★ 探索期修复(异动监控停摆)：baostock / akshare 的 K 线接口可能
+            #   无内部超时地永久阻塞，此前一条卡死的连接会让整个扫描任务挂住
+            #   （实测 >3h），拖死后续所有定时轮次。
+            result = call_with_timeout(
+                lambda: adapter.fetch_kline(code, period=period, days=days),
+                _KLINE_SOURCE_TIMEOUT,
+                f"{src} kline",
+            )
         except Exception as e:
             logger.warning("fetch_kline via %s failed: %s", src, e)
             # ★ 探索期修复(熔断对超时失效)：同 fetch_quote —— 超时在调用方
@@ -797,24 +817,12 @@ def fetch_quote_with_fallback(code: str) -> Optional[Dict[str, Any]]:
             continue
         try:
             # ★ E2E 修复：akshare 等 quote 接口可能无内部超时地挂起（实测热力图
-            #   请求 197s），fallback 链会倍增卡顿。daemon 线程 + join(timeout)
-            #   实现真硬超时（ThreadPoolExecutor 的 with 退出会 join 挂起线程，
-            #   超时形同虚设）；超时后线程自然泄漏为 daemon，按失败走下一源。
-            _box: list = []
-            def _fetch():
-                try:
-                    _box.append(("ok", adapter.fetch_quote(code)))
-                except BaseException as _e:  # noqa: BLE001
-                    _box.append(("err", _e))
-            _t = threading.Thread(target=_fetch, daemon=True)
-            _t.start()
-            _t.join(_QUOTE_SOURCE_TIMEOUT)
-            if _t.is_alive():
-                raise TimeoutError(f"{src} quote timed out after {_QUOTE_SOURCE_TIMEOUT}s")
-            _state, _val = _box[0]
-            if _state == "err":
-                raise _val
-            result = _val
+            #   请求 197s），fallback 链会倍增卡顿。硬超时确保按失败走下一源。
+            result = call_with_timeout(
+                lambda: adapter.fetch_quote(code),
+                _QUOTE_SOURCE_TIMEOUT,
+                f"{src} quote",
+            )
         except Exception as e:
             logger.warning("fetch_quote via %s failed: %s", src, e)
             # ★ 探索期修复(熔断对超时失效)：适配器自己在 try/except 里调

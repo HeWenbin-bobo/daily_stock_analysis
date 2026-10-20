@@ -14,9 +14,14 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 from db.migrate import get_conn
-from core.data_source import fetch_quote_with_fallback, fetch_quotes_bulk
+from core.data_source import fetch_quote_with_fallback, fetch_quotes_bulk, call_with_timeout
 
 logger = logging.getLogger(__name__)
+
+# ★ 探索期修复(定时任务被挂起的上游拖死)：刷新榜单时 akshare 全市场抓取
+#   实测耗时 129s，且 akshare 无内部超时。给一个宽但有限的上限，
+#   超时就保留旧榜单（函数本身已是"抓不到就不动旧数据"）。
+_HOT_LIST_FETCH_TIMEOUT = 120.0
 
 
 # ============================================================================
@@ -41,8 +46,14 @@ def refresh_daily_hot_list(top_n: int = 50) -> Dict[str, Any]:
     # 不在抓取前删除任何数据。抓取失败时旧榜单原样保留。
     rows: List[Dict[str, Any]] = []
     try:
-        import akshare as ak
-        df = ak.stock_zh_a_spot_em()
+        # ★ 探索期修复(定时任务被挂起的上游拖死)：akshare 无内部超时，
+        #   实测本任务耗时 129s 且随时可能永久阻塞；一旦卡住，
+        #   APScheduler max_instances=1 会让之后每一天的榜单刷新全部跳过。
+        def _fetch_spot_em():
+            import akshare as ak
+            return ak.stock_zh_a_spot_em()
+
+        df = call_with_timeout(_fetch_spot_em, _HOT_LIST_FETCH_TIMEOUT, "stock_zh_a_spot_em")
         df = df.sort_values("涨跌幅", ascending=False).head(top_n)
         for rank, (_, row) in enumerate(df.iterrows(), start=1):
             code = str(row.get("代码", ""))
@@ -113,8 +124,12 @@ def _fetch_hot_list_fallback_rows(today: str, top_n: int = 50) -> List[Dict[str,
     if not rows:
         # 终极回退：直接调 ak.stock_zh_a_spot（列名兼容处理）
         try:
-            import akshare as ak
-            df = ak.stock_zh_a_spot()
+            # ★ 探索期修复：同主路径，akshare 无内部超时，必须封顶。
+            def _fetch_spot():
+                import akshare as ak
+                return ak.stock_zh_a_spot()
+
+            df = call_with_timeout(_fetch_spot, _HOT_LIST_FETCH_TIMEOUT, "stock_zh_a_spot")
             if df is not None and not df.empty:
                 sort_col = "换手率" if "换手率" in df.columns else ("涨跌幅" if "涨跌幅" in df.columns else None)
                 if sort_col:
