@@ -311,9 +311,21 @@ def _compute_breadth(stocks: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _rank_top_n(rows: List[Dict[str, Any]], n: int = 5) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """把板块行情按涨跌幅排序，返回 top_gainers / top_losers 各 n 条。"""
+    """把板块行情按涨跌幅排序，返回 top_gainers / top_losers 各 n 条。
+
+    ★ 探索期修复：旧实现 `valid[:n]` 与 `valid[-n:][::-1]` 在板块数少于 2n 时
+      会**重叠** —— 实测只有 2 个板块时，"涨幅前 5"和"跌幅前 5"都是同两个，
+      前端会同时显示"领涨"和"领跌"是同一批板块。改为按涨跌方向对半切分，
+      保证同一板块不同时出现在两个列表里。
+    """
     valid = [r for r in rows if r.get("change_pct") is not None]
     valid.sort(key=lambda x: x["change_pct"], reverse=True)
+    if len(valid) <= n:
+        # 数据量不足一个完整榜单：按正负号切分，避免重叠
+        gainers = [r for r in valid if r["change_pct"] >= 0][:n]
+        losers = [r for r in valid if r["change_pct"] < 0][:n]
+        losers.reverse()  # 跌得最多的排前面
+        return gainers, losers
     return valid[:n], valid[-n:][::-1]
 
 

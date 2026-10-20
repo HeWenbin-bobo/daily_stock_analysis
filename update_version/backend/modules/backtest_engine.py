@@ -20,6 +20,102 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# DSL 规范化 / 校验
+# ============================================================================
+_VALID_OPERATORS = (">", "<", ">=", "<=", "==", "cross_above", "cross_below")
+_VALID_INDICATORS = ("close", "ma", "ema", "macd", "rsi", "volume_ratio")
+_MAX_PERIOD = 250
+
+
+def _as_float(value: Any, field: str, cond: Dict[str, Any]) -> float:
+    """把 DSL 里的阈值转成 float；转不了抛 ValueError（端点层转 400）。"""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"DSL 条件 {cond.get('indicator', '?')} 的 value 必须是数字，got {value!r}"
+        )
+
+
+def _as_period(value: Any, cond: Dict[str, Any]) -> int:
+    try:
+        period = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"DSL 条件 {cond.get('indicator', '?')} 的 period 必须是整数，got {value!r}"
+        )
+    if period < 1 or period > _MAX_PERIOD:
+        raise ValueError(f"DSL 条件 period 必须在 1..{_MAX_PERIOD}，got {period}")
+    return period
+
+
+def normalize_dsl(dsl: Any) -> Dict[str, Any]:
+    """把 LLM 编译出的 DSL 规整为可安全执行的形态。
+
+    ★ 探索期修复：compiled_dsl 是 **LLM 直接产出并原样落库** 的 JSON，类型完全
+      不可信。此前 `_execute_backtest` 里 `val > threshold` 遇到字符串阈值抛
+      TypeError、`int(period)` 遇到 "abc" 抛 ValueError，两者都不是 ValueError
+      的语义分支（TypeError 未被端点捕获）→ 回测端点 500。止盈止损方向写反
+      （take_profit_pct=-5）则会让"止盈"永远先触发，产生看似合法的错误回测。
+
+    规则：
+      - value / stop_loss_pct / take_profit_pct 统一转 float
+      - period 统一转 int 并限制在 1..250
+      - operator / indicator 非法直接报错（避免静默永不触发）
+      - stop_loss_pct 必须 <= 0，take_profit_pct 必须 > 0（方向写反时自动纠正，
+        因为这是 LLM 高频笔误，拒绝会让用户反复重试）
+      - hold_days < 0 视为 0（不限）
+    """
+    if not isinstance(dsl, dict):
+        raise ValueError("DSL 必须是 JSON 对象")
+    if "error" in dsl:
+        return dsl
+
+    out = dict(dsl)
+    for key in ("entry", "exit"):
+        conds = out.get(key) or []
+        if not isinstance(conds, list):
+            raise ValueError(f"DSL.{key} 必须是数组")
+        normalized = []
+        for cond in conds:
+            if not isinstance(cond, dict):
+                raise ValueError(f"DSL.{key} 的每个条件必须是对象")
+            item = dict(cond)
+            indicator = item.get("indicator", "")
+            if indicator not in _VALID_INDICATORS:
+                raise ValueError(
+                    f"DSL.{key} 含不支持的 indicator: {indicator!r} "
+                    f"（支持 {', '.join(_VALID_INDICATORS)}）"
+                )
+            operator = item.get("operator", ">")
+            if operator not in _VALID_OPERATORS:
+                raise ValueError(
+                    f"DSL.{key} 含不支持的 operator: {operator!r} "
+                    f"（支持 {', '.join(_VALID_OPERATORS)}）"
+                )
+            item["operator"] = operator
+            if "value" in item:
+                item["value"] = _as_float(item["value"], "value", item)
+            if "period" in item and indicator in ("ma", "ema", "rsi", "volume_ratio"):
+                item["period"] = _as_period(item["period"], item)
+            normalized.append(item)
+        out[key] = normalized
+
+    if "stop_loss_pct" in out and out["stop_loss_pct"] is not None:
+        sl = _as_float(out["stop_loss_pct"], "stop_loss_pct", {})
+        out["stop_loss_pct"] = -abs(sl)
+    if "take_profit_pct" in out and out["take_profit_pct"] is not None:
+        tp = _as_float(out["take_profit_pct"], "take_profit_pct", {})
+        out["take_profit_pct"] = abs(tp)
+    if "hold_days" in out and out["hold_days"] is not None:
+        try:
+            out["hold_days"] = max(int(out["hold_days"]), 0)
+        except (TypeError, ValueError):
+            raise ValueError(f"DSL.hold_days 必须是整数，got {out['hold_days']!r}")
+    return out
+
+
+# ============================================================================
 # DSL 示例 — LLM 编译的目标格式
 # ============================================================================
 DSL_EXAMPLES = """
@@ -141,10 +237,32 @@ def update_strategy(strategy_id: int, **fields) -> bool:
 
 
 def delete_strategy(strategy_id: int) -> bool:
+    """删除策略，并级联清理其回测结果与参数优化记录。
+
+    ★ 探索期修复：schema 里**没有任何 FOREIGN KEY**（0 条），旧实现只删
+      backtest_strategy 一行 —— 实测回测结果仍留在库里。
+      孤儿后果：`list_results(user_id=...)` 仍会把已删策略的回测结果返回给前端
+      （点进去引用一个不存在的 strategy_id），hyperopt_run / hyperopt_epoch
+      同理永久占库。改为同一事务内按 策略 → 结果/优化 顺序清理。
+    """
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM backtest_strategy WHERE id=?", (strategy_id,))
-    return cur.rowcount > 0
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        cur.execute("DELETE FROM hyperopt_epoch WHERE run_id IN "
+                    "(SELECT id FROM hyperopt_run WHERE strategy_id=?)", (strategy_id,))
+        cur.execute("DELETE FROM hyperopt_run WHERE strategy_id=?", (strategy_id,))
+        cur.execute("DELETE FROM backtest_result WHERE strategy_id=?", (strategy_id,))
+        cur.execute("DELETE FROM backtest_strategy WHERE id=?", (strategy_id,))
+        deleted = cur.rowcount > 0
+        cur.execute("COMMIT")
+        return deleted
+    except Exception:
+        try:
+            cur.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
 
 
 # ============================================================================
@@ -193,6 +311,15 @@ def compile_strategy(
     except json.JSONDecodeError:
         dsl = {"error": "LLM 返回的不是有效 JSON", "raw": content[:500]}
 
+    # ★ 探索期修复：LLM 输出类型不可信（value 可能是 "1.5" 字符串、period 可能是
+    #   "20"、止盈止损可能写反）。入库前规范化，坏 DSL 直接标 error，避免落库后
+    #   回测 500。规范化失败也视为编译失败，让用户重新描述策略。
+    if "error" not in dsl:
+        try:
+            dsl = normalize_dsl(dsl)
+        except ValueError as exc:
+            dsl = {"error": f"策略表达式不合法：{exc}", "raw": content[:500]}
+
     if "error" not in dsl:
         update_strategy(
             strategy_id,
@@ -240,6 +367,11 @@ def run_backtest(
     dsl = strategy["compiled_dsl"]
     if "error" in dsl:
         raise ValueError(f"DSL 有误: {dsl['error']}")
+    # ★ 探索期修复：历史策略里可能存着旧版（未规范化）的 DSL，运行前再规范化一次，
+    #   保证类型错误在端点层变成 400 而不是 500。
+    dsl = normalize_dsl(dsl)
+    if "error" in dsl:
+        raise ValueError(f"DSL 有误: {dsl['error']}")
 
     # 拉 K 线
     kline = fetch_kline_with_fallback(symbol, days=365 * 2)
@@ -247,8 +379,16 @@ def run_backtest(
         raise ValueError(f"无法获取 {symbol} K 线")
 
     # 日期过滤
+    # ★ 探索期修复：先截断再算指标会丢掉指标预热窗口 —— 同一策略全区间 46 笔交易，
+    #   指定 start_date 后变成 0 笔（MA60 的前 60 根全是 None）。正确做法是先保留
+    #   足够长的前缀用于指标预热，只把**交易区间**限制在 [start_date, end_date]。
+    _WARMUP_BARS = 120  # ≥ 最长指标周期(60) 的两倍
     if start_date:
-        kline = [k for k in kline if k["date"] >= start_date]
+        cutoff = next((i for i, k in enumerate(kline) if k["date"] >= start_date), len(kline))
+        kline = kline[max(0, cutoff - _WARMUP_BARS):]
+        warmup = min(cutoff, _WARMUP_BARS)
+    else:
+        warmup = 0
     if end_date:
         kline = [k for k in kline if k["date"] <= end_date]
 
@@ -256,7 +396,7 @@ def run_backtest(
         raise ValueError(f"K 线数据不足（仅 {len(kline)} 天）")
 
     # 执行回测
-    result = _execute_backtest(kline, dsl, initial_capital)
+    result = _execute_backtest(kline, dsl, initial_capital, warmup_bars=warmup)
 
     # 写结果
     conn = get_conn()
@@ -283,8 +423,17 @@ def run_backtest(
     return result
 
 
-def _execute_backtest(kline: List[Dict[str, Any]], dsl: Dict[str, Any], initial_capital: float) -> Dict[str, Any]:
-    """在 K 线序列上跑策略"""
+def _execute_backtest(
+    kline: List[Dict[str, Any]],
+    dsl: Dict[str, Any],
+    initial_capital: float,
+    *,
+    warmup_bars: int = 0,
+) -> Dict[str, Any]:
+    """在 K 线序列上跑策略。
+
+    warmup_bars: 前 N 根只用于指标预热，不产生交易（用于 start_date 场景）。
+    """
     closes = [k["close"] for k in kline]
     volumes = [k["volume"] for k in kline]
 
@@ -335,6 +484,10 @@ def _execute_backtest(kline: List[Dict[str, Any]], dsl: Dict[str, Any], initial_
     for i, k in enumerate(kline):
         date = k["date"]
         close = k["close"]
+
+        # ★ 预热段：只喂指标，不交易、不记录 equity（否则会把预热期的假平线算进收益/回撤）
+        if i < warmup_bars:
+            continue
 
         # 评估 equity
         total_equity = cash + position * close

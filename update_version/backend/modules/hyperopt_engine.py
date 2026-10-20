@@ -72,36 +72,49 @@ def _build_search_space(dsl: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     def add(key: str, low, high, kind):
         if key in explicit:
-            lo, hi = explicit[key]
+            # ★ 探索期修复：optimize 也是 LLM/用户手写的 JSON，值可能是 None、
+            #   单元素数组或字符串。旧实现直接 `lo, hi = explicit[key]` →
+            #   TypeError（端点只捕获 ValueError → 500）。这里统一校验并转 float/int。
+            override = explicit[key]
+            if not isinstance(override, (list, tuple)) or len(override) != 2:
+                raise ValueError(
+                    f"optimize.{key} 必须是 [下限, 上限] 二元组，got {override!r}"
+                )
+            try:
+                lo = kind == "int" and int(override[0]) or float(override[0])
+                hi = kind == "int" and int(override[1]) or float(override[1])
+            except (TypeError, ValueError):
+                raise ValueError(f"optimize.{key} 的上下限必须是数字，got {override!r}")
+            if lo >= hi:
+                raise ValueError(f"optimize.{key} 下限必须小于上限，got {override!r}")
             space.append({"key": key, "kind": kind, "low": lo, "high": hi})
         elif low is not None:
             space.append({"key": key, "kind": kind, "low": low, "high": high})
 
-    for cond in (dsl.get("entry") or []) + (dsl.get("exit") or []):
-        if not cond:
+    # ★ 探索期修复：旧实现按"值"定位条件在 entry/exit 中的位置
+    #   （`lst.index(cond)`）。若 entry 与 exit 含**相同**的条件 dict，两个条件
+    #   都会命中 entry 的第一个下标 → 生成重复 key（如 entry.0.period 出现两次），
+    #   optuna 报 "Inconsistent parameter values"，且 exit 侧条件从未被优化。
+    #   改为直接按 (list_name, index) 遍历。
+    for list_name in ("entry", "exit"):
+        conds = dsl.get(list_name) or []
+        if not isinstance(conds, list):
             continue
-        ind = cond.get("indicator", "")
-        # 找到条件在哪个列表
-        pos = None
-        for list_name in ("entry", "exit"):
-            lst = dsl.get(list_name) or []
-            if cond in lst:
-                pos = (list_name, lst.index(cond))
-                break
-        if pos is None:
-            continue
-        list_name, i = pos
-        # period（如果 DSL 带 period）
-        if "period" in cond:
-            rng = _PERIOD_RANGES.get(ind)
-            if rng:
-                add(f"{list_name}.{i}.period", rng[0], rng[1], "int")
-        # value 阈值
-        if "value" in cond:
-            rng = _VALUE_RANGES.get(ind)
-            if ind == "macd" and cond.get("operator") not in ("cross_above", "cross_below"):
-                rng = _VALUE_RANGES["macd_hist"]
-            add(f"{list_name}.{i}.value", (rng or (None, None))[0], (rng or (None, None))[1], "float")
+        for i, cond in enumerate(conds):
+            if not isinstance(cond, dict) or not cond:
+                continue
+            ind = cond.get("indicator", "")
+            # period（如果 DSL 带 period）
+            if "period" in cond:
+                rng = _PERIOD_RANGES.get(ind)
+                if rng:
+                    add(f"{list_name}.{i}.period", rng[0], rng[1], "int")
+            # value 阈值
+            if "value" in cond:
+                rng = _VALUE_RANGES.get(ind)
+                if ind == "macd" and cond.get("operator") not in ("cross_above", "cross_below"):
+                    rng = _VALUE_RANGES["macd_hist"]
+                add(f"{list_name}.{i}.value", (rng or (None, None))[0], (rng or (None, None))[1], "float")
 
     # 风险参数
     add("stop_loss_pct", *_RISK_RANGES["stop_loss_pct"], "float")
@@ -322,15 +335,31 @@ def run_hyperopt(
     except KeyboardInterrupt:
         logger.info("hyperopt interrupted by user")
 
-    best = study.best_trial
-    best_params = best.params
+    # ★ 探索期修复：best 评估阶段（以及上面的并行搜索）任何异常都会直接抛出，
+    #   而 run 记录已写成 'running' —— 旧实现没有兜底，`hyperopt_run.status`
+    #   永久停在 running（实测：评估阶段抛 RuntimeError 后 status 仍为 running，
+    #   前端一直显示"优化中"，只能靠手动 cleanup 接口恢复）。
+    #   这里统一兜底：失败时把 run 置 failed 并记录原因，再把异常抛给端点。
+    try:
+        best = study.best_trial
+        best_params = best.params
 
-    # 训练段指标（best）
-    dsl_best = _apply_params(dsl, best_params)
-    train_metrics = be._execute_backtest(train, dsl_best, initial_capital=1000000.0)
-    # 样本外验证（test 段）
-    oos_metrics = be._execute_backtest(test, dsl_best, initial_capital=1000000.0)
-    oos_loss = LOSS_FUNCTIONS[loss_fn](oos_metrics)
+        # 训练段指标（best）
+        dsl_best = _apply_params(dsl, best_params)
+        train_metrics = be._execute_backtest(train, dsl_best, initial_capital=1000000.0)
+        # 样本外验证（test 段）
+        oos_metrics = be._execute_backtest(test, dsl_best, initial_capital=1000000.0)
+        oos_loss = LOSS_FUNCTIONS[loss_fn](oos_metrics)
+    except Exception as exc:
+        logger.exception("hyperopt run %s failed after search: %s", run_id, exc)
+        try:
+            get_conn().execute(
+                "UPDATE hyperopt_run SET status='failed', error_message=?, completed_at=? WHERE id=?",
+                (f"{type(exc).__name__}: {str(exc)[:400]}", time.time(), run_id),
+            )
+        except Exception as inner:
+            logger.warning("hyperopt run %s: failed to mark failed status: %s", run_id, inner)
+        raise
 
     # 更新 run 记录
     cur.execute(

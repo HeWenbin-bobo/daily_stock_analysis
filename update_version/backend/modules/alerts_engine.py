@@ -34,6 +34,15 @@ RULE_TYPES = {
     "limit_down": "跌停",
 }
 
+# ★ 探索期修复：以下规则类型**永远不可能触发** —— 评估器读 `quote["north_flow_wan"]`，
+#   而 akshare/baostock 适配器从不返回该字段（主项目 src/market_analyzer.py 里
+#   也有同样的注释：「北向资金接口已废弃，不可用」，相关代码整段被注释掉）。
+#   旧实现允许用户创建这类规则：创建成功、扫描时静默不触发、也没有任何提示。
+#   现在从「可创建类型」里剔除，并在创建时明确拒绝。
+UNAVAILABLE_RULE_TYPES: Dict[str, str] = {
+    "north_flow": "北向资金接口已下线，该规则暂不可用（上游 akshare 不再提供数据）",
+}
+
 # 每种规则实际用到（并被 float()/int() 强转）的数值字段。
 # ★ v2 迭代2 CRITICAL 回归修复：v4 复制自 v3 时丢失了该校验（v2 Round 53 已修）。
 #   无校验时 params={"multiplier":"abc"} 能入库，扫描时 float("abc") 抛错被 try/except
@@ -59,6 +68,8 @@ def validate_rule_params(rule_type: str, params: Optional[Dict[str, Any]]) -> No
     """
     if not params:
         return
+    if not isinstance(params, dict):
+        raise ValueError(f"params 必须是对象，got {type(params).__name__}")
     numeric_fields = _PARAM_NUMERIC_FIELDS.get(rule_type, [])
     for f in numeric_fields:
         v = params.get(f)
@@ -75,8 +86,39 @@ def validate_rule_params(rule_type: str, params: Optional[Dict[str, Any]]) -> No
             raise ValueError(f"参数 {f} 必须是数字，got {v!r}")
 
 
+def _validate_cooldown(value: Any) -> int:
+    """校验冷却分钟数：必须是 >=0 的整数。
+
+    ★ 探索期修复：旧实现直接把 cooldown_minutes 落库，`"abc"` / 负数都接受。
+      扫描时 `(fresh.get("cooldown_minutes") or 60) * 60` 得到
+      `'abcabcabc...'`（字符串乘法）或负数，再参与 SQL 比较
+      `? - last_notified_at >= ?`，行为完全不可预测（实测规则永远不会再触发）。
+    """
+    if value is None or value == "":
+        return 60
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"cooldown_minutes 必须是整数，got {value!r}")
+    if minutes < 0:
+        raise ValueError(f"cooldown_minutes 不能为负，got {minutes}")
+    # 上限一年，防误填超大值让规则永久静默
+    if minutes > 525600:
+        raise ValueError(f"cooldown_minutes 过大（上限 525600 分钟 = 1 年），got {minutes}")
+    return minutes
+
+
 def list_rule_types() -> List[Dict[str, str]]:
-    return [{"type": k, "description": v} for k, v in RULE_TYPES.items()]
+    """可选规则类型。不可用类型也返回，但带 `available: false` 与原因，
+    让前端能禁用选项而不是让用户创建出一个永不触发的规则。"""
+    out: List[Dict[str, Any]] = []
+    for k, v in RULE_TYPES.items():
+        reason = UNAVAILABLE_RULE_TYPES.get(k)
+        item: Dict[str, Any] = {"type": k, "description": v, "available": reason is None}
+        if reason:
+            item["unavailable_reason"] = reason
+        out.append(item)
+    return out
 
 
 # ============================================================================
@@ -94,8 +136,14 @@ def create_rule(
 ) -> int:
     if rule_type not in RULE_TYPES:
         raise ValueError(f"Unknown rule_type: {rule_type}")
+    # ★ 探索期修复：拒绝创建永远无法触发的规则类型（见 UNAVAILABLE_RULE_TYPES）。
+    #   旧行为是 200 创建成功，扫描时静默跳过，用户永远等不到告警。
+    unavailable = UNAVAILABLE_RULE_TYPES.get(rule_type)
+    if unavailable:
+        raise ValueError(unavailable)
     # ★ v2 迭代2 CRITICAL 回归修复：入库前校验 params 数值字段（非法值如 multiplier="abc" 直接拒绝）
     validate_rule_params(rule_type, params)
+    cooldown_minutes = _validate_cooldown(cooldown_minutes)
     conn = get_conn()
     cur = conn.cursor()
     now = time.time()
@@ -160,6 +208,9 @@ def update_rule(rule_id: int, **fields) -> bool:
             if k == "rule_type":
                 if v not in RULE_TYPES:
                     raise ValueError(f"Unknown rule_type: {v}")
+            if k == "cooldown_minutes":
+                # ★ 探索期修复：与 create_rule 对齐，冷却值必须校验
+                v = _validate_cooldown(v)
             sets.append(f"{k}=?")
             if k == "enabled":
                 v = 1 if v else 0
@@ -171,10 +222,14 @@ def update_rule(rule_id: int, **fields) -> bool:
         if _rt is None:
             existing = get_rule(rule_id)
             _rt = existing.get("rule_type") if existing else None
+        # ★ 探索期修复：`params=None` 旧实现会写成 JSON 字面量 "null"，读回来
+        #   是 None，评估器随后 `params.get(...)` 抛 AttributeError → 扫描静默失败。
+        #   统一归一为 {}（"用默认值"）。
+        _params = fields["params"] if fields["params"] is not None else {}
         if _rt:
-            validate_rule_params(_rt, fields["params"])
+            validate_rule_params(_rt, _params)
         sets.append("params_json=?")
-        params.append(json.dumps(fields["params"], ensure_ascii=False))
+        params.append(json.dumps(_params, ensure_ascii=False))
     if not sets:
         return False
     sets.append("updated_at=?")
@@ -187,10 +242,27 @@ def update_rule(rule_id: int, **fields) -> bool:
 
 
 def delete_rule(rule_id: int) -> bool:
+    """删除规则，并级联清理其触发历史。
+
+    ★ 探索期修复：schema 无 FOREIGN KEY，旧实现只删 alert_rule 一行，
+      实测 `alert_trigger` 里的历史记录全部残留（`list_triggers` 仍会返回
+      引用已删除 rule_id 的条目）。
+    """
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM alert_rule WHERE id=?", (rule_id,))
-    return cur.rowcount > 0
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        cur.execute("DELETE FROM alert_trigger WHERE rule_id=?", (rule_id,))
+        cur.execute("DELETE FROM alert_rule WHERE id=?", (rule_id,))
+        deleted = cur.rowcount > 0
+        cur.execute("COMMIT")
+        return deleted
+    except Exception:
+        try:
+            cur.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
 
 
 # ============================================================================
@@ -291,15 +363,31 @@ def _get_symbols_for_rule(rule: Dict[str, Any]) -> List[str]:
 
 
 def _evaluate_opening_spike(quote: Dict[str, Any], params: Dict[str, Any], kline: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
-    """开盘异动：现价相对当日开盘涨幅 > 阈值（用当日 K 线的 open 计算，比全天 change_pct 更贴近'开盘'语义）"""
+    """开盘异动：现价相对**当日**开盘涨幅 > 阈值。
+
+    ★ 探索期修复(方向错误的告警)：旧实现无条件取 `kline[-1]` 的 open 当作"今日开盘"。
+      盘前 / 数据源尚未更新当日 K 线时，最后一根是**昨日**（或更早）的 K 线 ——
+      实测：昨日 open=90/close=110，今日现价 95（相对昨收 -13.6%），
+      旧逻辑算出 (95-90)/90=+5.56% 并报"开盘异动上涨"，
+      方向完全相反。现在要求最后一根 K 线的日期确实是今天才用它的 open，
+      否则回退到当日 change_pct 近似。
+    """
     threshold = float(params.get("threshold_pct", 3.0))
     price = float(quote.get("price", 0) or 0)
+    today = datetime.now().strftime("%Y-%m-%d")
     day_open = None
     if kline:
-        today_bar = kline[-1]
-        day_open = float(today_bar.get("open", 0) or 0)
+        last_bar = kline[-1]
+        # 只有当日 bar 的 open 才能代表"今日开盘"
+        if str(last_bar.get("date", ""))[:10] == today:
+            day_open = float(last_bar.get("open", 0) or 0)
+        else:
+            logger.debug(
+                "opening_spike: 最后一根 K 线不是今天（%s != %s），改用 change_pct 近似",
+                last_bar.get("date"), today,
+            )
     if not day_open or day_open <= 0:
-        # 无当日 open（收盘后 K 线未含当日）→ 退回全天 change_pct 作为近似
+        # 无当日 open（盘前 / 收盘后 K 线未含当日）→ 退回全天 change_pct 作为近似
         change_pct = float(quote.get("change_pct", 0) or 0)
         if change_pct > threshold:
             return {"metric": change_pct, "threshold": threshold, "commentary": f"开盘异动(近似) {change_pct}%，突破阈值 {threshold}%"}

@@ -83,7 +83,22 @@ def verify_market_cap(price: float, shares: float, reported_cap: float, currency
     try:
         calc = mod.exact(price) * mod.exact(shares)
         reported = mod.exact(reported_cap)
-        diff_pct = (calc - reported) / reported * 100 if reported else 0
+        # ★ 探索期修复：reported_cap=0 是「没有报告市值可比」的占位值，旧实现
+        #   走 `else 0` 得到 diff_pct=0、consistent=True，前端于是显示
+        #   「计算市值 1.67T vs 报告市值 0.00，偏差 0.0%」——一个看起来"验算通过"
+        #   但完全无意义的结论。没有基准时明确标记为不可判定。
+        if not reported:
+            return {
+                "ok": True,
+                "computed_cap": mod.fmt_number(calc, currency),
+                "reported_cap": mod.fmt_number(reported, currency),
+                "diff_pct": None,
+                "consistent": None,
+                "currency": currency,
+                "skipped": True,
+                "note": "无报告市值可比对，仅给出按当前股价×总股本的计算值",
+            }
+        diff_pct = (calc - reported) / reported * 100
         return {
             "ok": True,
             "computed_cap": mod.fmt_number(calc, currency),
@@ -185,7 +200,11 @@ def deep_research(code: str, name: str = "", *, prefer_provider: Optional[str] =
     else:
         logger.warning("deep_research: %s quote 不可用或为 mock，报告将标注数据受限", code)
 
-    stock_name = name or quote.get("name") if quote else name or code
+    # ★ 探索期修复：`name or quote.get("name") if quote else name or code` 因
+    #   运算符优先级解析成 `(name or quote.name) if quote else (name or code)`，
+    #   当行情存在但没有 name 时结果是**空字符串**（不会回退到 code），
+    #   报告标题会变成 `(600519)`。显式逐级回退。
+    stock_name = (name or (quote.get("name") if quote else "") or code)
     info_richness = estimate_info_richness(code, stock_name)
 
     # 2. 组装 prompt（四大师框架）
