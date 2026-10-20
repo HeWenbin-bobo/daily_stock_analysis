@@ -808,9 +808,14 @@ def paper_transfer(payload: dict, request: Request):
     """
     _require_rate_limit(request, "/api/v2/paper/transfer")
     require_keys(payload, "from_account_id", "to_account_id", "amount")
+    # ★ 探索期修复(500)：账户 id 直接进 SQLite 查询、amount 直接参与算术，
+    #   容器类型会分别抛 ProgrammingError / TypeError，端点只接 ValueError
+    #    → 500。实测 `{"amount":[100]}`、`{"amount":{"a":1}}`、
+    #   `{"from_account_id":[1]}`、`{"amount":"nan"}` 四个都是 500。
+    from_id = _coerce_int(payload["from_account_id"], "from_account_id")
+    to_id = _coerce_int(payload["to_account_id"], "to_account_id")
+    amount = _coerce_float(payload["amount"], "amount")
     # ★ 本轮修复(M4)：转出转入账户双校验
-    from_id = payload["from_account_id"]
-    to_id = payload["to_account_id"]
     from_acc = pt.get_account(from_id)
     if not from_acc:
         raise HTTPException(404, f"转出账户 {from_id} 不存在")
