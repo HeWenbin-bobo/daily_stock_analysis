@@ -1511,7 +1511,13 @@ def settings_llm_update(payload: dict):
     unknown = set(fields) - {f[0] for f in llm_settings.FIELDS}
     if unknown:
         raise HTTPException(400, f"未知字段: {sorted(unknown)}")
-    result = llm_settings.update(fields)
+    # ★ 探索期修复(500)：`llm_settings.update` 对容器值抛 ValueError
+    #   （"字段 X 的值类型不支持（需要字符串）"），但端点此前没接住 → 500。
+    #   实测 `{"fields": {"openai_model": ["x"]}}` 返回 500 internal error。
+    try:
+        result = llm_settings.update(fields)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     audit.record(action="update_llm_settings", request_body={"changed": result["saved"]})
     return result
 
