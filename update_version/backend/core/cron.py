@@ -745,6 +745,17 @@ def catchup_market_review_on_startup() -> None:
 
 def run_alert_scan():
     """异动扫描"""
+    # ★ 探索期修复(非交易日扫描)：cron 表达式只限到 mon-fri，法定节假日
+    #   （工作日但休市）依然会触发。此时行情是**上一交易日收盘的陈旧值**，
+    #   价格不动但"量比/放量"这类规则仍可能对陈旧数据报警。
+    #   同文件的 run_market_review_daily 早就有这个 guard，这三个任务漏了。
+    #   注意 is_trading_day() 按自然日缓存，每 5 分钟调用不会重复打网络。
+    try:
+        if not is_trading_day():
+            logger.info("[cron] skip alert scan: today is not a trading day")
+            return
+    except Exception as e:
+        logger.warning("[cron] trading-day check failed, scanning anyway: %s", e)
     logger.info("[cron] scanning alerts")
     try:
         from modules.alerts_engine import scan_all_alerts
@@ -755,6 +766,15 @@ def run_alert_scan():
 
 def run_paper_settle():
     """模拟盘日终"""
+    # 非交易日不结算：settle_daily 会写 paper_snapshot，而快照是排行榜权益
+    # 与权益曲线的唯一数据源。节假日写入的快照价格与上一交易日完全相同，
+    # 等于往收益序列里塞了一个 0 收益日 —— 会压低波动率、让 sharpe 失真。
+    try:
+        if not is_trading_day():
+            logger.info("[cron] skip paper settle: today is not a trading day")
+            return
+    except Exception as e:
+        logger.warning("[cron] trading-day check failed, settling anyway: %s", e)
     logger.info("[cron] paper trading settle")
     try:
         from modules.paper_trading import settle_daily
@@ -765,6 +785,14 @@ def run_paper_settle():
 
 def run_community_rank():
     """社区榜单生成"""
+    # 榜单反映的是当日盘面热度，非交易日刷新只会把上一交易日的陈旧行情
+    # 重新写一遍，并在 community_hot_list 里多出一份重复日期的数据。
+    try:
+        if not is_trading_day():
+            logger.info("[cron] skip community rank: today is not a trading day")
+            return
+    except Exception as e:
+        logger.warning("[cron] trading-day check failed, refreshing anyway: %s", e)
     logger.info("[cron] community rank")
     try:
         from modules.community import refresh_daily_hot_list
