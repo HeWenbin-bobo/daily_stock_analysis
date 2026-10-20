@@ -623,6 +623,26 @@ def create_paper_account(payload: dict):
         raise HTTPException(400, "initial_capital 必须是数字")
     if initial_capital <= 0:
         raise HTTPException(400, "initial_capital 必须 > 0")
+    # ★ 探索期修复(静默丢失参数)：(user_id, name) 上有 UNIQUE 约束，
+    #   `create_account` 撞唯一键时会**返回已存在账户的 id**（组合模块的惰性
+    #   建户依赖这个语义），但端点直接把这个 id 当"新建成功"返回 ——
+    #   实测：以 initial_capital=1000 建 dup_acct → {"account_id":91}；
+    #   同名再以 500000 建 → 仍是 {"account_id":91} 且 HTTP 200，
+    #   库里 initial_capital 仍是 1000，用户以为改成了 50 万。
+    #   端点层明确拒绝并告知已有账户，避免"看起来成功、参数被吞"。
+    name = payload.get("name")
+    if isinstance(name, str) and name.strip():
+        existing = next(
+            (a for a in pt.list_accounts(payload["user_id"]) if a.get("name") == name.strip()),
+            None,
+        )
+        if existing:
+            raise HTTPException(
+                409,
+                f"同名账户「{name.strip()}」已存在（id={existing['id']}，"
+                f"初始资金 {existing['initial_capital']:.0f}）。"
+                f"请换一个名称，或直接使用该账户",
+            )
     # ★ 探索期修复：create_account 会把类型/范围校验错误抛成 ValueError
     #   （name/user_id 非字符串、资金越界），端点不接住就会变 500。
     try:
