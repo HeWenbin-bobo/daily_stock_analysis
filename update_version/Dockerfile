@@ -103,6 +103,14 @@ RUN mkdir -p /app/update_version/backend/data /app/update_version/data \
 # 先 import 谁就会遮住另一个（这也是 endpoints_hot 运行时要整套
 # sys.path/sys.modules 手术的原因）。脚本写进临时文件而不是 `python -c`，
 # 避免 Docker 合并续行破坏缩进。
+#
+# ★ 探索期修复(镜像被构建期副作用污染)：`api/endpoints_hot.py` 在**模块级**
+#   就 `_import_from_path(... db/history.py)`，而 history.py 导入时会建库建表。
+#   自检以 root 跑，于是镜像层里被写进一个 root 属主的
+#   `/app/update_version/data/history.db`（实测 73KB、时间戳=构建时刻）。
+#   该目录本该是 bind mount 的挂载点、镜像内应为空；固化一个空库进去既让镜像
+#   不可复现，也让首次启动的"建库"语义变得不明确。把 V4_HISTORY_PATH 指到
+#   /tmp 让自检的副作用落在临时层，然后删掉。
 RUN printf '%s\n' \
     'from api.v1.endpoints.hot_analysis import preview_hot_analysis' \
     'from src.notification import NotificationService' \
@@ -120,8 +128,12 @@ RUN printf '%s\n' \
       python -B /tmp/smoke_main.py && \
     cd /app/update_version/backend && \
     PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/update_version/backend \
+      V4_HISTORY_PATH=/tmp/smoke_history.db \
+      V4_DB_PATH=/tmp/smoke_v2.db \
       python -B /tmp/smoke_backend.py && \
-    rm -f /tmp/smoke_main.py /tmp/smoke_backend.py
+    rm -f /tmp/smoke_main.py /tmp/smoke_backend.py \
+          /tmp/smoke_history.db /tmp/smoke_v2.db && \
+    rm -rf /app/update_version/data/*.db /app/update_version/backend/data/*.db
 
 ENV PYTHONUNBUFFERED=1
 # 主项目模块的 DATABASE_PATH 由 compose 指到持久卷（见 docker-compose.yml）；
