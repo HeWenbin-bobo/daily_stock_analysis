@@ -849,7 +849,16 @@ def hot_analysis_templates_save(payload: dict):
     config = payload.get("config", {})
     if not name:
         raise HTTPException(400, "name 必填")
-    tid = db_history.save_template(name, config, payload.get("description", ""), payload.get("is_default", False))
+    # ★ 探索期修复(500)：name 直接进 SQLite 绑定参数，list/dict 抛
+    #   ProgrammingError（实测 `{"name":[1]}` → 500）。description 同理。
+    if not isinstance(name, str) or not name.strip():
+        raise HTTPException(400, "name 必须是非空字符串")
+    description = payload.get("description", "")
+    if description is not None and not isinstance(description, str):
+        raise HTTPException(400, "description 必须是字符串")
+    if not isinstance(config, dict):
+        raise HTTPException(400, "config 必须是对象")
+    tid = db_history.save_template(name.strip(), config, description or "", payload.get("is_default", False))
     return {"id": tid}
 
 
