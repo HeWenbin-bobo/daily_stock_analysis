@@ -161,6 +161,54 @@ def test_akshare_index_daily_preserves_retryable_builtin_errors(error_type) -> N
         fetcher._fetch_index_data("sh000016", "2026-08-01", "2026-08-21")
 
 
+def test_akshare_index_timeout_is_not_retried() -> None:
+    """A spent timeout budget must not be paid three times over.
+
+    ``_akshare_call_with_timeout`` raises ``TimeoutError`` only after the full
+    per-call budget elapsed. Retrying that triples the wall-clock cost of a
+    dead endpoint (30s -> ~96s including backoff) and still fails, so the
+    retry must be reserved for connection blips that can actually clear.
+    """
+    fake_akshare = types.SimpleNamespace(stock_zh_index_daily_em=object())
+    fetcher = _make_fetcher()
+    calls = []
+
+    def _timeout_side_effect(func, *args, timeout=None, call_name="", **kwargs):
+        calls.append(call_name)
+        raise TimeoutError(f"{call_name} 调用超过 {timeout}s，已放弃等待")
+
+    with patch.dict(sys.modules, {"akshare": fake_akshare}), patch(
+        "data_provider.akshare_fetcher._akshare_call_with_timeout",
+        side_effect=_timeout_side_effect,
+    ), patch.object(fetcher, "_set_random_user_agent"), patch.object(
+        fetcher, "_enforce_rate_limit"
+    ), pytest.raises(TimeoutError, match="ak.stock_zh_index_daily_em"):
+        fetcher._fetch_raw_data("sh000016", "2026-08-01", "2026-08-21")
+
+    assert len(calls) == 1, f"timeout retried {len(calls)} times instead of failing fast"
+
+
+def test_akshare_index_connection_error_is_still_retried() -> None:
+    """Connection blips stay retryable; only the already-budgeted timeout left."""
+    fake_akshare = types.SimpleNamespace(stock_zh_index_daily_em=object())
+    fetcher = _make_fetcher()
+    calls = []
+
+    def _conn_side_effect(func, *args, timeout=None, call_name="", **kwargs):
+        calls.append(call_name)
+        raise ConnectionError("blip")
+
+    with patch.dict(sys.modules, {"akshare": fake_akshare}), patch(
+        "data_provider.akshare_fetcher._akshare_call_with_timeout",
+        side_effect=_conn_side_effect,
+    ), patch.object(fetcher, "_set_random_user_agent"), patch.object(
+        fetcher, "_enforce_rate_limit"
+    ), pytest.raises(Exception):
+        fetcher._fetch_raw_data("sh000016", "2026-08-01", "2026-08-21")
+
+    assert len(calls) == 3, f"expected 3 attempts for a retryable blip, got {len(calls)}"
+
+
 @pytest.mark.parametrize(
     ("error", "expected_type"),
     [
