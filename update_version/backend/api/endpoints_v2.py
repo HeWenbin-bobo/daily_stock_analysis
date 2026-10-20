@@ -1084,13 +1084,22 @@ async def llm_chat(payload: dict, request: Request):
     system = payload.get("system", "")
     if system and (not isinstance(system, str) or len(system) > 20_000):
         raise HTTPException(400, "system 过长或类型错误")
+    # ★ 探索期修复(500)：`task_complexity` 会作为 dict 键去查
+    #   TASK_COMPLEXITY，list/dict 不可哈希 → TypeError: unhashable type
+    #   （实测 `{"task_complexity":[1]}` → 500）。
+    complexity = payload.get("task_complexity", "simple")
+    if not isinstance(complexity, str):
+        raise HTTPException(400, "task_complexity 必须是字符串")
+    task_type = payload.get("task_type", "general")
+    if not isinstance(task_type, str):
+        raise HTTPException(400, "task_type 必须是字符串")
     return await asyncio.to_thread(
         llm.chat,
         prompt,
         system=system,
-        task_complexity=payload.get("task_complexity", "simple"),
+        task_complexity=complexity,
         user_id=payload.get("user_id"),
-        task_type=payload.get("task_type", "general"),
+        task_type=task_type,
     )
 
 
