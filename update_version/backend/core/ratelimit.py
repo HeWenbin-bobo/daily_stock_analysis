@@ -39,6 +39,15 @@ LIMITS: Dict[str, Tuple[int, int]] = {
     "/api/v2/data/kline": (60, 60),                  # K 线 60 次/分钟
     "/api/v2/paper/transfer": (10, 60),              # 转账 10 次/分钟
     "/api/v2/portfolio/rebalance": (5, 60),          # 再平衡建议 5 次/分钟
+    # ★ 探索期修复：下面 5 个端点会调 LLM 或抓大量 K 线，但代码里用了这些 key
+    #   却从未在 LIMITS 中定义 → 全部落到 "default": 60/min，等于没限流。
+    #   实测 deep-research 单次要走 16000 max_tokens 的 LLM 调用，60 次/分钟足以
+    #   烧掉大量额度；hyperopt 更是 CPU 密集（最多 5000 epochs）。
+    "/api/v2/deep-research": (3, 60),                # 深度研究 3 次/分钟（LLM 重）
+    "/api/v2/backtest/hyperopt": (2, 60),            # 参数优化 2 次/分钟（CPU 重）
+    "/api/v2/technical/llm-insight": (5, 60),        # AI 解读 5 次/分钟（LLM）
+    "/api/v2/technical/indicators": (60, 60),        # 指标计算 60 次/分钟（纯计算）
+    "/api/v2/technical/peak-trough": (60, 60),       # 波峰波谷 60 次/分钟（纯计算）
 }
 
 _buckets: Dict[Tuple[str, str], Deque[float]] = defaultdict(deque)
@@ -71,9 +80,15 @@ def check_limit(ip: str, endpoint: str) -> Tuple[bool, int]:
     with _buckets_lock:
         _sweep_buckets(now)
         # 超过上限时按 FIFO 淘汰最旧的桶（防内存失控）
+        # ★ 探索期修复(Critical)：`_buckets` 是 defaultdict(deque)，不是 OrderedDict。
+        #   `dict.popitem(last=False)` 只存在于 OrderedDict —— 撞上 BUCKETS_MAX 时抛
+        #   `TypeError: dict.popitem() takes no keyword arguments`，而这里在持锁的
+        #   check_limit 内、异常未被捕获 → 之后**每一个**限流端点（quote/backtest/
+        #   llm/chat…）全部 500，且只要桶数仍在上限附近就永久不可恢复。
+        #   dict 自 3.7 起保插入序，取第一个键删除即可等价 FIFO。
         if len(_buckets) >= _BUCKETS_MAX:
-            while len(_buckets) >= _BUCKETS_MAX:
-                _buckets.popitem(last=False)
+            while _buckets and len(_buckets) >= _BUCKETS_MAX:
+                del _buckets[next(iter(_buckets))]
         bucket = _buckets[key]
 
         # 清掉窗口外的

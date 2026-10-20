@@ -126,8 +126,12 @@ def is_trading_day(date_str: Optional[str] = None) -> bool:
     """
     target = date_str or datetime.now().strftime("%Y-%m-%d")
     cache_key = datetime.now().strftime("%Y-%m-%d")
-    # 缓存命中：当日已拉取过则直接返回（fetch 一次返回全量历史 ≈8K 行，足够覆盖任意 target）
+    # ★ 探索期修复(内存)：缓存 key 是"今天"，但从不淘汰旧 key —— 成功分支存的是
+    #   全量交易日集合（≈8K 个字符串，约 500KB），每天留一份，一年就是 ~180MB。
+    #   每天只保留当天的 entries，写入前先清掉其它日期。
     with _TRADING_DAY_CACHE_LOCK:
+        for stale_key in [k for k in _TRADING_DAY_CACHE if k != cache_key]:
+            _TRADING_DAY_CACHE.pop(stale_key, None)
         cached = _TRADING_DAY_CACHE.get(cache_key)
     if cached is not None:
         if cached is _WEEKDAY_FALLBACK:
@@ -265,6 +269,15 @@ def _register_builtin_jobs():
         builtin=True,
     )
 
+    # 5. 数据保留清理：每天 03:10（低峰，避免与复盘/结算抢 SQLite 写锁）
+    _schedule_job(
+        job_id="builtin_retention_cleanup",
+        func=run_retention_cleanup,
+        cron="10 3 * * *",
+        description="每天凌晨清理过期审计/运行/推送日志",
+        builtin=True,
+    )
+
     # ★ 本轮修复：清理 jobstore 中遗留的孤儿 builtin_* 任务
     #   APScheduler 持久化 jobstore 不会因代码改名/删名自动清除旧记录，
     #   导致删掉的 job_id 仍按旧 next_run_time 触发（例如 builtin_market_review_daily）。
@@ -323,7 +336,20 @@ def _load_scheduled_tasks_db_reset_stuck() -> int:
 
 
 def _run_user_scheduled_task(task_id: int) -> None:
-    """APScheduler 定时触发入口：委托 endpoints_hot 的定时任务 run（run-async + 真实进度 + 落库）"""
+    """APScheduler 定时触发入口：委托 endpoints_hot 的定时任务 run（run-async + 真实进度 + 落库）
+
+    ★ 探索期修复(Critical)：旧实现用 `new_event_loop()` + `run_until_complete()`
+      然后**立刻 `loop.close()`**。但 `hot_analysis_scheduled_tasks_run` 内部调用
+      主项目 `run_async_analysis()`，后者用 `asyncio.create_task(...)` 把真正的
+      分析协程挂到**当前 loop** 上然后立即 return。外壳协程一返回，
+      `loop.close()` 就把尚未执行的 background task 销毁 ——
+      `Task was destroyed but it is pending!`，分析从未真正跑起来，
+      定时任务的 last_status 也永远停在 running。
+
+      修复：先 run_until_complete 外壳，再让同一个 loop 把剩余 task
+      （即后台分析）跑完，最后才关闭 loop。这样 APScheduler 的 worker 线程
+      会被占用到分析结束——正是期望行为（job_defaults max_instances=1）。
+    """
     try:
         import importlib.util
         from pathlib import Path
@@ -337,8 +363,24 @@ def _run_user_scheduled_task(task_id: int) -> None:
         loop = asyncio.new_event_loop()
         try:
             loop.run_until_complete(mod.hot_analysis_scheduled_tasks_run(task_id))
+            # 外壳返回后，后台分析仍是本 loop 上的 pending task —— 等它结束。
+            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            if pending:
+                logger.info(
+                    "user scheduled task %s: waiting for %d background task(s)",
+                    task_id, len(pending),
+                )
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         finally:
-            loop.close()
+            # 关闭前再兜一次，避免残留 task 被 "destroyed but pending" 警告吞掉
+            try:
+                leftover = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                for t in leftover:
+                    t.cancel()
+                if leftover:
+                    loop.run_until_complete(asyncio.gather(*leftover, return_exceptions=True))
+            finally:
+                loop.close()
         logger.info("user scheduled task %s triggered ok", task_id)
     except Exception as e:
         logger.exception("user scheduled task %s failed: %s", task_id, e)
@@ -363,6 +405,7 @@ def register_user_scheduled_tasks() -> int:
     except Exception as e:
         logger.exception("load scheduled tasks failed: %s", e)
         return 0
+    live_ids: Set[str] = set()
     for t in tasks:
         try:
             tid = t.get("id")
@@ -370,16 +413,39 @@ def register_user_scheduled_tasks() -> int:
             enabled = t.get("enabled", 1)
             if not tid or not cron_expr or not enabled:
                 continue
+            job_id = f"user_scheduled_{tid}"
             _schedule_job(
-                job_id=f"user_scheduled_{tid}",
+                job_id=job_id,
                 func=_run_user_scheduled_task,
                 cron=str(cron_expr),
-                description=t.get("name") or f"user_scheduled_{tid}",
+                description=t.get("name") or job_id,
                 args=(int(tid),),
             )
+            live_ids.add(job_id)
             registered += 1
         except Exception as e:
             logger.exception("register user scheduled task %s failed: %s", t.get("id"), e)
+    # ★ 探索期修复：清理 jobstore 里的孤儿 user_scheduled_* 任务。
+    #   APScheduler 的 SQLAlchemyJobStore 不会因为 DB 行被删而自动移除任务，
+    #   而 `resync_user_scheduled_tasks()` 只在"通过 API 保存/删除"时才会清理。
+    #   若任务行是直接删库、或旧版本删除时 resync 失败过，jobstore 里会残留
+    #   任务 —— 实测 `scheduled_tasks` 已空，但 jobstore 仍有 4 个
+    #   `user_scheduled_1..4`，到点触发后 `_run_user_scheduled_task` 找不到
+    #   任务行而反复报错。这里在启动注册后按"当前 DB 中有效的 job_id"对账删除。
+    try:
+        for job in list(_scheduler.get_jobs()):
+            jid = getattr(job, "id", None)
+            if not jid or not jid.startswith("user_scheduled_"):
+                continue
+            if jid in live_ids:
+                continue
+            try:
+                _scheduler.remove_job(jid)
+                logger.info("removed orphan user scheduled job: %s", jid)
+            except Exception as e:
+                logger.warning("failed to remove orphan user job %s: %s", jid, e)
+    except Exception as e:
+        logger.warning("orphan user job cleanup failed: %s", e)
     logger.info("Registered %d user scheduled tasks", registered)
     return registered
 
@@ -691,6 +757,46 @@ def run_community_rank():
         logger.exception("community rank failed: %s", e)
 
 
+def run_retention_cleanup() -> Dict[str, int]:
+    """定期清理只增不减的表。
+
+    ★ 探索期修复：`core.audit.cleanup_old()` 早就实现了但**从未被任何地方调用**
+      （死代码），而 audit_log / cron_run_log / notification_log 都是只写不清：
+      - 异动扫描每 5 分钟一次 → cron_run_log 每天 ~100 行；
+      - 每个写操作都进 audit_log；
+      - 每次推送都进 notification_log。
+      长期运行的容器里这些表会无限增长，最终拖慢 `audit/recent`、
+      `notifications/logs` 这类列表查询（它们都带 ORDER BY created_at LIMIT）。
+      这里按保留期清理；失败只记日志，不影响其它 cron 任务。
+    """
+    result: Dict[str, int] = {}
+    # 审计日志保留 90 天（与 cleanup_old 的默认值一致）
+    try:
+        from core import audit as _audit
+        result["audit_log"] = _audit.cleanup_old(days=90)
+    except Exception as e:
+        logger.warning("retention: audit cleanup failed: %s", e)
+    # 运行日志/推送日志保留 30 天（排障够用，且量级远大于审计）
+    # ★ 注意各表的时间列不同名：cron_run_log 是 started_at，其余是 created_at。
+    for table, days, time_col in (
+        ("cron_run_log", 30, "started_at"),
+        ("notification_log", 30, "created_at"),
+        ("llm_usage", 180, "created_at"),
+    ):
+        try:
+            conn = get_conn()
+            try:
+                cutoff = time.time() - days * 86400
+                cur = conn.execute(f"DELETE FROM {table} WHERE {time_col} < ?", (cutoff,))
+                result[table] = cur.rowcount
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning("retention: %s cleanup failed: %s", table, e)
+    logger.info("[cron] retention cleanup: %s", result)
+    return result
+
+
 # ============================================================================
 # 用户自定义任务管理（API 层调用）
 # ============================================================================
@@ -706,7 +812,24 @@ def add_user_job(
 
     即使调度器未启动（测试/无 APScheduler 场景），元数据也会写入 SQLite，
     调度器就绪后下次 init() 启动会重新登记到 APScheduler。
+
+    ★ 探索期修复(高危)：`job_id` 是调用方完全可控的字符串，而 `_schedule_job`
+      用 `replace_existing=True` 登记、`cron_user_jobs` 表也用 job_id 作主键。
+      实测 `POST /cron/user-jobs {"job_id":"builtin_market_review_morning",
+      "func_name":"run_alert_scan","cron_expr":"*/5 * * * *"}` 返回 200，
+      把内置的「工作日 10:00 大盘复盘」直接改成了「每 5 分钟跑异动扫描」——
+      普通用户可静默劫持内置调度。这里拒绝 builtin_ 前缀。
     """
+    if not isinstance(job_id, str) or not job_id.strip():
+        logger.warning("add_user_job rejected: empty job_id")
+        return False
+    job_id = job_id.strip()
+    if job_id.startswith("builtin_"):
+        logger.warning("add_user_job rejected: %r 是内置任务前缀，不允许覆盖", job_id)
+        return False
+    if not isinstance(cron_expr, str) or not cron_expr.strip():
+        logger.warning("add_user_job rejected: empty cron_expr")
+        return False
     # 1. 校验 func_name 白名单 + cron 表达式
     try:
         _resolve_func(func_name)
