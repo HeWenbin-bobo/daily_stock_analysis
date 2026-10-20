@@ -8,6 +8,7 @@ HMAC 签名模块 — 防止 webhook 伪造 / LLM 用量记录被篡改
 import base64
 import hmac
 import hashlib
+import json
 import logging
 import secrets
 import time
@@ -70,10 +71,14 @@ def sign_payload(body: str, timestamp: Optional[int] = None) -> str:
     """计算 body 的 HMAC-SHA256 签名（sign 端点用管理密钥）
 
     格式：sha256=<hex>   （时间戳分离，调用方自己加 X-Timestamp 头）
+
+    ★ 探索期修复：body 非字符串时 `body.encode` 抛 AttributeError → 端点 500。
+      显式转 str（JSON 里 body 可能是数字/对象）。
     """
     if timestamp is None:
         timestamp = int(time.time())
-    msg = f"{timestamp}.".encode("utf-8") + body.encode("utf-8")
+    text = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
+    msg = f"{timestamp}.".encode("utf-8") + text.encode("utf-8")
     digest = hmac.new(get_signing_key(), msg, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
 
