@@ -19,12 +19,34 @@ from core.data_source import fetch_quote_with_fallback, fetch_quotes_bulk, is_mo
 logger = logging.getLogger(__name__)
 
 INITIAL_CAPITAL_DEFAULT = 1_000_000.0
+# 初始资金上限：与 place_order / add_holding 的 1e9 护栏同量级。
+# 旧实现只校验 > 0，`initial_capital=1e300` 会被接受并直接成为排行榜榜首
+# （实测 leaderboard 返回 total_equity=1e300 / total_return_pct=0.0），
+# 一次请求就能污染全站榜单，且 1e300 参与后续浮点运算会溢出成 inf/nan。
+MAX_INITIAL_CAPITAL = 1e12
 
 
 # ============================================================================
 # 账户管理
 # ============================================================================
 def create_account(user_id: str, name: str, initial_capital: float = INITIAL_CAPITAL_DEFAULT) -> int:
+    # ★ 探索期修复：name/user_id 传入 dict/list 时 sqlite3 直接抛
+    #   ProgrammingError → 端点 500（实测 `{"name": {}}`）。
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("name 必须是非空字符串")
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("user_id 必须是非空字符串")
+    name = name.strip()
+    # ★ 探索期修复：资金入口护栏放在共用函数里，所有调用方（端点 / 组合模块
+    #   惰性建户 / 测试）都受保护，而不是只在某个端点补。
+    try:
+        initial_capital = float(initial_capital)
+    except (TypeError, ValueError):
+        raise ValueError("initial_capital 必须是数字")
+    if initial_capital <= 0:
+        raise ValueError("initial_capital 必须 > 0")
+    if initial_capital > MAX_INITIAL_CAPITAL:
+        raise ValueError(f"initial_capital 超出合理范围（上限 {MAX_INITIAL_CAPITAL:.0f}）")
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -63,10 +85,39 @@ def get_account(account_id: int) -> Optional[Dict[str, Any]]:
 
 
 def delete_account(account_id: int) -> bool:
+    """删除账户，并级联清理其交易/快照/榜单依赖数据。
+
+    ★ 探索期修复：旧实现只 `DELETE FROM paper_account`，而 schema 里
+      **没有任何 FOREIGN KEY**（0 条），于是 paper_trade / paper_snapshot
+      全部变成孤儿（实测：删账户后 trades 仍有 1 条）。
+      孤儿数据的后果：
+        - `leaderboard()` 走 JOIN paper_account，孤儿快照不会显示，但会一直占库；
+        - 更隐蔽的是同一 user 重建同名账户后拿到**新的** account_id，
+          旧交易不会复活，看似无害；但 `paper_trade` 按 user_id 聚合的地方
+          （如 portfolio 统计）可能把已删除账户的历史算进来。
+      改为同一事务内先删子表再删主表；顺序固定，避免忘记级联。
+      注意：组合持仓账本（reason LIKE 'portfolio_holding%'）不在此处删除 ——
+      它归 /portfolio/holdings 管理，走 remove_holding。
+    """
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("DELETE FROM paper_account WHERE id=?", (account_id,))
-    return cur.rowcount > 0
+    try:
+        cur.execute("BEGIN IMMEDIATE")
+        cur.execute("DELETE FROM paper_snapshot WHERE account_id=?", (account_id,))
+        cur.execute(
+            f"DELETE FROM paper_trade WHERE account_id=? AND {_PAPER_LEDGER_FILTER}",
+            (account_id,),
+        )
+        cur.execute("DELETE FROM paper_account WHERE id=?", (account_id,))
+        deleted = cur.rowcount > 0
+        cur.execute("COMMIT")
+        return deleted
+    except Exception:
+        try:
+            cur.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
 
 
 # ============================================================================
@@ -146,13 +197,49 @@ def transfer_between_accounts(
 # ============================================================================
 # 持仓（实时计算，不存表）
 # ============================================================================
+# 组合持仓（modules/portfolio.py）与模拟盘共用 paper_trade 表，用 reason 前缀
+# 区分两套账本。凡是模拟盘的持仓/可卖额度计算，都必须排除组合那部分。
+#
+# ★ 探索期修复(Critical)：旧实现完全不区分账本 ——
+#   `POST /portfolio/holdings` 录入一笔"真实持仓"后，`GET/POST
+#   /paper/accounts/{id}/orders` 会把它当成模拟盘持仓，可以按**调用方自选的
+#   价格**卖出并增加该账户现金（实测 1000 股 @1000 → cash +9995），随后进入
+#   `leaderboard`。等价于一台凭空造钱的排行榜刷分器。
+_PORTFOLIO_REASON_PREFIX = "portfolio_holding"
+_PAPER_LEDGER_FILTER = "COALESCE(reason, '') NOT LIKE 'portfolio_holding%'"
+
+
+def is_portfolio_account(account_id: int) -> bool:
+    """该账户是否属于"组合持仓"账本（不是模拟盘账户）。
+
+    判定：账户名是组合模块建的 `我的持仓`，或名下存在 portfolio_holding 记录。
+    两者都查，因为老数据可能只满足其中一条。
+    """
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT name FROM paper_account WHERE id=?", (account_id,)
+    ).fetchone()
+    if not row:
+        return False
+    if (row["name"] or "") == "我的持仓":
+        return True
+    hit = conn.execute(
+        "SELECT 1 FROM paper_trade WHERE account_id=? AND COALESCE(reason,'') LIKE ? LIMIT 1",
+        (account_id, _PORTFOLIO_REASON_PREFIX + "%"),
+    ).fetchone()
+    return hit is not None
+
+
 def get_positions(account_id: int) -> List[Dict[str, Any]]:
-    """计算当前持仓（按 last trade 状态推算）"""
+    """计算当前持仓（按 last trade 状态推算）。
+
+    只统计模拟盘自身的成交，排除组合持仓账本（见 _PAPER_LEDGER_FILTER）。
+    """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        """SELECT symbol, side, quantity, price, trade_date
-           FROM paper_trade WHERE account_id=?
+        f"""SELECT symbol, side, quantity, price, trade_date
+           FROM paper_trade WHERE account_id=? AND {_PAPER_LEDGER_FILTER}
            ORDER BY created_at ASC""",
         (account_id,),
     )
@@ -181,7 +268,12 @@ def get_positions(account_id: int) -> List[Dict[str, Any]]:
             continue
         avg_cost = p["total_cost"] / p["quantity"]
         quote = quotes_map.get(sym) or {}
-        last_price = quote.get("price", avg_cost)
+        # ★ 探索期修复：估值路径此前不判 mock —— sandbox/断网时 fetch_quotes_bulk
+        #   返回 source="mock" 的合成价，会被写进 paper_snapshot（不可回滚），
+        #   排行榜与业绩曲线从此被假价格污染（实测成交价 100 的持仓被估成 9999）。
+        #   下单与基准早有 is_mock_payload 防护，这里补齐估值侧：mock 时回退成本价。
+        price_is_mock = is_mock_payload(quote)
+        last_price = avg_cost if price_is_mock else quote.get("price", avg_cost)
         market_value = p["quantity"] * last_price
         pnl = market_value - p["total_cost"]
         pnl_pct = (pnl / p["total_cost"]) * 100 if p["total_cost"] > 0 else 0
@@ -191,6 +283,7 @@ def get_positions(account_id: int) -> List[Dict[str, Any]]:
             "quantity": p["quantity"],
             "avg_cost": round(avg_cost, 2),
             "last_price": last_price,
+            "price_is_mock": price_is_mock,
             "market_value": round(market_value, 2),
             "pnl": round(pnl, 2),
             "pnl_pct": round(pnl_pct, 2),
@@ -213,9 +306,10 @@ def _shares_bought_before(account_id: int, symbol: str, before_date: str) -> int
     """
     conn = get_conn()
     cur = conn.cursor()
+    # ★ 探索期修复：排除组合持仓账本，否则组合里的"真实持仓"会被算成可卖额度
     cur.execute(
-        """SELECT side, quantity, trade_date FROM paper_trade
-           WHERE account_id=? AND symbol=?
+        f"""SELECT side, quantity, trade_date FROM paper_trade
+           WHERE account_id=? AND symbol=? AND {_PAPER_LEDGER_FILTER}
            ORDER BY created_at ASC""",
         (account_id, symbol),
     )
@@ -246,8 +340,9 @@ def _held_and_sellable(conn, account_id: int, symbol: str, today: str) -> "tuple
     重新核验一次，作为唯一权威判断；外层调用处仍保留一次无锁预检以便快速失败。
     """
     cur = conn.execute(
-        """SELECT side, quantity, trade_date FROM paper_trade
-           WHERE account_id=? AND symbol=? ORDER BY created_at ASC""",
+        f"""SELECT side, quantity, trade_date FROM paper_trade
+           WHERE account_id=? AND symbol=? AND {_PAPER_LEDGER_FILTER}
+           ORDER BY created_at ASC""",
         (account_id, symbol),
     )
     total_held = 0
@@ -292,10 +387,25 @@ def place_order(
     # ★ 探索期修复：与 portfolio.add_holding 对齐的上限护栏（防天文数字订单污染账本）
     if quantity > 10**9 or (price is not None and price > 10**9):
         raise ValueError("quantity/price 超出合理范围（上限 1e9）")
+    # ★ 探索期修复(零/负价成交)：旧实现只校验了 quantity 与 price 上限，
+    #   未校验下限 —— price=0 可零成本建仓、price=-100 会写入 amount=-1000
+    #   并给账户记账，两种都能污染持仓成本与排行榜权益。显式传价必须 > 0；
+    #   price=None 由下面的行情兜底赋值（那里同样保证 > 0）。
+    if price is not None and price <= 0:
+        raise ValueError(f"price 必须 > 0，got {price}")
 
     account = get_account(account_id)
     if not account:
         raise ValueError(f"账户 {account_id} 不存在")
+    # ★ 探索期修复(Critical)：组合持仓账本不能被当作模拟盘下单。
+    #   旧实现允许对"我的持仓"账户卖出，价格由调用方任意指定，卖出所得直接
+    #   加到该账户 cash（实测 10 股 @1000 → cash 1,000,000 → 1,009,995），
+    #   而该账户又出现在 /paper/leaderboard 里 —— 等于排行榜刷分器。
+    if is_portfolio_account(account_id):
+        raise ValueError(
+            "该账户是组合持仓账本，不能通过模拟盘下单。"
+            "请用 /portfolio/holdings 管理真实持仓。"
+        )
 
     # 价格：未指定则拉实时（fail-soft：失败时让用户传 price 重试）
     # ★ 本轮修复(M-mock)：即便 quote 不为 None，也要排除 mock 数据 —— 避免 sandbox/离线时
@@ -446,7 +556,12 @@ def take_snapshot(account_id: int, snapshot_date: Optional[str] = None) -> Dict[
         benchmark = {}
     else:
         benchmark = benchmark_raw or {}
-    benchmark_equity = INITIAL_CAPITAL_DEFAULT * (1 + benchmark.get("change_pct", 0) / 100)
+    # ★ 探索期修复：基准权益必须基于**该账户的初始资金**，旧实现硬编码
+    #   INITIAL_CAPITAL_DEFAULT(100 万)。实测初始资金 10,000 的账户，
+    #   total_equity=10,000 而 benchmark_equity=1,005,000 —— 超额收益/业绩对比
+    #   全错，且前端会显示一个量级错误的基准线。
+    base_capital = account.get("initial_capital") or INITIAL_CAPITAL_DEFAULT
+    benchmark_equity = base_capital * (1 + benchmark.get("change_pct", 0) / 100)
 
     snapshot = {
         "account_id": account_id,
@@ -515,11 +630,18 @@ def get_snapshot(account_id: int, snapshot_date: str) -> Optional[Dict[str, Any]
 # 日终结算（cron 调用）
 # ============================================================================
 def settle_daily() -> Dict[str, Any]:
-    """所有账户每日快照"""
+    """所有**模拟盘**账户每日快照（组合持仓账本不参与）"""
     accounts = list_accounts()
     today = datetime.now().strftime("%Y-%m-%d")
-    summary = {"settled": 0, "errors": 0}
+    summary = {"settled": 0, "errors": 0, "skipped_portfolio": 0}
     for acc in accounts:
+        # ★ 探索期修复：组合持仓账本不是模拟盘，不该产生回测/排行榜用的快照
+        try:
+            if is_portfolio_account(acc["id"]):
+                summary["skipped_portfolio"] += 1
+                continue
+        except Exception as e:
+            logger.warning("settle: portfolio check failed for %s: %s", acc["id"], e)
         try:
             take_snapshot(acc["id"], today)
             summary["settled"] += 1
@@ -533,16 +655,25 @@ def settle_daily() -> Dict[str, Any]:
 # 排行榜（按总收益率）
 # ============================================================================
 def leaderboard(limit: int = 50) -> List[Dict[str, Any]]:
-    """取最新快照，按 total_equity 降序"""
+    """取最新快照，按总收益率降序（只含模拟盘账户）"""
     conn = get_conn()
     cur = conn.cursor()
     # 取每个账户的最新快照
+    ## ★ 探索期修复：组合持仓账本（"我的持仓"）不是模拟盘，混进排行榜会
+    #   让"录入真实持仓"的用户凭空占据榜首。用 name + portfolio_holding 记录
+    #   双重排除，与 is_portfolio_account() 的判定保持一致。
     cur.execute(
         """SELECT s.*, a.user_id, a.name as account_name, a.initial_capital
            FROM paper_snapshot s
            JOIN paper_account a ON s.account_id = a.id
            WHERE s.snapshot_date = (
              SELECT MAX(snapshot_date) FROM paper_snapshot s2 WHERE s2.account_id = s.account_id
+           )
+           AND a.name != '我的持仓'
+           AND NOT EXISTS (
+             SELECT 1 FROM paper_trade t
+             WHERE t.account_id = a.id
+               AND COALESCE(t.reason, '') LIKE 'portfolio_holding%'
            )
            ORDER BY s.total_equity DESC LIMIT ?""",
         (limit,),
