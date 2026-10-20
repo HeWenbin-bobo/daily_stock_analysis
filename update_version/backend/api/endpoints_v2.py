@@ -928,12 +928,21 @@ def add_portfolio_holding(payload: dict, request: Request):
     """
     require_keys(payload, "user_id", "symbol", "cost", "quantity")
     _check_resource_owner(request, payload.get("user_id"), payload.get("user_id"))
+    # ★ 探索期修复(500)：`symbol` 传 list 会让 sqlite3 绑定参数抛
+    #   ProgrammingError；`cost`/`quantity` 传 list 则在 add_holding 里的
+    #   `cost <= 0` 抛 TypeError —— 两者都不是 ValueError，端点接不住 → 500。
+    #   实测 `{"symbol":["600519"]}` 与 `{"cost":[10]}` 都是 500。
+    symbol = payload["symbol"]
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise HTTPException(400, "symbol 必须是非空字符串")
+    cost = _coerce_float(payload["cost"], "cost")
+    quantity = _coerce_float(payload["quantity"], "quantity")
     try:
         trade_id = pf.add_holding(
             user_id=payload["user_id"],
-            symbol=payload["symbol"],
-            cost=payload["cost"],
-            quantity=payload["quantity"],
+            symbol=symbol.strip(),
+            cost=cost,
+            quantity=quantity,
             purchase_date=payload.get("purchase_date"),
             note=payload.get("note", ""),
         )
@@ -1304,6 +1313,12 @@ def research_deep(payload: dict, request: Request):
     code = payload.get("code") or payload.get("code_or_name") or payload.get("name")
     if not code:
         raise HTTPException(400, "code 必填")
+    # ★ 探索期修复(500)：`code` 传 dict/list 时下游 `code.strip()` 抛
+    #   AttributeError（实测 `{"code":{"a":1}}` → 500「深度研究失败: 'dict'
+    #   object has no attribute 'strip'」）。这里显式要求字符串。
+    if not isinstance(code, str) or not code.strip():
+        raise HTTPException(400, "code 必须是非空字符串")
+    code = code.strip()
     # 限流：深度研究较贵（多步 LLM），5/min/IP
     from core import ratelimit as _rl
     ip = _rl.get_client_ip(request)
