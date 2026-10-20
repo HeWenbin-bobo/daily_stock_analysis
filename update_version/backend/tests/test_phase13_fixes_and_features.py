@@ -457,13 +457,35 @@ def test_community_revoke_endpoint():
     conn = get_conn()
     conn.execute("DELETE FROM shared_report WHERE user_id='u_rev'")
     s = cm.create_share("u_rev", "backtest_result", "1")
+    token = s["share_token"]
     client = TestClient(app)
-    r = client.delete(f"/api/v2/community/shares/{s['share_token']}?user_id=u_rev")
-    assert r.status_code == 200
+
+    # ★ 2026-10 探索期修复(越权)：旧实现只凭 query 的 user_id 就能撤销，
+    #   而 GET /community/shares/{token}（公开）会返回该 user_id ——
+    #   任何人都能删他人分享。现在要求服务端身份（X-User-Id header）。
+    r = client.delete(f"/api/v2/community/shares/{token}?user_id=u_rev")
+    assert r.status_code == 401, f"无身份应拒绝: {r.status_code} {r.text}"
+
+    r = client.delete(
+        f"/api/v2/community/shares/{token}?user_id=u_rev",
+        headers={"X-User-Id": "attacker"},
+    )
+    assert r.status_code == 403, f"伪造身份应拒绝: {r.status_code} {r.text}"
+
+    # 合法 owner 可以撤销
+    r = client.delete(
+        f"/api/v2/community/shares/{token}?user_id=u_rev",
+        headers={"X-User-Id": "u_rev"},
+    )
+    assert r.status_code == 200, f"owner 撤销应成功: {r.status_code} {r.text}"
+
     # 二次删 → 404
-    r = client.delete(f"/api/v2/community/shares/{s['share_token']}?user_id=u_rev")
+    r = client.delete(
+        f"/api/v2/community/shares/{token}?user_id=u_rev",
+        headers={"X-User-Id": "u_rev"},
+    )
     assert r.status_code == 404
-    print("OK community share revoke")
+    print("OK community share revoke (owner-only)")
 
 
 # ============================================================================
