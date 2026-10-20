@@ -113,6 +113,17 @@ def delete_account(account_id: int) -> bool:
       注意：组合持仓账本（reason LIKE 'portfolio_holding%'）不在此处删除 ——
       它归 /portfolio/holdings 管理，走 remove_holding。
     """
+    # ★ 探索期修复(账本隔离)：组合持仓账本不能从这里删。
+    #   `portfolio_holding` 表没有指向 paper_account 的外键（schema 零外键），
+    #   删掉账户后持仓记录全部变孤儿：实测删掉「我的持仓」后
+    #   `portfolio.list_holdings()` 仍返回 600519×100、overview 市值照算，
+    #   而账户已不存在；用户下次 add_holding 又会惰性新建一个 id 不同的
+    #   「我的持仓」，持仓数据从此分裂在两个历史里。
+    #   删除组合账本的正确入口是 /portfolio/holdings 的 remove_holding。
+    if is_portfolio_account(account_id):
+        raise ValueError(
+            "组合持仓账本不能删除（请用 /portfolio/holdings 逐个移除持仓）"
+        )
     conn = get_conn()
     cur = conn.cursor()
     try:

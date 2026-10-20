@@ -66,5 +66,27 @@ def test_normal_accounts_still_transfer(accounts) -> None:
     assert result["to_new_cash"] == pytest.approx(11000.0)
 
 
+def test_cannot_delete_the_portfolio_ledger_account(accounts) -> None:
+    """Deleting it orphans portfolio_holding (schema has no foreign keys).
+
+    Before the fix: delete_account succeeded, holdings still listed 600519x100,
+    the overview still valued them, and the next add_holding lazily created a
+    second 「我的持仓」 with a different id — splitting the history in two.
+    """
+    portfolio_id, _, _ = accounts
+
+    with pytest.raises(ValueError, match="组合持仓"):
+        pt.delete_account(portfolio_id)
+
+    assert pt.get_account(portfolio_id) is not None, "the ledger account was deleted"
+    assert pf.list_holdings("u_xfer"), "holdings should be untouched"
+
+
+def test_normal_account_can_still_be_deleted(accounts) -> None:
+    _, _paper_a, paper_b = accounts
+    assert pt.delete_account(paper_b) is True
+    assert pt.get_account(paper_b) is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
