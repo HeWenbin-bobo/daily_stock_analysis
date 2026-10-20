@@ -85,7 +85,14 @@ async def lifespan(app: FastAPI):
         logger.warning("startup db migrate failed: %s", e)
     # ★ Round 19 修复(M7)：cron DB 用绝对路径，避免从仓库根启动时
     #   sqlite:///data/v2_dev.db 相对 CWD 解析到错误位置，导致任务存储与业务 DB 分离
-    cron_mod.init(db_path=str(BACKEND_DIR / "data" / "v2_dev.db"))
+    # ★ 探索期修复(数据损坏事故)：此前硬编码 BACKEND_DIR/data/v2_dev.db，而
+    #   db.migrate.DB_PATH 支持 V4_DB_PATH 覆盖 —— 两者不一致时（测试/多实例）
+    #   业务表与 APScheduler jobstore 会写进**不同**的库。更糟的是在宿主机跑
+    #   pytest 时，这个硬编码路径正好是容器的 bind mount，测试与运行中的容器
+    #   并发写同一文件，直接把 v2_dev.db 写坏（database disk image is malformed）。
+    #   统一复用 db.migrate 已解析好的 DB_PATH，保证只有一个真相来源。
+    from db.migrate import DB_PATH as _DB_PATH
+    cron_mod.init(db_path=str(_DB_PATH))
     # ★ Round 20 升级：把 history.db 的 scheduled_tasks（enabled=1）注册进调度器，
     #   让用户"定时任务"真正按 cron 自动执行（此前只存不跑）
     try:
@@ -199,10 +206,19 @@ def create_app() -> FastAPI:
 
     @app.get("/ready")
     def ready():
-        """就绪检查（readiness）：DB / cron / 数据源健康度"""
+        """就绪检查（readiness）：DB / cron / 数据源健康度
+
+        ★ 探索期修复(fd 泄漏)：旧实现 `conn = get_conn()` 后从不 close。
+          sqlite3.Connection 被 GC 跟踪，引用计数为 0 也不会立刻释放 fd
+          （实测：容器内 50 次调用后 fd 4→89，只有显式 gc.collect() 才回落）。
+          Docker healthcheck 每 30s 打一次这里，加上监控轮询，fd 会持续爬升
+          （实测 200 请求后 16→417，空闲 3 分钟不回落）。
+          改为 try/finally 显式关闭。
+        """
         checks: Dict[str, Any] = {}
         ok = True
         # 1) DB ping
+        conn = None
         try:
             from db.migrate import get_conn
             conn = get_conn()
@@ -211,6 +227,12 @@ def create_app() -> FastAPI:
         except Exception as e:
             checks["db"] = f"error: {str(e)[:80]}"
             ok = False
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         # 2) cron scheduler
         try:
             checks["cron"] = "ok" if cron_mod._scheduler else "not_initialized"
@@ -254,7 +276,6 @@ def create_app() -> FastAPI:
     app.include_router(technical_router, prefix="/api/v2", tags=["technical"])
     # 同时挂 /api/v1 别名（前端 /api/v1/hot-analysis/* 兼容路径）
     app.include_router(hot_router, prefix="/api/v1", tags=["v1-compat"])
-
     # ★ Round 19 修复(H4)：create_share 返回的 share_url=/s/{token} 需根级路由，
     #   放在 /api/v2 前缀之外（v2_router 挂在 /api/v2 下，/s/ 定义在里面会变 /api/v2/s/）。
     #   公开分享预览页：自包含 HTML，社区/SEO 引流可用。
@@ -295,7 +316,53 @@ def create_app() -> FastAPI:
 <p style="color:#64748b;font-size:13px">资源: {resource_id} · 创建于: {created}</p>
 <table>{rows_html}</table>
 <p style="color:#94a3b8;font-size:12px;margin-top:24px">由 四榜交集分析 分享</p></main></body></html>""")
+
+    _mount_frontend(app)
     return app
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    """Serve the built Vue SPA when ``frontend/dist`` is present.
+
+    Without this the API can only be consumed through the Vite dev server
+    (``npm run dev``), which is not a deployable setup: a container would expose
+    the API on one port and need a second server for the UI. Mounting the build
+    output here lets one process serve both.
+
+    Missing dist is not an error — local development keeps using Vite, and the
+    API stays fully usable on its own. Resolution order:
+    ``V4_FRONTEND_DIST`` → ``update_version/frontend/dist``.
+    """
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    candidates = []
+    override = (os.environ.get("V4_FRONTEND_DIST") or "").strip()
+    if override:
+        candidates.append(Path(override))
+    # app.py -> backend/ -> update_version/
+    candidates.append(BACKEND_DIR.parent / "frontend" / "dist")
+
+    dist_dir = next((p for p in candidates if (p / "index.html").is_file()), None)
+    if dist_dir is None:
+        logger.info("frontend dist not found; serving API only")
+        return
+
+    index_file = dist_dir / "index.html"
+    assets_dir = dist_dir / "assets"
+    if assets_dir.is_dir():
+        # check_dir=False keeps app creation working if assets are pruned later.
+        app.mount(
+            "/assets",
+            StaticFiles(directory=str(assets_dir), check_dir=False),
+            name="frontend-assets",
+        )
+
+    @app.get("/", include_in_schema=False)
+    def frontend_index():
+        return FileResponse(index_file, media_type="text/html")
+
+    logger.info("serving frontend from %s", dist_dir)
 
 
 app = create_app()
@@ -303,4 +370,15 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8002, reload=False)
+
+    # 端口可用 V4_PORT 覆盖：容器里与宿主机端口不一定是 8002，
+    # compose 需要把它与映射端口对齐。
+    # 传 app 对象而不是 "app:app"：后者让 uvicorn 再 import 一次本模块，
+    # 与已经在 __main__ 里执行的 create_app() 重复（日志里会出现两条
+    # "serving frontend"，异常处理器/静态挂载也注册两遍）。
+    uvicorn.run(
+        app,
+        host=os.environ.get("V4_HOST", "0.0.0.0"),
+        port=int(os.environ.get("V4_PORT", "8002")),
+        reload=False,
+    )
