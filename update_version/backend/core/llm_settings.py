@@ -38,6 +38,11 @@ FIELDS: list = [
 ]
 
 _lock = threading.Lock()
+# 记录"由本模块从文件写入 os.environ"的变量名。
+# 用于区分两类同名环境变量：
+#   - 进程启动时已存在（.env / docker -e / 系统环境）→ 优先级更高，不覆盖
+#   - 之前由本模块写入 → 可以被后续保存的新值更新或清除
+_ENV_OWNED: set = set()
 
 
 def _load_file() -> Dict[str, Any]:
@@ -52,12 +57,17 @@ def _load_file() -> Dict[str, Any]:
 
 def _save_file(data: Dict[str, Any]) -> None:
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # ★ 探索期修复：直接 write_text 覆盖，并发读（get_status / apply_to_environ）
+    #   可能读到半截 JSON → json.JSONDecodeError → 返回 {} → 界面短暂显示
+    #   "所有 key 未设置"。改为临时文件 + os.replace 原子替换。
+    tmp = SETTINGS_PATH.with_suffix(SETTINGS_PATH.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     # 尽力收紧文件权限（POSIX；Windows 忽略）
     try:
-        os.chmod(SETTINGS_PATH, 0o600)
+        os.chmod(tmp, 0o600)
     except OSError:
         pass
+    os.replace(tmp, SETTINGS_PATH)
 
 
 def mask_secret(value: str) -> str:
@@ -70,12 +80,32 @@ def mask_secret(value: str) -> str:
 
 
 def apply_to_environ() -> None:
-    """把已保存的设置写入 os.environ（启动时 + 保存后调用；已设置的环境变量优先不覆盖）。"""
+    """把已保存的设置写入 os.environ（启动时 + 保存后调用）。
+
+    ★ 探索期修复：
+      1) 旧实现只做 `if val: os.environ[env] = val` —— 用户在设置页**清除** key
+         （写入空串）后，os.environ 里的旧值仍在，llm_router 继续用旧 key 计费，
+         界面却显示"未设置"。现在空串会显式 `os.environ.pop`。
+      2) 文档注释称"已设置的环境变量优先不覆盖"，实现却是无条件覆盖 ——
+         运维在 .env 配的新 key 会被 llm_settings.json 里的旧值顶掉。
+         改为 setdefault 语义，与注释一致。
+    """
     data = _load_file()
     for key, env, _sensitive, _default in FIELDS:
+        if key not in data:
+            continue
         val = data.get(key)
         if val:
-            os.environ[env] = val
+            # 进程启动时注入的环境变量（.env / docker -e）优先，不被文件覆盖；
+            # 但之前由本模块写入的值必须能被"改完即生效"更新。
+            if env not in os.environ or env in _ENV_OWNED:
+                os.environ[env] = val
+                _ENV_OWNED.add(env)
+        else:
+            # 用户清除该字段：只移除本模块写入的值，不动外部注入的环境变量
+            if env in _ENV_OWNED:
+                os.environ.pop(env, None)
+                _ENV_OWNED.discard(env)
 
 
 def get_status() -> Dict[str, Any]:
@@ -105,7 +135,11 @@ def get_status() -> Dict[str, Any]:
 
 
 def update(items: Dict[str, Optional[str]]) -> Dict[str, Any]:
-    """保存设置。值为 MASK_SENTINEL 表示保留原值；空串表示清除该字段。"""
+    """保存设置。值为 MASK_SENTINEL 表示保留原值；空串表示清除该字段。
+
+    ★ 探索期修复：非字符串值（前端把数字/布尔序列化进来）会让 `val.strip()`
+      抛 AttributeError → 端点 500。这里显式转成 str（数字/布尔）或拒绝容器类型。
+    """
     with _lock:
         data = _load_file()
         changed = []
@@ -117,7 +151,10 @@ def update(items: Dict[str, Optional[str]]) -> Dict[str, Any]:
                 continue
             if val == MASK_SENTINEL:
                 continue  # 前端未修改，保留
-            data[key] = val.strip()
+            if isinstance(val, bool) or not isinstance(val, (str, int, float)):
+                raise ValueError(f"字段 {key} 的值类型不支持（需要字符串），got {type(val).__name__}")
+            text = str(val).strip()
+            data[key] = text
             changed.append(key)
         _save_file(data)
     apply_to_environ()
