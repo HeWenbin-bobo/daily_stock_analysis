@@ -260,14 +260,21 @@ def deep_research(code: str, name: str = "", *, prefer_provider: Optional[str] =
         )
 
     # 5. 市值验算（复用 financial_rigor.py，若有行情）
+    # ★ 探索期修复(错误的市值结论)：旧实现给**每一只股票**都传
+    #   `shares=12.56e8`（那是贵州茅台的近似总股本），于是 000858 五粮液
+    #   @¥130 被算成 1633 亿市值（真实约 5000 亿），而前端把这个数字
+    #   当作"市值验算（financial_rigor）"展示给用户 —— 一个看起来有权威背书、
+    #   实际差了三倍的结论。
+    #   v2 的行情适配层（core/data_source.py 的 fetch_quote）只取
+    #   价格/涨跌幅/量/额，**没有总股本也没有总市值字段**，因此本模块拿不到
+    #   逐股股本。与其拿别家公司的股本冒充，不如如实说明"未验算"。
     cap_verify = None
     if quote_data.get("price"):
-        # 600519 茅台总股本约 12.56 亿股（近似；真实股本需查财报）
-        cap_verify = verify_market_cap(
-            price=quote_data["price"],
-            shares=12.56e8,  # 近似总股本，报告注明
-            reported_cap=0,  # 无报告市值时跳过一致性判断
-        )
+        cap_verify = {
+            "ok": False,
+            "skipped": True,
+            "note": "缺少该股总股本数据，未做市值验算（避免用其他公司的股本冒充）",
+        }
 
     # 6. 组装响应
     return {
