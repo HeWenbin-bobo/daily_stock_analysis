@@ -1477,6 +1477,54 @@ def settings_llm_update(payload: dict):
 # ============================================================================
 # LLM 设置辅助：上游模型列表拉取 + 连接测试
 # ============================================================================
+# 云元数据 / 链路本地地址：这些是 SSRF 真正要防的目标（能换出云凭据），
+# 且**不可能是合法的 LLM 端点**。故意不封整个私网段 —— 本项目的 cc-switch
+# 本地代理就是 `host.docker.internal:15721` / `127.0.0.1:15721`
+# （见 core/llm_router.py 的 CC_SWITCH 分支），一刀切会把文档支持的功能打断。
+_SSRF_BLOCKED_HOSTS = {
+    "metadata.google.internal",
+    "metadata.goog",
+}
+_SSRF_BLOCKED_NETS = ("169.254.0.0/16", "fd00:ec2::/64", "100.100.100.200/32")
+
+
+def _reject_ssrf_host(url: str) -> None:
+    """拒绝指向云元数据 / 链路本地的 base_url。
+
+    ★ 探索期修复(SSRF)：`/settings/llm/test` 与 `/settings/llm/models` 会
+      直接向调用方指定的 base_url 发请求并回显上游响应 —— 不校验就等于给了
+      一个"任意地址探测 + 响应读取"的原语，最危险的是云元数据
+      `169.254.169.254`（可换取实例凭据）。
+      httpx 默认 `follow_redirects=False`，所以不存在通过 302 绕到内网的问题；
+      这里只需挡住直接的元数据地址。
+    """
+    from urllib.parse import urlparse
+    import ipaddress
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(400, "base_url 必须以 http:// 或 https:// 开头")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise HTTPException(400, "base_url 缺少主机名")
+    if host in _SSRF_BLOCKED_HOSTS:
+        raise HTTPException(400, "base_url 指向云元数据地址，已拒绝（SSRF 防护）")
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return  # 域名（且不在黑名单）→ 放行
+    for net in _SSRF_BLOCKED_NETS:
+        try:
+            if addr in ipaddress.ip_network(net):
+                raise HTTPException(
+                    400, "base_url 指向链路本地/云元数据地址，已拒绝（SSRF 防护）"
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            continue
+
+
 def _settings_openai_client(base_url: str, api_key: str, timeout: float = 15.0):
     """构造 OpenAI 兼容客户端（openai SDK 可用则用 SDK，否则退回 HTTP 直连）。"""
     try:
@@ -1500,6 +1548,7 @@ def settings_llm_list_models(payload: dict):
     base_url = (payload.get("base_url") or "").strip().rstrip("/")
     if not base_url:
         raise HTTPException(400, "base_url 必填")
+    _reject_ssrf_host(base_url)
     # key 来源优先级：显式传入 > 已保存文件 > 环境变量
     api_key = (payload.get("api_key") or "").strip()
     if not api_key or api_key == ls.MASK_SENTINEL:
@@ -1540,6 +1589,7 @@ def settings_llm_test_connection(payload: dict):
     model = (payload.get("model") or "").strip()
     if not base_url or not model:
         raise HTTPException(400, "base_url 和 model 必填")
+    _reject_ssrf_host(base_url)
     api_key = (payload.get("api_key") or "").strip()
     if not api_key or api_key == ls.MASK_SENTINEL:
         field = payload.get("api_key_field") or "openai_api_key"
