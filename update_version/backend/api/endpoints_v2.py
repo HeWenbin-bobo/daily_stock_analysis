@@ -147,6 +147,23 @@ def _coerce_int(value: Any, field: str) -> int:
         raise HTTPException(400, f"{field} 必须是整数")
 
 
+def _require_str_field(payload: dict, field: str, *, allow_empty: bool = False) -> str:
+    """取出 payload[field] 并要求它是字符串。
+
+    ★ 探索期修复(500)：SQLite 的绑定参数只接受 str/int/float/bytes/None，
+      list/dict 会抛 ProgrammingError（"Error binding parameter N: type 'list'
+      is not supported"），而端点通常只 `except ValueError` → 500。
+      对"本来就是标识符"的字段（user_id / follower_id / symbol 等）统一用
+      本函数收敛，避免每个端点各写一遍。
+    """
+    value = payload.get(field)
+    if not isinstance(value, str):
+        raise HTTPException(400, f"{field} 必须是字符串，got {type(value).__name__}")
+    if not allow_empty and not value.strip():
+        raise HTTPException(400, f"{field} 不能为空")
+    return value if allow_empty else value.strip()
+
+
 def _coerce_float(value: Any, field: str, *, allow_none: bool = False) -> Optional[float]:
     """把外部传入的数值转成 float，非法值返回 400 而非 500。
 
@@ -363,7 +380,15 @@ def alerts_bulk_toggle(payload: dict, request: Request):
        A 可以用一串别人的 rule_id 把自己想用的禁掉
     """
     _require_rate_limit(request, "/api/v2/alerts/rules/bulk-toggle")
+    # ★ 探索期修复(500)：rule_ids 必须是整数数组。旧实现直接遍历并
+    #   `ae.get_rule(rid)`，嵌套 list/dict 会作为 SQLite 绑定参数抛
+    #   ProgrammingError（实测 `{"rule_ids":[[1]]}` → 500）。
     rule_ids = payload.get("rule_ids", [])
+    if not isinstance(rule_ids, list):
+        raise HTTPException(400, "rule_ids 必须是整数数组")
+    rule_ids = [_coerce_int(rid, "rule_ids[]") for rid in rule_ids]
+    if not rule_ids:
+        raise HTTPException(400, "rule_ids 不能为空")
     enabled = payload.get("enabled", True)
     # ★ 本轮修复(M4)：先全部读出来校验归属，再批量 toggle
     # 一次性 SELECT IN 避免 N+1
@@ -922,7 +947,12 @@ def community_follow(payload: dict, request: Request):
     follower_id 一致（与 add_portfolio_holding 的自校验模式一致）。"""
     require_keys(payload, "follower_id", "followee_id")
     _check_resource_owner(request, payload.get("follower_id"), payload.get("follower_id"))
-    ok = cm.follow(payload["follower_id"], payload["followee_id"])
+    # ★ 探索期修复(500)：followee_id 直接进 SQLite 绑定参数，list/dict 抛
+    #   ProgrammingError（实测 `{"followee_id":[1]}` → 500）。follower_id 因为
+    #   先过了 _check_resource_owner 的 403 逃过一劫，但同样需要类型约束。
+    follower_id = _require_str_field(payload, "follower_id")
+    followee_id = _require_str_field(payload, "followee_id")
+    ok = cm.follow(follower_id, followee_id)
     return {"followed": ok}
 
 
@@ -931,7 +961,10 @@ def community_unfollow(payload: dict, request: Request):
     """★ 本轮修复(MEDIUM)：同 community_follow —— 补 follower_id 自校验"""
     require_keys(payload, "follower_id", "followee_id")
     _check_resource_owner(request, payload.get("follower_id"), payload.get("follower_id"))
-    ok = cm.unfollow(payload["follower_id"], payload["followee_id"])
+    # ★ 探索期修复(500)：同 community_follow —— 两个 id 都会进 SQLite 绑定参数
+    follower_id = _require_str_field(payload, "follower_id")
+    followee_id = _require_str_field(payload, "followee_id")
+    ok = cm.unfollow(follower_id, followee_id)
     return {"unfollowed": ok}
 
 
