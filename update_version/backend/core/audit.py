@@ -2,6 +2,7 @@
 """审计日志：所有写操作记录"""
 import json
 import logging
+import re
 import time
 from typing import Optional, Any, Dict
 
@@ -11,6 +12,44 @@ logger = logging.getLogger(__name__)
 
 # ★ Round 4 安全加固：以下字段在 request_body 落库前要 redact，避免凭据泄露
 _SENSITIVE_KEYS = {"target", "password", "passwd", "pwd", "token", "api_key", "secret", "webhook_url"}
+# ★ 探索期修复(脱敏漏网)：上面那组是「完整字段名」，而旧实现只做
+#   `k.lower() in _SENSITIVE_KEYS` 精确匹配 —— 实测 `api_keys`、`access_token`、
+#   `smtp_password`、`apiKey`、`private_key` 全部原样落库，与
+#   "避免 /audit/recent 泄露 webhook URL / SMTP 密码 / API key" 的承诺不符。
+#   这里改成**按词切分后匹配**：把 key 拆成 token（下划线/连字符/点/驼峰），
+#   任一 token 命中敏感词或它的复数形式就脱敏。
+_SENSITIVE_TOKENS = {
+    "password", "passwd", "pwd", "secret", "token", "key", "keys",
+    "credential", "credentials", "auth", "authorization", "signature",
+}
+
+
+def _key_is_sensitive(key: str) -> bool:
+    """判断字段名是否可能承载凭据。
+
+    - 完整名命中 `_SENSITIVE_KEYS` → 敏感
+    - 否则按下划线/连字符/点/驼峰切成 token，任一 token 落在
+      `_SENSITIVE_TOKENS` 里 → 敏感（覆盖 api_keys / access_token /
+      smtp_password / apiKey / privateKey / X-Api-Key 等写法）
+
+    例外：`key` 单独出现时过于宽泛（如 `keyboard`），因此只在整个 token 等于
+    `key`/`keys` 时才算——`monkey` 这种会被切成一个 token 而不匹配。
+    """
+    lowered = (key or "").lower()
+    if lowered in _SENSITIVE_KEYS:
+        return True
+    # 驼峰与分隔符混合 → 统一成小写 token 列表
+    normalized = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key or "")
+    tokens = [t for t in re.split(r"[^A-Za-z0-9]+", normalized.lower()) if t]
+    for tok in tokens:
+        if tok in _SENSITIVE_TOKENS:
+            return True
+        # 复数：api_keys → key(s)、credentials → credential(s)
+        if tok.endswith("s") and tok[:-1] in _SENSITIVE_TOKENS:
+            return True
+        if tok.endswith("es") and tok[:-2] in _SENSITIVE_TOKENS:
+            return True
+    return False
 
 
 def _redact_body(body: Optional[Any]) -> Optional[Any]:
@@ -20,7 +59,7 @@ def _redact_body(body: Optional[Any]) -> Optional[Any]:
     if isinstance(body, dict):
         out: Dict[str, Any] = {}
         for k, v in body.items():
-            if k.lower() in _SENSITIVE_KEYS:
+            if isinstance(k, str) and _key_is_sensitive(k):
                 out[k] = "***"
             else:
                 out[k] = _redact_body(v)
