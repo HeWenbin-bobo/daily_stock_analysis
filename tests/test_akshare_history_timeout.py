@@ -14,6 +14,7 @@ from tests.litellm_stub import ensure_litellm_stub
 ensure_litellm_stub()
 
 from data_provider.akshare_fetcher import AkshareFetcher, _akshare_call_with_timeout
+from data_provider.base import DataFetchError
 
 
 def _sleep_for(seconds: float) -> None:
@@ -138,18 +139,32 @@ def test_akshare_call_with_timeout_reaps_timed_out_worker_process() -> None:
 
 
 @pytest.mark.parametrize(
-    ("method_name", "api_name", "call_name"),
+    ("method_name", "api_name", "call_name", "code", "expected_symbol", "frame_kind"),
     [
-        ("_fetch_stock_data_sina", "stock_zh_a_daily", "ak.stock_zh_a_daily"),
-        ("_fetch_stock_data_tx", "stock_zh_a_hist_tx", "ak.stock_zh_a_hist_tx"),
+        ("_fetch_stock_data_em", "stock_zh_a_hist", "ak.stock_zh_a_hist", "600519", "600519", "date"),
+        ("_fetch_stock_data_sina", "stock_zh_a_daily", "ak.stock_zh_a_daily", "605218", "sh605218", "date"),
+        ("_fetch_stock_data_tx", "stock_zh_a_hist_tx", "ak.stock_zh_a_hist_tx", "605218", "sh605218", "date"),
+        ("_fetch_etf_data", "fund_etf_hist_em", "ak.fund_etf_hist_em", "512400", "512400", "zh"),
+        ("_fetch_us_data", "stock_us_daily", "ak.stock_us_daily", "AAPL", "AAPL", "date"),
+        ("_fetch_hk_data", "stock_hk_hist", "ak.stock_hk_hist", "HK00700", "00700", "zh"),
     ],
 )
-def test_sina_and_tencent_history_calls_use_timeout_wrapper(
+def test_all_daily_history_calls_use_timeout_wrapper(
     monkeypatch,
     method_name: str,
     api_name: str,
     call_name: str,
+    code: str,
+    expected_symbol: str,
+    frame_kind: str,
 ) -> None:
+    """Every akshare daily channel must run under the hard timeout.
+
+    The manager-level failover loop has no per-request budget, so a single
+    unbounded call here strands the whole chain. ``_fetch_stock_data_em`` was
+    the only channel missing the wrapper and this parametrisation is what
+    keeps a future one from slipping through the same way.
+    """
     captured = {}
 
     def fake_call(func, *args, timeout=None, call_name="", **kwargs):
@@ -157,6 +172,18 @@ def test_sina_and_tencent_history_calls_use_timeout_wrapper(
         captured["timeout"] = timeout
         captured["call_name"] = call_name
         captured["kwargs"] = kwargs
+        if frame_kind == "zh":
+            return pd.DataFrame(
+                {
+                    "日期": ["2026-05-25"],
+                    "开盘": [10.0],
+                    "最高": [10.5],
+                    "最低": [9.8],
+                    "收盘": [10.2],
+                    "成交量": [1000],
+                    "成交额": [20000],
+                }
+            )
         return pd.DataFrame(
             {
                 "date": ["2026-05-25"],
@@ -178,29 +205,76 @@ def test_sina_and_tencent_history_calls_use_timeout_wrapper(
     fetcher._history_call_timeout = 7
 
     method = getattr(fetcher, method_name)
-    df = method("605218", "2026-05-01", "2026-05-25")
+    method(code, "2026-05-01", "2026-05-25")
 
     assert captured["func"] is fake_api_func
-    assert captured["timeout"] == 7
+    assert captured["timeout"] == 7, f"{call_name} must inherit the bounded history timeout"
     assert captured["call_name"] == call_name
-    assert captured["kwargs"]["symbol"] == "sh605218"
-    assert captured["kwargs"]["start_date"] == "20260501"
-    assert captured["kwargs"]["end_date"] == "20260525"
+    assert captured["kwargs"]["symbol"] == expected_symbol
     assert captured["kwargs"]["adjust"] == "qfq"
-    assert list(df.columns)[:7] == ["日期", "开盘", "最高", "最低", "收盘", "成交量", "成交额"]
+
+
+@pytest.mark.parametrize(
+    ("method_name", "api_name", "call_name", "code"),
+    [
+        ("_fetch_stock_data_em", "stock_zh_a_hist", "ak.stock_zh_a_hist", "600519"),
+        ("_fetch_etf_data", "fund_etf_hist_em", "ak.fund_etf_hist_em", "512400"),
+        ("_fetch_us_data", "stock_us_daily", "ak.stock_us_daily", "AAPL"),
+        ("_fetch_hk_data", "stock_hk_hist", "ak.stock_hk_hist", "HK00700"),
+    ],
+)
+def test_daily_history_timeout_surfaces_as_timeout(
+    monkeypatch,
+    method_name: str,
+    api_name: str,
+    call_name: str,
+    code: str,
+) -> None:
+    """A hung channel must surface as TimeoutError so failover can proceed."""
+
+    def fake_call(func, *args, timeout=None, call_name="", **kwargs):
+        raise TimeoutError(f"{call_name} 调用超过 {timeout}s，已放弃等待")
+
+    monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(**{api_name: object()}))
+    monkeypatch.setattr("data_provider.akshare_fetcher._akshare_call_with_timeout", fake_call)
+
+    fetcher = AkshareFetcher(sleep_min=0, sleep_max=0)
+    fetcher._history_call_timeout = 7
+
+    with pytest.raises((TimeoutError, DataFetchError)) as excinfo:
+        getattr(fetcher, method_name)(code, "2026-05-01", "2026-05-25")
+
+    assert call_name in str(excinfo.value)
+
+
+def test_stock_data_falls_back_after_em_timeout(monkeypatch) -> None:
+    fetcher = AkshareFetcher(sleep_min=0, sleep_max=0)
+    tx_df = pd.DataFrame({"日期": ["2026-05-25"], "收盘": [10.2]})
+
+    monkeypatch.setattr(
+        fetcher,
+        "_fetch_stock_data_em",
+        lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("em timeout")),
+    )
+    monkeypatch.setattr(fetcher, "_fetch_stock_data_sina", lambda *args, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(fetcher, "_fetch_stock_data_tx", lambda *args, **kwargs: tx_df)
+
+    result = fetcher._fetch_stock_data("605218", "2026-05-01", "2026-05-25")
+
+    assert result is tx_df
 
 
 def test_stock_data_falls_back_after_sina_timeout(monkeypatch) -> None:
     fetcher = AkshareFetcher(sleep_min=0, sleep_max=0)
     tx_df = pd.DataFrame({"日期": ["2026-05-25"], "收盘": [10.2]})
 
-    monkeypatch.setattr(fetcher, "_fetch_stock_data_em", lambda *args: pd.DataFrame())
+    monkeypatch.setattr(fetcher, "_fetch_stock_data_em", lambda *args, **kwargs: pd.DataFrame())
     monkeypatch.setattr(
         fetcher,
         "_fetch_stock_data_sina",
-        lambda *args: (_ for _ in ()).throw(TimeoutError("sina timeout")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError("sina timeout")),
     )
-    monkeypatch.setattr(fetcher, "_fetch_stock_data_tx", lambda *args: tx_df)
+    monkeypatch.setattr(fetcher, "_fetch_stock_data_tx", lambda *args, **kwargs: tx_df)
 
     result = fetcher._fetch_stock_data("605218", "2026-05-01", "2026-05-25")
 

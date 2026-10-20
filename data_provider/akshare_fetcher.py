@@ -474,7 +474,12 @@ class AkshareFetcher(BaseFetcher):
     @retry(
         stop=stop_after_attempt(3),  # 最多重试3次
         wait=wait_exponential(multiplier=1, min=2, max=30),  # 指数退避：2, 4, 8... 最大30秒
-        retry=retry_if_exception_type((ConnectionError, TimeoutError)),
+        # Only connection blips are worth retrying. A ``TimeoutError`` here is
+        # raised by ``_akshare_call_with_timeout`` *after* the full per-call
+        # budget was already spent, so retrying triples the wall-clock cost
+        # (30s -> ~96s) and still ends in the same place. It also escaped as a
+        # ``RetryError`` instead of the original type, hiding the real reason.
+        retry=retry_if_exception_type(ConnectionError),
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     def _fetch_raw_data(self, stock_code: str, start_date: str, end_date: str) -> pd.DataFrame:
@@ -645,12 +650,19 @@ class AkshareFetcher(BaseFetcher):
             import time as _time
             api_start = _time.time()
 
-            df = ak.stock_zh_a_hist(
+            # ``stock_zh_a_hist`` is the primary A-share daily channel and can hang
+            # like every other akshare endpoint; the sina/tx siblings below already
+            # run under this wrapper. Without it a hang here strands the whole
+            # failover chain, because the manager has no per-request budget.
+            df = _akshare_call_with_timeout(
+                ak.stock_zh_a_hist,
+                timeout=self._history_call_timeout,
+                call_name="ak.stock_zh_a_hist",
                 symbol=stock_code,
                 period="daily",
                 start_date=start_date.replace('-', ''),
                 end_date=end_date.replace('-', ''),
-                adjust="qfq"
+                adjust="qfq",
             )
 
             api_elapsed = _time.time() - api_start
@@ -793,12 +805,15 @@ class AkshareFetcher(BaseFetcher):
             api_start = _time.time()
             
             # 调用 akshare 获取 ETF 日线数据
-            df = ak.fund_etf_hist_em(
+            df = _akshare_call_with_timeout(
+                ak.fund_etf_hist_em,
+                timeout=self._history_call_timeout,
+                call_name="ak.fund_etf_hist_em",
                 symbol=stock_code,
                 period="daily",
                 start_date=start_date.replace('-', ''),
                 end_date=end_date.replace('-', ''),
-                adjust="qfq"  # 前复权
+                adjust="qfq",  # 前复权
             )
             
             api_elapsed = _time.time() - api_start
@@ -857,9 +872,12 @@ class AkshareFetcher(BaseFetcher):
             
             # 调用 akshare 获取美股日线数据
             # stock_us_daily 返回全部历史数据，后续需要按日期过滤
-            df = ak.stock_us_daily(
+            df = _akshare_call_with_timeout(
+                ak.stock_us_daily,
+                timeout=self._history_call_timeout,
+                call_name="ak.stock_us_daily",
                 symbol=symbol,
-                adjust="qfq"  # 前复权
+                adjust="qfq",  # 前复权
             )
             
             api_elapsed = _time.time() - api_start
@@ -952,12 +970,15 @@ class AkshareFetcher(BaseFetcher):
             api_start = _time.time()
             
             # 调用 akshare 获取港股日线数据
-            df = ak.stock_hk_hist(
+            df = _akshare_call_with_timeout(
+                ak.stock_hk_hist,
+                timeout=self._history_call_timeout,
+                call_name="ak.stock_hk_hist",
                 symbol=code,
                 period="daily",
                 start_date=start_date.replace('-', ''),
                 end_date=end_date.replace('-', ''),
-                adjust="qfq"  # 前复权
+                adjust="qfq",  # 前复权
             )
             
             api_elapsed = _time.time() - api_start

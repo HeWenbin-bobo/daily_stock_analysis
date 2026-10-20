@@ -106,8 +106,17 @@ def test_akshare_etf_uses_fund_etf_hist_em() -> None:
     fetcher = _make_akshare_fetcher()
     fake_akshare = types.SimpleNamespace(fund_etf_hist_em=MagicMock(return_value=_history_frame()))
 
+    def call_directly(func, *args, timeout=None, call_name="", **kwargs):
+        # The real wrapper forks a spawn context, and a MagicMock cannot cross
+        # that boundary. This test is about which akshare API the ETF route
+        # picks; the timeout contract is covered by
+        # tests/test_akshare_history_timeout.py.
+        return func(*args, **kwargs)
+
     with patch.dict(sys.modules, {"akshare": fake_akshare}):
-        with patch.object(fetcher, "_set_random_user_agent"), patch.object(
+        with patch(
+            "data_provider.akshare_fetcher._akshare_call_with_timeout", call_directly
+        ), patch.object(fetcher, "_set_random_user_agent"), patch.object(
             fetcher, "_enforce_rate_limit"
         ):
             df = fetcher._fetch_raw_data("563230", "2026-01-01", "2026-01-05")
