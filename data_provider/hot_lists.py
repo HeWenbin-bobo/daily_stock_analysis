@@ -320,9 +320,95 @@ def fetch_eastmoney_hot(n: int = 200) -> List[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# 抓取"同花顺"：使用 Playwright + 持久化浏览器上下文拉 THS 排行榜 SPA
+# 抓取"同花顺"：静态 HTML 直解（首选）→ Playwright（可选）→ akshare（兜底）
 # 替代 akshare 已下线的 stock_hot_ths_* 接口
 # ---------------------------------------------------------------------------
+# 2026-10 实测：三个 rank 页是服务端渲染的 GBK 静态表（每页 50 行），
+# 直接 GET 即可解析，不需要 Chromium。Playwright 保留为可选路径
+# （页面结构若改成前端渲染仍可用），但镜像不再依赖它。
+_THS_RANK_PAGES = (
+    ("持续放量", "http://data.10jqka.com.cn/rank/cxfl/"),
+    ("持续高", "http://data.10jqka.com.cn/rank/cxg/"),
+    ("新上榜", "http://data.10jqka.com.cn/rank/xstp/"),
+)
+_THS_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+
+
+def parse_ths_rank_html(html: str, label: str, limit: int = 200) -> List[Dict[str, Any]]:
+    """从同花顺榜单页 HTML 提取 [{code, name, rank, source}]。
+
+    表格列序固定为：序号 / 股票代码 / 股票简称 / 涨跌幅 / 最新价 / 成交量。
+    只保留主 A 股（复用 is_a_share_main，剔除 688 与北交所）。
+    """
+    import re as _re
+
+    start = html.find("<table")
+    end = html.find("</table>", start) if start >= 0 else -1
+    if start < 0 or end < 0:
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    for raw in _re.findall(r"<tr[^>]*>(.*?)</tr>", html[start:end], _re.S):
+        cells = [
+            _re.sub(r"<[^>]+>", "", cell).replace("&nbsp;", " ").strip()
+            for cell in _re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", raw, _re.S)
+        ]
+        if len(cells) < 3:
+            continue
+        code = normalize_code(cells[1])
+        if not is_a_share_main(code):
+            continue
+        rows.append({
+            "code": code,
+            "name": cells[2],
+            "rank": len(rows) + 1,
+            "source": f"同花顺热度榜({label})",
+        })
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def fetch_ths_hot_static(n: int = 200) -> List[Dict[str, Any]]:
+    """直接 GET 同花顺三个 rank 页并解析（无需 Playwright / Chromium）。"""
+    import urllib.request
+
+    rows: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    used_label = ""
+
+    for label, url in _THS_RANK_PAGES:
+        if len(rows) >= n:
+            break
+        try:
+            request = urllib.request.Request(url, headers={"User-Agent": _THS_USER_AGENT})
+            with urllib.request.urlopen(request, timeout=20) as response:
+                html = response.read().decode("gbk", "replace")
+        except Exception as e:  # noqa: BLE001 - 单页失败继续下一页
+            logger.debug("[hot_lists] THS 静态页 %s 失败: %s", url, e)
+            continue
+
+        page_rows = parse_ths_rank_html(html, label, n - len(rows))
+        for row in page_rows:
+            if row["code"] not in seen:
+                seen.add(row["code"])
+                rows.append(row)
+        if page_rows and not used_label:
+            used_label = label
+
+    if rows:
+        logger.info(
+            "[hot_lists] 同花顺热度榜 (静态): 主榜=%s, 共 %d 只",
+            used_label, len(rows),
+        )
+    else:
+        logger.warning("[hot_lists] 同花顺热度榜 (静态): 三个 rank 页都失败")
+    return rows[:n]
+
+
 def _persist_dir() -> str:
     """持久化浏览器上下文目录（用于缓存 cookies / 减少反爬）"""
     d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".cache", "ths_pw")
@@ -472,24 +558,17 @@ def fetch_ths_hot(n: int = 200) -> List[Dict[str, Any]]:
     """
     "同花顺"热度榜（外部 label 保留）。
 
-    当前实现：用 Playwright 渲染 data.10jqka.com.cn/rank/cxfl/ 等真实同花顺榜单。
-    - 主榜（持续放量，~46 只）→ 降级到 持续高 / 新上榜
-    - 历史 fallback：akshare stock_hot_ths_*d 系列（已下线，几乎不可用）
+    当前实现：三级降级
+        1. fetch_ths_hot_static —— 直接 GET 三个 rank 页解析静态表
+           （2026-10 实测可用，无需浏览器；容器镜像因此不需要 Chromium）
+        2. fetch_ths_hot_playwright —— 页面若改成前端渲染时的可选后备；
+           未安装 playwright 时只打一条 error 日志并跳过
+        3. akshare stock_hot_ths_*d / stock_hot_deal_xq —— 历史接口兜底
 
     历史问题：
         akshare 旧版提供的 stock_hot_ths_20d / 10d / 5d 系列接口
         （THS 官方热度榜）在新版 akshare 中已全部下线（AttributeError），
         导致 fetch_ths_hot 一直返回 []。
-
-    当前实现：fetch_ths_hot_playwright（headless Chromium 渲染 data.10jqka.com.cn）。
-    失败时回退到 ak.stock_hot_deal_xq（雪球 deals）。
-
-    候选接口优先级：
-        1. Playwright data.10jqka.com.cn/rank/cxfl/ (持续放量，最准)
-        2. Playwright data.10jqka.com.cn/rank/cxg/  (持续高)
-        3. Playwright data.10jqka.com.cn/rank/xstp/ (新上榜)
-        4. ak.stock_hot_ths_*d (历史，已下线)
-        5. ak.stock_hot_deal_xq (雪球 deals, 兜底)
 
     Returns:
         List[{code, name, rank, source}]，抓不到则返回 [].
@@ -499,10 +578,18 @@ def fetch_ths_hot(n: int = 200) -> List[Dict[str, Any]]:
     if cached is not None:
         return cached[:n]
 
-    # 1. 优先 Playwright（真实 THS 数据）
+    # 1. 静态 HTML 直解（首选，无浏览器依赖）
+    static_rows = fetch_ths_hot_static(n)
+    if static_rows:
+        _cache_set(cache_key, static_rows)
+        return static_rows[:n]
+
+    # 2. Playwright（可选依赖；镜像默认不装）
+    logger.debug("[hot_lists] THS 静态解析失败，尝试 Playwright")
     pw_rows = fetch_ths_hot_playwright(n)
     if pw_rows:
-        return pw_rows
+        _cache_set(cache_key, pw_rows)
+        return pw_rows[:n]
 
     logger.debug("[hot_lists] Playwright 抓同花顺失败，回退到 akshare 历史接口")
 
