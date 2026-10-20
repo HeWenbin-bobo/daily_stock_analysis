@@ -19,6 +19,11 @@ from core.data_source import fetch_quote_with_fallback, fetch_quotes_bulk, is_mo
 logger = logging.getLogger(__name__)
 
 INITIAL_CAPITAL_DEFAULT = 1_000_000.0
+
+# 哨兵：区分"调用方没传基准行情（自行现取）"与"调用方传了 None（已取过但失败）"。
+# 用 None 当"未传"会让 settle_daily 在所有源都失败时退回逐账户重取 ——
+# 恰恰是最慢的场景。见 take_snapshot 的 docstring。
+_UNSET_BENCHMARK: Any = object()
 # 初始资金上限：与 place_order / add_holding 的 1e9 护栏同量级。
 # 旧实现只校验 > 0，`initial_capital=1e300` 会被接受并直接成为排行榜榜首
 # （实测 leaderboard 返回 total_equity=1e300 / total_return_pct=0.0），
@@ -535,7 +540,7 @@ def take_snapshot(
     account_id: int,
     snapshot_date: Optional[str] = None,
     *,
-    benchmark_quote: Optional[Dict[str, Any]] = None,
+    benchmark_quote: Any = _UNSET_BENCHMARK,
 ) -> Dict[str, Any]:
     """每日快照：记录总资产、持仓市值、现金、沪深 300
 
@@ -564,8 +569,9 @@ def take_snapshot(
     #   快照本身（总资产/持仓市值/现金）是真实数据，盲目跳过会让用户的每日持仓记录中断；
     #   只把不可信的基准部分置零并打 is_mock 标记，前端就能区分"基准有/无"。
     benchmark_raw = (
-        benchmark_quote if benchmark_quote is not None
-        else fetch_quote_with_fallback("000300")
+        fetch_quote_with_fallback("000300")
+        if benchmark_quote is _UNSET_BENCHMARK
+        else benchmark_quote
     )
     benchmark_is_mock = bool(benchmark_raw and is_mock_payload(benchmark_raw))
     if benchmark_is_mock:

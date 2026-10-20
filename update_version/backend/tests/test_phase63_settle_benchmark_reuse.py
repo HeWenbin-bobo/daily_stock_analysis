@@ -69,5 +69,56 @@ def test_take_snapshot_still_fetches_when_called_alone(monkeypatch) -> None:
     assert doc["benchmark_equity"] == pytest.approx(1010.0)
 
 
+def test_settle_daily_fetches_once_even_when_the_benchmark_fails(monkeypatch) -> None:
+    """A failed benchmark fetch must also not be retried per account.
+
+    ``fetch_quote_with_fallback`` returns ``None`` when every source fails — the
+    slowest case of all. Passing ``None`` as "already tried" needs a sentinel,
+    otherwise ``take_snapshot`` treats it as "not supplied" and each account
+    retries the whole fallback chain again.
+    """
+    accounts = _fake_accounts(5)
+    calls: list[str] = []
+    seen: list[object] = []
+
+    def _failing_quote(code):
+        calls.append(code)
+        return None  # 全源失败
+
+    def _snapshot(aid, date, **kw):
+        seen.append(kw.get("benchmark_quote", "MISSING"))
+        return {"account_id": aid}
+
+    monkeypatch.setattr(pt, "list_accounts", lambda: accounts)
+    monkeypatch.setattr(pt, "is_portfolio_account", lambda _aid: False)
+    monkeypatch.setattr(pt, "fetch_quote_with_fallback", _failing_quote)
+    monkeypatch.setattr(pt, "take_snapshot", _snapshot)
+
+    pt.settle_daily()
+
+    assert calls == ["000300"], f"retried the benchmark {len(calls)} times: {calls}"
+    assert seen and all(v is None for v in seen), (
+        "each account must receive the already-failed benchmark (None), not a re-fetch"
+    )
+
+
+def test_take_snapshot_refetches_when_no_benchmark_supplied(monkeypatch) -> None:
+    """The sentinel must not swallow the standalone call path."""
+    fetched: list[str] = []
+
+    def _quote(code):
+        fetched.append(code)
+        return {"code": code, "price": 4000.0, "change_pct": 1.0, "source": "test"}
+
+    monkeypatch.setattr(pt, "get_account", lambda _aid: {"id": 1, "cash": 1000.0, "initial_capital": 1000.0})
+    monkeypatch.setattr(pt, "get_positions", lambda _aid: [])
+    monkeypatch.setattr(pt, "fetch_quote_with_fallback", _quote)
+    monkeypatch.setattr(pt, "_persist_snapshot", lambda *a, **k: None, raising=False)
+
+    pt.take_snapshot(1)
+
+    assert fetched == ["000300"], f"standalone snapshot did not fetch: {fetched}"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
