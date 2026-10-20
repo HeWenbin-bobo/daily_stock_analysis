@@ -64,6 +64,42 @@ def _split_by_date(kline: List[Dict[str, Any]], ratio: float = TEST_SPLIT_RATIO)
     return kline[:cut], kline[cut:]
 
 
+# MACD 需要 26 根算 EMA + 9 根算 signal 线，前 34 根在预热期
+_MACD_WARMUP = 26 + 9
+
+
+def _oos_warmup_bars(
+    train: List[Dict[str, Any]],
+    test: List[Dict[str, Any]],
+    dsl: Dict[str, Any],
+) -> int:
+    """样本外回测需要的指标预热根数（从 train 尾部借）。
+
+    ★ 探索期修复(样本外指标失真)：见调用处注释。这里按 DSL 实际引用的指标
+      算出最短预热窗口，再取 min(该值, len(train))。上限只看 train —— 预热段
+      是从 train 尾部借来的，test 的每一根 bar 依然会被评估（warmup_bars
+      只跳过前缀），所以不需要、也不应该拿 len(test) 去压这个值：
+      那样 MA120 这类周期会因 test 只有 100 根而永远算不出指标（实测 0 笔交易）。
+    """
+    max_period = 0
+    for cond in (dsl.get("entry") or []) + (dsl.get("exit") or []):
+        if not isinstance(cond, dict):
+            continue
+        indicator = cond.get("indicator")
+        if indicator == "macd":
+            max_period = max(max_period, _MACD_WARMUP)
+            continue
+        if indicator not in ("ma", "ema", "rsi", "volume_ratio"):
+            continue
+        try:
+            max_period = max(max_period, int(cond.get("period", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+    if max_period <= 0:
+        return 0
+    return max(0, min(max_period, len(train)))
+
+
 def _build_search_space(dsl: Dict[str, Any]) -> List[Dict[str, Any]]:
     """解析 DSL，返回参数声明列表 [{key, kind, low, high}]。
     key 形如 "entry.0.value" / "stop_loss_pct"，kind ∈ int|float。"""
@@ -348,7 +384,22 @@ def run_hyperopt(
         dsl_best = _apply_params(dsl, best_params)
         train_metrics = be._execute_backtest(train, dsl_best, initial_capital=1000000.0)
         # 样本外验证（test 段）
-        oos_metrics = be._execute_backtest(test, dsl_best, initial_capital=1000000.0)
+        # ★ 探索期修复(样本外指标失真)：旧实现把**裸 test 段**直接丢进回测。
+        #   指标需要预热窗口（MA60 要 60 根），而 test 只占全量的
+        #   TEST_SPLIT_RATIO（20%）—— 500 根 K 线时 test 只有 100 根，
+        #   其中 60 根被预热吃掉，真正能交易的只剩 40 根。
+        #   实测（同一策略、同一参数）：MA60 裸跑 11 笔，带预热 28 笔。
+        #   样本外指标本是用户判断过拟合的唯一依据，缩水一半会直接误导结论。
+        #   复用 run_backtest 的既有约定：拿 train 尾部作预热前缀，
+        #   并让这部分只喂指标、不产生交易。
+        oos_warmup = _oos_warmup_bars(train, test, dsl_best)
+        if oos_warmup:
+            oos_metrics = be._execute_backtest(
+                train[-oos_warmup:] + test, dsl_best,
+                initial_capital=1000000.0, warmup_bars=oos_warmup,
+            )
+        else:
+            oos_metrics = be._execute_backtest(test, dsl_best, initial_capital=1000000.0)
         oos_loss = LOSS_FUNCTIONS[loss_fn](oos_metrics)
     except Exception as exc:
         logger.exception("hyperopt run %s failed after search: %s", run_id, exc)

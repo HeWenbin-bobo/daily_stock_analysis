@@ -459,7 +459,16 @@ def _execute_backtest(
         period = int((cond or {}).get("period", 0) or 0)
         if not ind or period <= 0:
             continue
-        if ind == "ema" and f"ema_{period}" not in indicators and len(closes) >= period:
+        # ★ 探索期修复(策略静默不交易)：上面预计算的 MA 只覆盖固定 8 个周期
+        #   （[5,10,12,14,20,26,30,60]），而 DSL 的 period 允许 1..250。
+        #   按需补算分支此前只写了 ema/rsi/volume_ratio，**唯独漏了 ma** ——
+        #   于是 `ma(period=90)` / `ma(period=120)` 这类合法策略取不到指标，
+        #   `_eval_condition` 恒返回 False，回测"成功"但 0 笔交易，
+        #   hyperopt 也把它当作合法参数组合。实测：ma20/30/60 各 96-108 笔，
+        #   ma90/120 全部 0 笔。
+        if ind == "ma" and f"ma_{period}" not in indicators and len(closes) >= period:
+            indicators[f"ma_{period}"] = _ma(closes, period)
+        elif ind == "ema" and f"ema_{period}" not in indicators and len(closes) >= period:
             indicators[f"ema_{period}"] = _ema(closes, period)
         elif ind == "rsi" and f"rsi_{period}" not in indicators and len(closes) >= period + 1:
             indicators[f"rsi_{period}"] = _rsi(closes, period)
