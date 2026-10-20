@@ -506,6 +506,41 @@ def _main_task(task_id: str):
         return None
 
 
+def _build_run_request(src: dict) -> Any:
+    """从 payload/config 构造主项目的 HotAnalysisRunRequest。
+
+    ★ 探索期修复(500)：`_RunReq(...)` 是 pydantic 模型，字段类型/范围不合法时
+      抛 `ValidationError`。两个调用点都在 `except Exception` 里兜成 500 ——
+      实测 `{"hot_list_n":[200]}` 返回 500 "启动失败"。参数错必须是 400，
+      否则用户永远不知道是自己传错了。
+    """
+    from api.v1.schemas.hot_analysis import HotAnalysisRunRequest as _RunReq
+
+    assert isinstance(src, dict), "payload must be a dict"
+    try:
+        return _RunReq(
+            hot_list_n=src.get("hot_list_n", 200),
+            max_intersection=src.get("max_intersection", 10),
+            exclude_kechuang=src.get("exclude_kechuang", True),
+            rounds=src.get("rounds", 3),
+            max_runtime_seconds=src.get("max_runtime_seconds", 600),
+            inter_round_sleep=src.get("inter_round_sleep", 0.6),
+            simple_report=src.get("simple_report", True),
+            llm_timeout_seconds=src.get("llm_timeout_seconds", 180),
+            min_score=src.get("min_score", 60),
+            allowed_advice=src.get("allowed_advice", ["买入", "加仓", "持有"]),
+            exclude_keywords=src.get("exclude_keywords", ["卖出", "减仓"]),
+            require_all_rounds=src.get("require_all_rounds", True),
+            max_concurrency=src.get("max_concurrency", 1),
+        )
+    except Exception as exc:
+        # pydantic 的 ValidationError 消息对用户可读性尚可（含字段名与原因）
+        detail = str(exc)
+        if len(detail) > 400:
+            detail = detail[:400] + "…"
+        raise HTTPException(400, f"分析参数不合法: {detail}")
+
+
 # ★ 探索期修复：后台分析任务此前**没有并发上限**。
 #   限流是 3 次/分钟/IP，但换 IP / 多用户即可累积；而每个任务最长可跑
 #   max_runtime_seconds（默认 10800s = 3h，上限 200000s ≈ 55h），
@@ -615,22 +650,8 @@ async def hot_analysis_run_async(payload: dict, request: Request = None):
             raise HTTPException(429, f"限流，{retry}s 后重试")
     try:
         _hot_mod = _load_main_hot_analysis()
-        from api.v1.schemas.hot_analysis import HotAnalysisRunRequest as _RunReq
-        req = _RunReq(
-            hot_list_n=payload.get("hot_list_n", 200),
-            max_intersection=payload.get("max_intersection", 10),
-            exclude_kechuang=payload.get("exclude_kechuang", True),
-            rounds=payload.get("rounds", 3),
-            max_runtime_seconds=payload.get("max_runtime_seconds", 600),
-            inter_round_sleep=payload.get("inter_round_sleep", 0.6),
-            simple_report=payload.get("simple_report", True),
-            llm_timeout_seconds=payload.get("llm_timeout_seconds", 180),
-            min_score=payload.get("min_score", 60),
-            allowed_advice=payload.get("allowed_advice", ["买入", "加仓", "持有"]),
-            exclude_keywords=payload.get("exclude_keywords", ["卖出", "减仓"]),
-            require_all_rounds=payload.get("require_all_rounds", True),
-            max_concurrency=payload.get("max_concurrency", 1),
-        )
+        # ★ 探索期修复(500→400)：见 _build_run_request 的说明
+        req = _build_run_request(payload)
         # ★ 探索期修复：并发上限（见 _running_analysis_count 的注释）。
         running = _running_analysis_count(_hot_mod)
         if running >= _MAX_CONCURRENT_ANALYSES:
