@@ -311,22 +311,9 @@ def hot_analysis_run(payload: dict, request: Request = None):
         # ★ 迭代4：统一走 _import_main_hot_analysis（快照/恢复 v4 api.*，
         #   主项目根强制提到 sys.path[0]）
         _hot_mod, _schemas_mod = _import_main_hot_analysis()
-        _RunReq = _schemas_mod.HotAnalysisRunRequest
-        req = _RunReq(
-            hot_list_n=payload.get("hot_list_n", 200),
-            max_intersection=payload.get("max_intersection", 10),
-            exclude_kechuang=payload.get("exclude_kechuang", True),
-            rounds=payload.get("rounds", 3),
-            max_runtime_seconds=payload.get("max_runtime_seconds", 600),
-            inter_round_sleep=payload.get("inter_round_sleep", 0.6),
-            simple_report=payload.get("simple_report", True),
-            llm_timeout_seconds=payload.get("llm_timeout_seconds", 180),
-            min_score=payload.get("min_score", 60),
-            allowed_advice=payload.get("allowed_advice", ["买入", "加仓", "持有"]),
-            exclude_keywords=payload.get("exclude_keywords", ["卖出", "减仓"]),
-            require_all_rounds=payload.get("require_all_rounds", True),
-            max_concurrency=payload.get("max_concurrency", 1),
-        )
+        # ★ 探索期修复(500→400)：同 run-async —— pydantic 校验失败是调用方
+        #   传参错误（实测 `{"hot_list_n":[200]}` → 500），应回 400。
+        req = _build_run_request(payload, schema=_schemas_mod.HotAnalysisRunRequest)
         try:
             loop = asyncio.new_event_loop()
             result = loop.run_until_complete(_hot_mod.run_hot_analysis(req))
@@ -369,6 +356,11 @@ def hot_analysis_run(payload: dict, request: Request = None):
         return result
     except ImportError:
         raise HTTPException(503, "hot_list_runner not available")
+    except HTTPException:
+        # ★ 探索期修复(400 被吞成 500)：内层的 504 超时与 _build_run_request
+        #   抛出的 400 都是有意为之的 HTTP 语义，不能被下面的兜底改写成 500
+        #   （实测 `{"hot_list_n":[200]}` 返回 500 "运行失败: 400: ..."）。
+        raise
     except Exception as e:
         logger.exception("hot-analysis run failed: %s", e)
         raise HTTPException(500, f"运行失败: {str(e)[:200]}")
@@ -506,19 +498,23 @@ def _main_task(task_id: str):
         return None
 
 
-def _build_run_request(src: dict) -> Any:
+def _build_run_request(src: dict, *, schema: Any = None) -> Any:
     """从 payload/config 构造主项目的 HotAnalysisRunRequest。
 
     ★ 探索期修复(500)：`_RunReq(...)` 是 pydantic 模型，字段类型/范围不合法时
-      抛 `ValidationError`。两个调用点都在 `except Exception` 里兜成 500 ——
+      抛 `ValidationError`。调用点都在 `except Exception` 里兜成 500 ——
       实测 `{"hot_list_n":[200]}` 返回 500 "启动失败"。参数错必须是 400，
       否则用户永远不知道是自己传错了。
+
+    schema: 可显式传入已加载的 HotAnalysisRunRequest（`_import_main_hot_analysis`
+      拿到的那个），省略时按常规 import 取。
     """
-    from api.v1.schemas.hot_analysis import HotAnalysisRunRequest as _RunReq
+    if schema is None:
+        from api.v1.schemas.hot_analysis import HotAnalysisRunRequest as schema
 
     assert isinstance(src, dict), "payload must be a dict"
     try:
-        return _RunReq(
+        return schema(
             hot_list_n=src.get("hot_list_n", 200),
             max_intersection=src.get("max_intersection", 10),
             exclude_kechuang=src.get("exclude_kechuang", True),
