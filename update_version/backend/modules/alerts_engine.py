@@ -150,6 +150,11 @@ def create_rule(
         raise ValueError(unavailable)
     # ★ v2 迭代2 CRITICAL 回归修复：入库前校验 params 数值字段（非法值如 multiplier="abc" 直接拒绝）
     validate_rule_params(rule_type, params)
+    # ★ 探索期修复(异动规则静默失效)：`params=None` 旧实现写成 JSON 字面量
+    #   "null"，读回来是 None，评估器第一句 `params.get(...)` 直接抛
+    #   AttributeError。读取端已兜底（_parse_rule_params），这里把写入端也
+    #   归一化，新数据不再产生 "null" 行。
+    params = params or {}
     cooldown_minutes = _validate_cooldown(cooldown_minutes)
     conn = get_conn()
     cur = conn.cursor()
