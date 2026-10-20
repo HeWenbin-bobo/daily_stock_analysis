@@ -87,6 +87,18 @@ def _setup_fake_thread_capture():
     return _fake_thread_ctor, captured
 
 
+# ★ 探索期修复：`patch("core.cron.threading.Thread")` 改的是 threading 模块上的
+#   **全局**属性，因此进程里任何新起的线程都会被这个 mock 捕获 —— 包括
+#   `core.data_source.call_with_timeout` 为 akshare 调用开的硬超时线程。
+#   这些断言想问的是"catchup 起了几个后台线程"，不是"进程里有没有别的线程"，
+#   所以按线程名过滤。
+_CATCHUP_THREAD_NAME = "market-review-catchup"
+
+
+def _catchup_threads(captured):
+    return [t for t in captured if t._name == _CATCHUP_THREAD_NAME]
+
+
 # ============================================================================
 # 1. is_trading_day：真实解析 akshare 返回值
 # ============================================================================
@@ -336,8 +348,9 @@ def test_catchup_runs_when_past_10am_and_no_record():
         fake_thread_ctor=fake_ctor,
     )
     # ★ 真实执行：thread.start() 真的调了 target → target 调了 run_market_review_daily
-    assert len(captured) == 1, f"expected 1 thread, got {len(captured)}"
-    th = captured[0]
+    ours = _catchup_threads(captured)
+    assert len(ours) == 1, f"expected 1 catchup thread, got {len(ours)} of {len(captured)}"
+    th = ours[0]
     assert th._daemon is True, f"daemon flag wrong: {th._daemon}"
     assert callable(th._target), "target 未传入"
     # history_mod.get_market_review 被调用过
@@ -383,7 +396,9 @@ def test_catchup_skips_when_today_status_degraded():
         history_mod=history_mod,
         fake_thread_ctor=fake_ctor,
     )
-    assert captured == [], f"degraded 记录不应补跑，但起了 {len(captured)} 个线程"
+    assert _catchup_threads(captured) == [], (
+        f"degraded 记录不应补跑，但起了 {len(_catchup_threads(captured))} 个 catchup 线程"
+    )
     history_mod.get_market_review.assert_called_once_with("2026-08-14")
     print("OK catchup: status=degraded → 不补跑（★ 本轮回归点）")
 
@@ -401,7 +416,9 @@ def test_catchup_runs_when_today_status_failed():
         history_mod=history_mod,
         fake_thread_ctor=fake_ctor,
     )
-    assert len(captured) == 1
+    assert len(_catchup_threads(captured)) == 1, (
+        f"expected 1 catchup thread, got {len(_catchup_threads(captured))}"
+    )
     history_mod.get_market_review.assert_called_once_with("2026-08-14")
     print("OK catchup: status=failed → 补跑")
 

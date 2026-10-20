@@ -23,6 +23,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# ★ 探索期修复(定时任务被挂起的上游拖死)：本模块直接调 akshare 抓指数/全市场/
+#   板块，akshare 没有内部超时。这几条链路是大盘复盘的必经步骤，实测一轮复盘
+#   78.5s；一旦某个 socket 挂住，10:00/18:00 的 cron 任务会永久占住
+#   max_instances=1 的槽位，之后每次触发都被跳过且只留一条 WARNING。
+#   120s 覆盖实测最慢的全市场抓取（14.9s）并留足余量。
+_AK_FETCH_TIMEOUT = 120.0
+
 
 # 国内主要关注指数（名称匹配 stock_zh_index_spot_sina）
 _DEFAULT_INDICES: List[Tuple[str, str]] = [
@@ -139,7 +146,13 @@ def _fetch_indices() -> Tuple[Dict[str, Any], Optional[str]]:
     try:
         import akshare as ak
         # 1.18.63: stock_zh_index_spot_sina() 不再支持 symbol 参数
-        df = ak.stock_zh_index_spot_sina()
+        # ★ 探索期修复(定时任务被挂起的上游拖死)：akshare 无内部超时，这条链路
+        #   是 10:00/18:00 大盘复盘的第一步。一旦 socket 挂住，任务永不返回，
+        #   APScheduler max_instances=1 会把之后每次触发都跳过。
+        from core.data_source import call_with_timeout
+        df = call_with_timeout(
+            ak.stock_zh_index_spot_sina, _AK_FETCH_TIMEOUT, "stock_zh_index_spot_sina"
+        )
     except Exception as exc:
         logger.warning("[market_review] 抓指数行情失败: %s", exc)
         return out, f"stock_zh_index_spot_sina: {exc}"
@@ -197,7 +210,11 @@ def _fetch_full_market_snapshot() -> Tuple[List[Dict[str, Any]], Optional[str], 
     try:
         import akshare as ak
         # 1.18.63: stock_zh_a_spot_em() 远端断开; stock_zh_a_spot() 仍可用
-        df = ak.stock_zh_a_spot()
+        # ★ 探索期修复：同指数路径，必须封顶（实测这一步 14.9s，且无内部超时）
+        from core.data_source import call_with_timeout
+        df = call_with_timeout(
+            ak.stock_zh_a_spot, _AK_FETCH_TIMEOUT, "stock_zh_a_spot"
+        )
     except Exception as exc:
         logger.warning("[market_review] 抓全市场行情失败: %s", exc)
         return [], f"stock_zh_a_spot: {exc}", time.time() - started
@@ -241,7 +258,13 @@ def _fetch_sector_board(indicator: str) -> Tuple[List[Dict[str, Any]], Optional[
     """
     try:
         import akshare as ak
-        df = ak.stock_sector_spot(indicator=indicator)
+        # ★ 探索期修复：同指数路径，板块抓取也必须封顶
+        from core.data_source import call_with_timeout
+        df = call_with_timeout(
+            lambda: ak.stock_sector_spot(indicator=indicator),
+            _AK_FETCH_TIMEOUT,
+            f"stock_sector_spot({indicator!r})",
+        )
     except Exception as exc:
         logger.warning("[market_review] 抓%s板块失败: %s", indicator, exc)
         return [], f"stock_sector_spot(indicator={indicator!r}): {exc}"
