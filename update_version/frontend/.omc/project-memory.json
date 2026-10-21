@@ -127,8 +127,8 @@
   "hotPaths": [
     {
       "path": "src/composables/useHotAnalysis.ts",
-      "accessCount": 64,
-      "lastAccessed": 1787764598613,
+      "accessCount": 67,
+      "lastAccessed": 1792511710033,
       "type": "file"
     },
     {

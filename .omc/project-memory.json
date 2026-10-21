@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1787797573048,
-  "projectRoot": "F:\\daily_stock_analysis_v2",
+  "lastScanned": 1792469785752,
+  "projectRoot": "F:\\daily_stock_analysis",
   "techStack": {
     "languages": [
       {
@@ -49,7 +49,10 @@
       "static",
       "tests"
     ],
-    "gitBranches": null
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
   },
   "customNotes": [],
   "directoryMap": {
@@ -57,7 +60,7 @@
       "path": "api",
       "purpose": "API routes",
       "fileCount": 3,
-      "lastAccessed": 1787797572204,
+      "lastAccessed": 1792469785628,
       "keyFiles": [
         "app.py",
         "deps.py",
@@ -68,14 +71,14 @@
       "path": "apps",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1787797572204,
+      "lastAccessed": 1792469785628,
       "keyFiles": []
     },
     "bot": {
       "path": "bot",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1787797572239,
+      "lastAccessed": 1792469785646,
       "keyFiles": [
         "dispatcher.py",
         "handler.py",
@@ -83,21 +86,37 @@
         "__init__.py"
       ]
     },
+    "daily_stock_analysis": {
+      "path": "daily_stock_analysis",
+      "purpose": null,
+      "fileCount": 20,
+      "lastAccessed": 1792469785647,
+      "keyFiles": [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "daily_stock.bat",
+        "LICENSE",
+        "main.py"
+      ]
+    },
     "data": {
       "path": "data",
       "purpose": "Data files",
-      "fileCount": 3,
-      "lastAccessed": 1787797572241,
+      "fileCount": 10,
+      "lastAccessed": 1792469785648,
       "keyFiles": [
         "history.db",
-        "stock_analysis.db"
+        "market_review.lock",
+        "stock_analysis.db",
+        "stock_analysis.history.db",
+        "test_cron.db"
       ]
     },
     "data_provider": {
       "path": "data_provider",
       "purpose": null,
-      "fileCount": 20,
-      "lastAccessed": 1787797572243,
+      "fileCount": 23,
+      "lastAccessed": 1792469785648,
       "keyFiles": [
         "adaptive_throttle.py",
         "akshare_fetcher.py",
@@ -109,32 +128,40 @@
     "docker": {
       "path": "docker",
       "purpose": null,
-      "fileCount": 3,
-      "lastAccessed": 1787797572243,
+      "fileCount": 4,
+      "lastAccessed": 1792469785648,
       "keyFiles": [
         "docker-compose.yml",
         "Dockerfile",
-        "entrypoint.sh"
+        "entrypoint.sh",
+        "healthcheck.py"
       ]
     },
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
-      "fileCount": 39,
-      "lastAccessed": 1787797572243,
+      "fileCount": 52,
+      "lastAccessed": 1792469785649,
       "keyFiles": [
         "agent-stream-events.md",
+        "agent-trajectory-eval.md",
         "alerts.md",
-        "alphasift-integration.md",
         "analysis-context-pack.md",
         "beginner-client-setup.md"
       ]
     },
+    "evals": {
+      "path": "evals",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1792469785649,
+      "keyFiles": []
+    },
     "logs": {
       "path": "logs",
       "purpose": null,
-      "fileCount": 72,
-      "lastAccessed": 1787797572244,
+      "fileCount": 122,
+      "lastAccessed": 1792469785651,
       "keyFiles": [
         "api_server_20260703.log",
         "api_server_20260705.log",
@@ -143,24 +170,31 @@
         "api_server_20260709.log"
       ]
     },
+    "longbridge_tokens": {
+      "path": "longbridge_tokens",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1792469785651,
+      "keyFiles": []
+    },
     "reports": {
       "path": "reports",
       "purpose": null,
-      "fileCount": 9,
-      "lastAccessed": 1787797572252,
+      "fileCount": 29,
+      "lastAccessed": 1792469785652,
       "keyFiles": [
+        "etf_rotation_20261013.md",
+        "etf_rotation_20261016.md",
         "market_review_20260522.md",
         "market_review_20260617.md",
-        "market_review_20260622.md",
-        "market_review_20260623.md",
-        "market_review_20260624.md"
+        "market_review_20260622.md"
       ]
     },
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 22,
-      "lastAccessed": 1787797572259,
+      "fileCount": 25,
+      "lastAccessed": 1792469785652,
       "keyFiles": [
         "build-all-macos.sh",
         "build-all.ps1",
@@ -172,8 +206,8 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 29,
-      "lastAccessed": 1787797572305,
+      "fileCount": 30,
+      "lastAccessed": 1792469785653,
       "keyFiles": [
         "analysis_context_pack_overview.py",
         "analysis_context_pack_prompt.py",
@@ -185,9 +219,10 @@
     "static": {
       "path": "static",
       "purpose": "Static files",
-      "fileCount": 3,
-      "lastAccessed": 1787797572305,
+      "fileCount": 4,
+      "lastAccessed": 1792469785654,
       "keyFiles": [
+        "build-info.json",
         "index.html",
         "stocks.index.json",
         "vite.svg"
@@ -197,14 +232,14 @@
       "path": "stock_analysis",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1787797572306,
+      "lastAccessed": 1792469785654,
       "keyFiles": []
     },
     "strategies": {
       "path": "strategies",
       "purpose": null,
       "fileCount": 16,
-      "lastAccessed": 1787797572318,
+      "lastAccessed": 1792469785655,
       "keyFiles": [
         "bottom_volume.yaml",
         "box_oscillation.yaml",
@@ -217,7 +252,7 @@
       "path": "templates",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1787797572334,
+      "lastAccessed": 1792469785656,
       "keyFiles": [
         "report_brief.j2",
         "report_markdown.j2",
@@ -228,44 +263,25 @@
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 250,
-      "lastAccessed": 1787797572357,
+      "fileCount": 302,
+      "lastAccessed": 1792469785657,
       "keyFiles": [
         "conftest.py",
         "litellm_stub.py",
         "longbridge_live_smoke.py",
-        "test_agent_backend.py",
-        "test_agent_backend_status_service.py"
+        "sqlite_helper.py",
+        "test_agent_active_stock_integration.py"
       ]
     },
     "update_version": {
       "path": "update_version",
       "purpose": null,
-      "fileCount": 5,
-      "lastAccessed": 1787797572383,
+      "fileCount": 6,
+      "lastAccessed": 1792469785658,
       "keyFiles": [
-        "README.md",
-        "start_hot_analysis.bat",
-        "stop_hot_analysis.bat",
-        "__init__.py"
-      ]
-    },
-    "update_version_v2": {
-      "path": "update_version_v2",
-      "purpose": null,
-      "fileCount": 3,
-      "lastAccessed": 1787797572442,
-      "keyFiles": [
-        "README.md",
-        "__init__.py"
-      ]
-    },
-    "update_version_v3": {
-      "path": "update_version_v3",
-      "purpose": null,
-      "fileCount": 3,
-      "lastAccessed": 1787797572459,
-      "keyFiles": [
+        "docker-compose.yml",
+        "Dockerfile",
+        "LOOP_STATE.md",
         "README.md",
         "__init__.py"
       ]
@@ -273,108 +289,57 @@
     "__pycache__": {
       "path": "__pycache__",
       "purpose": null,
-      "fileCount": 2,
-      "lastAccessed": 1787797572496,
+      "fileCount": 3,
+      "lastAccessed": 1792469785658,
       "keyFiles": [
         "main.cpython-312.pyc",
-        "server.cpython-312.pyc"
+        "server.cpython-312.pyc",
+        "webui.cpython-312.pyc"
       ]
     },
     "docs\\assets": {
       "path": "docs\\assets",
       "purpose": "Static assets",
       "fileCount": 20,
-      "lastAccessed": 1787797572591,
+      "lastAccessed": 1792469785661,
       "keyFiles": [
         "2026-01-10_155341_daily_analysis.gif",
         "alert-center-p5-web.png",
         "alipay.jpg"
       ]
     },
-    "src\\data": {
-      "path": "src\\data",
-      "purpose": "Data files",
-      "fileCount": 3,
-      "lastAccessed": 1787797572651,
-      "keyFiles": [
-        "stock_index_loader.py",
-        "stock_mapping.py",
-        "__init__.py"
-      ]
+    "src\\assets": {
+      "path": "src\\assets",
+      "purpose": "Static assets",
+      "fileCount": 0,
+      "lastAccessed": 1792469785662,
+      "keyFiles": []
     },
     "static\\assets": {
       "path": "static\\assets",
       "purpose": "Static assets",
-      "fileCount": 40,
-      "lastAccessed": 1787797572666,
+      "fileCount": 45,
+      "lastAccessed": 1792469785663,
       "keyFiles": [
-        "AlertsPage-CSdIHnxq.js",
-        "AppPage-BbMIYu_F.js",
-        "BacktestPage-DiDcbSr5.js"
+        "AlertsPage-CsI1Jv1W.js",
+        "AppPage-G2MMhfID.js",
+        "BacktestPage-B9rtTOKV.js"
       ]
     },
     "tests\\fixtures": {
       "path": "tests\\fixtures",
       "purpose": "Test fixtures",
       "fileCount": 0,
-      "lastAccessed": 1787797572779,
+      "lastAccessed": 1792469785664,
       "keyFiles": []
     },
     "update_version\\data": {
       "path": "update_version\\data",
       "purpose": "Data files",
       "fileCount": 1,
-      "lastAccessed": 1787797572860,
+      "lastAccessed": 1792469785664,
       "keyFiles": [
         "history.db"
-      ]
-    },
-    "update_version\\services": {
-      "path": "update_version\\services",
-      "purpose": "Business logic services",
-      "fileCount": 2,
-      "lastAccessed": 1787797572873,
-      "keyFiles": [
-        "market_review_service.py",
-        "__init__.py"
-      ]
-    },
-    "update_version_v2\\data": {
-      "path": "update_version_v2\\data",
-      "purpose": "Data files",
-      "fileCount": 1,
-      "lastAccessed": 1787797572936,
-      "keyFiles": [
-        "history.db"
-      ]
-    },
-    "update_version_v3\\data": {
-      "path": "update_version_v3\\data",
-      "purpose": "Data files",
-      "fileCount": 1,
-      "lastAccessed": 1787797572972,
-      "keyFiles": [
-        "history.db"
-      ]
-    },
-    "update_version_v3\\services": {
-      "path": "update_version_v3\\services",
-      "purpose": "Business logic services",
-      "fileCount": 2,
-      "lastAccessed": 1787797573016,
-      "keyFiles": [
-        "market_review_service.py",
-        "__init__.py"
-      ]
-    },
-    "update_version_v3\\tests": {
-      "path": "update_version_v3\\tests",
-      "purpose": "Test files",
-      "fileCount": 2,
-      "lastAccessed": 1787797573036,
-      "keyFiles": [
-        "test_hot_analysis.py",
-        "__init__.py"
       ]
     }
   },
