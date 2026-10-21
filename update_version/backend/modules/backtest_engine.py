@@ -3,7 +3,11 @@
 策略回测引擎
 - 用户写自然语言策略 → LLM 编译成 DSL（JSON 描述的指标 + 阈值）
 - 在历史 K 线上跑 → 输出：总收益/年化/夏普/最大回撤/胜率
-- 支持 walk-forward 验证
+
+注意：**不提供 walk-forward 分段验证**。`run_backtest(walk_forward_windows=N)`
+在 N != 1 时直接报「尚未实现」而不是静默忽略——旧 docstring 曾写作
+"支持 walk-forward 验证"，与实现矛盾，已更正。跨段稳定性目前只能通过
+hyperopt 的 train/test 切分（前 80% / 后 20%）间接观察。
 """
 import time
 import json
