@@ -660,17 +660,26 @@ def add_channel(
             return cur.lastrowid or 0
     except Exception as e:
         # unique 冲突 → update
+        #
+        # ★ 注意：这里必须开**新**连接。`with _conn()` 块退出时已经把连接关掉了，
+        #   继续用上面那个 `cur` 会抛 `ProgrammingError: Cannot operate on a
+        #   closed database` —— 这正是把 try/finally 改成 with 时踩到的坑，
+        #   由 test_phase2_smoke::test_add_channel_unique_constraint_update 抓住。
         if "UNIQUE" in str(e):
-            cur.execute(
-                """UPDATE notification_channel SET target_encrypted=?, enabled=?,
-                   quiet_hours_start=?, quiet_hours_end=?, updated_at=?
-                   WHERE user_id=? AND channel_type=?""",
-                (encrypted, 1 if enabled else 0,
-                 quiet_hours_start, quiet_hours_end, now, user_id, channel_type),
-            )
-            cur.execute("SELECT id FROM notification_channel WHERE user_id=? AND channel_type=?",
-                        (user_id, channel_type))
-            return cur.fetchone()["id"]
+            with _conn() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """UPDATE notification_channel SET target_encrypted=?, enabled=?,
+                       quiet_hours_start=?, quiet_hours_end=?, updated_at=?
+                       WHERE user_id=? AND channel_type=?""",
+                    (encrypted, 1 if enabled else 0,
+                     quiet_hours_start, quiet_hours_end, now, user_id, channel_type),
+                )
+                cur.execute(
+                    "SELECT id FROM notification_channel WHERE user_id=? AND channel_type=?",
+                    (user_id, channel_type),
+                )
+                return cur.fetchone()["id"]
         raise
 
 

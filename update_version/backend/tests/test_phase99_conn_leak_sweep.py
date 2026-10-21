@@ -72,6 +72,56 @@ def test_every_get_conn_call_is_closed():
     )
 
 
+def test_no_cursor_used_after_its_connection_closes():
+    """把 try/finally 改写成 `with _conn()` 时最容易踩的坑：
+
+    `with` 块退出即关闭连接，但紧接着的 `except` 分支若还拿着块内那个 `cur`
+    继续执行，就会抛 `ProgrammingError: Cannot operate on a closed database`。
+
+    这个错误真实发生过：`notifier.add_channel` 的 UNIQUE 冲突分支在
+    `with` 块外复用 `cur`，被 test_phase2_smoke 抓住。它不会泄漏 fd，
+    但会让「重名渠道 = 更新」这条正常业务路径直接 500。
+    """
+    offenders = []
+
+    for path in _iter_py_files():
+        rel = os.path.relpath(path, BACKEND).replace(os.sep, "/")
+        try:
+            src = open(path, encoding="utf-8").read()
+            tree = ast.parse(src)
+        except (UnicodeDecodeError, SyntaxError):
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            body_has_with = any(
+                isinstance(stmt, ast.With) and "_conn" in ast.dump(stmt)
+                for stmt in node.body
+            )
+            if not body_has_with:
+                continue
+            for handler in node.handlers:
+                # handler 内部（含嵌套 if/for）只要开了自己的 _conn()，
+                # 里面用的 cur 就属于新连接，安全。
+                # 注意不能用 `any(... for stmt in handler.body)` 只看顶层 ——
+                # 常见写法是 `if "UNIQUE" in str(e): with _conn() as conn: ...`，
+                # 此时 With 是 If 的子节点，浅层判断会漏掉。
+                # 注意 ast.dump 里函数调用渲染成 `Name(id='_conn')`，
+                # 没有 `_conn()` 这个子串 —— 判据必须查 `_conn`。
+                handler_opens_own_conn = "_conn" in (ast.dump(handler) or "")
+                if not handler_opens_own_conn:
+                    seg = ast.get_source_segment(src, handler) or ""
+                    if "cur.execute" in seg or "conn.execute" in seg:
+                        offenders.append(f"{rel}:{handler.lineno}")
+
+    assert not offenders, (
+        "这些 except 分支在 `with _conn()` 之后仍使用块内的游标/连接，"
+        "运行时会抛 'Cannot operate on a closed database'：\n  "
+        + "\n  ".join(offenders)
+    )
+
+
 def test_registry_helper_shape():
     """`_conn()` 辅助函数在关键模块里必须是 contextmanager 且 finally 关闭"""
     must_have = [
