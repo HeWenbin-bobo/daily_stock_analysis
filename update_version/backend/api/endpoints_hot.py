@@ -1478,7 +1478,14 @@ def etf_rotation_history_detail(date: str):
 # Web Chat 意图识别（复用主项目 src/agent/web_intent_resolver）
 # ============================================================================
 _intent_resolver = None
-_intent_lock = threading.Lock()
+# ★ 探索期修复(两把锁保护同一份全局状态)：本函数会改写 `sys.path` 与
+#   `sys.modules["src*"]`，与 `_import_main_hot_analysis()` / ETF 轮动是
+#   同一份**进程级共享状态** —— 但那两处用的是 `_MAIN_HOT_MOD_LOCK`，
+#   这里之前用独立的 `_intent_lock`，两把锁互不相干：并发时一个线程
+#   正在 import 主项目链，另一个可以同时 del 掉 src.*，照样拿到半初始化
+#   模块或 ModuleNotFoundError。
+#   统一到 `_MAIN_HOT_MOD_LOCK`（RLock，允许在已持锁路径内重入）。
+_intent_lock = _MAIN_HOT_MOD_LOCK
 
 
 def _get_intent_resolver():
