@@ -1211,25 +1211,33 @@ def audit_recent(user_id: Optional[str] = None, action: Optional[str] = None, li
 def audit_stats(days: int = Query(7, le=90)):
     """审计摘要：按 action 统计 + 错误数"""
     from db.migrate import get_conn
+    # ★ 探索期修复(fd 泄漏)：此前 `conn = get_conn()` 后用三条查询直接 return，
+    #   从不 close。实测容器内连打 30 次本端点，进程 fd 从 17 涨到 47 且
+    #   15 秒后不回落（每次泄漏 1 个）。这是一个会被前端/监控**轮询**的端点，
+    #   按每分钟一次算，一天就能累积 1440 个 fd。
+    #   与 /ready 早先修过的同类问题一致：显式 try/finally 关闭。
     conn = get_conn()
-    cur = conn.cursor()
-    since = time.time() - days * 86400
-    cur.execute(
-        """SELECT action, COUNT(*) as cnt FROM audit_log
-           WHERE created_at >= ? GROUP BY action ORDER BY cnt DESC""",
-        (since,),
-    )
-    by_action = [dict(r) for r in cur.fetchall()]
-    cur.execute(
-        "SELECT COUNT(*) as cnt FROM audit_log WHERE created_at >= ? AND status='error'",
-        (since,),
-    )
-    errors = cur.fetchone()["cnt"]
-    cur.execute(
-        "SELECT COUNT(*) as cnt FROM audit_log WHERE created_at >= ?",
-        (since,),
-    )
-    total = cur.fetchone()["cnt"]
+    try:
+        cur = conn.cursor()
+        since = time.time() - days * 86400
+        cur.execute(
+            """SELECT action, COUNT(*) as cnt FROM audit_log
+               WHERE created_at >= ? GROUP BY action ORDER BY cnt DESC""",
+            (since,),
+        )
+        by_action = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM audit_log WHERE created_at >= ? AND status='error'",
+            (since,),
+        )
+        errors = cur.fetchone()["cnt"]
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM audit_log WHERE created_at >= ?",
+            (since,),
+        )
+        total = cur.fetchone()["cnt"]
+    finally:
+        conn.close()
     return {
         "days": days,
         "total": total,
