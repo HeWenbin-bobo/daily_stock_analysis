@@ -227,6 +227,24 @@ APScheduler 持久化要求函数是 module-level named function（不能 lambda
 ### 8. v1 兼容 alias
 前端用 `/api/v1/hot-analysis/*`，v2 后端**同时挂 v1 + v2 两个前缀**（同一个 router），避免改前端调用路径。
 
+## 运维注意：定时任务的补跑语义
+
+容器停机期间错过的 cron 触发**不会补跑**，只有大盘复盘有专门的启动补跑：
+
+| 任务 | 停机期间错过 | 说明 |
+|---|---|---|
+| 每日大盘复盘 | **会补跑**（当天） | `catchup_market_review_on_startup()`：交易日 + 已过 10:00 + 当天无非失败记录 → 异步跑一次 |
+| 用户定时任务（`cron_user_jobs`） | 不补 | 重启时 `register_user_cron_jobs()` 用 `replace_existing=True` 重置 `next_run_time` 到下一个时间点 |
+| 内置任务（异动扫描/结算/榜单/清理） | 不补 | 同上；且各任务自身带交易日 guard |
+
+原理解释：`job_defaults` 里配了 `misfire_grace_time=300`（错过 5 分钟内可补），
+但重启时所有任务都会经 `_schedule_job()` 重新注册，`replace_existing=True`
+会把 `next_run_time` 重算到未来 —— 所以实际上不会触发补跑。
+
+**这是有意的取舍**：避免容器停机一整天后，重启瞬间并发跑几十个任务
+（每个都可能拉行情、调 LLM），把 Web 线程池和上游配额打满。
+需要"停机期间也要跑"的任务，请显式实现补跑逻辑（参考大盘复盘的写法）。
+
 ## 运维注意：SQLite 连接与文件描述符（fd）
 
 `sqlite3.Connection` **不会**因为引用消失就释放 fd。容器内实测：变量被丢弃后
