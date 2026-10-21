@@ -1142,8 +1142,25 @@ def cron_jobs():
 
 
 @router.get("/cron/user-jobs")
-def cron_user_jobs(user_id: Optional[str] = None):
-    return {"user_jobs": cron_mod.list_user_jobs(user_id)}
+def cron_user_jobs(request: Request, user_id: Optional[str] = None):
+    """列出用户自定义 cron 任务。
+
+    ★ 探索期修复(IDOR)：此前直接透传 `user_id` query、缺省则列出**全部**用户的任务。
+      DELETE 端点早已补了 `_check_resource_owner`，但读端点没有任何归属限制 ——
+      实测 bob 带 `X-User-Id: bob` 请求 `GET /cron/user-jobs`，拿到了 alice 的
+      job_id / func_name / cron_expr / args_json。job_id 是用户自定义字符串，
+      配合 DELETE 的"知道 job_id 即可尝试删除"路径，构成完整的横向越权链。
+
+      现在：以 `X-User-Id`（UserIDMiddleware 写入 request.state.user_id）为准；
+      显式传的 `user_id` query 与之冲突时返回 403。未带身份时不再泄露他人任务。
+    """
+    caller = getattr(request.state, "user_id", None)
+    if user_id and caller and user_id != caller:
+        raise HTTPException(403, "无权查看其他用户的任务")
+    effective = caller or user_id
+    if not effective:
+        raise HTTPException(401, "需要 X-User-Id 请求头")
+    return {"user_jobs": cron_mod.list_user_jobs(effective)}
 
 
 @router.post("/cron/user-jobs")
@@ -1154,8 +1171,20 @@ def cron_user_jobs_add(payload: dict, request: Request):
     for f in required:
         if not payload.get(f):
             raise HTTPException(400, f"{f} 必填")
+    # ★ 探索期修复(身份伪造)：此前用 `payload.get("user_id", "default")`，
+    #   UserIDMiddleware 已把可信的 `X-User-Id` 写进 request.state.user_id，
+    #   却被完全忽略 —— 任何调用方都能自称任意用户建任务（实测带
+    #   `X-User-Id: alice` 建出来的记录 user_id 是 "default"）。
+    #   现在以 header 为准；payload 里的 user_id 只有在与 header 冲突时才报错。
+    caller = getattr(request.state, "user_id", None)
+    payload_uid = payload.get("user_id")
+    if payload_uid and caller and payload_uid != caller:
+        raise HTTPException(403, "user_id 与 X-User-Id 不一致")
+    effective_uid = caller or payload_uid
+    if not effective_uid:
+        raise HTTPException(401, "需要 X-User-Id 请求头")
     ok = cron_mod.add_user_job(
-        user_id=payload.get("user_id", "default"),
+        user_id=effective_uid,
         job_id=payload["job_id"],
         func_name=payload["func_name"],
         cron_expr=payload["cron_expr"],
@@ -1164,7 +1193,7 @@ def cron_user_jobs_add(payload: dict, request: Request):
     )
     if not ok:
         raise HTTPException(400, "添加失败（可能 func_name 不在白名单 / cron 表达式无效）")
-    audit.record(action="cron_user_job_add", user_id=payload.get("user_id", "anonymous"),
+    audit.record(action="cron_user_job_add", user_id=effective_uid,
                  resource_id=payload["job_id"])
     return {"job_id": payload["job_id"]}
 
