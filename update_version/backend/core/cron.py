@@ -212,6 +212,13 @@ def init(db_path: str = "v2_dev.db") -> Optional[Any]:
 
         # 注册内置任务
         _register_builtin_jobs()
+        # ★ 探索期修复(重启失效)：重放 cron_user_jobs 里的用户任务。
+        #   放在 builtin 之后，对账时才不会把内置任务当成 stale user job 删掉
+        #   （对账逻辑里已排除 builtin_/user_scheduled_ 前缀，这里是双保险）。
+        try:
+            register_user_cron_jobs()
+        except Exception as e:
+            logger.warning("register_user_cron_jobs failed: %s", e)
         return _scheduler
     except Exception as e:
         logger.exception("Failed to init scheduler: %s", e)
@@ -466,6 +473,136 @@ def register_user_scheduled_tasks() -> int:
     return registered
 
 
+def _func_accepts_positional(func: Callable) -> bool:
+    """该可调用对象是否接受至少一个位置参数（用于判断能否透传 args）"""
+    try:
+        import inspect
+
+        sig = inspect.signature(func)
+    except (TypeError, ValueError):
+        return False
+    for p in sig.parameters.values():
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL):
+            return True
+    return False
+
+
+def register_user_cron_jobs() -> int:
+    """把 `cron_user_jobs` 里 enabled=1 的任务注册到调度器。返回注册数。
+
+    ★ 探索期修复(重启失效)：`add_user_job()` 的 docstring 一直承诺"调度器就绪后
+      下次 init() 启动会重新登记到 APScheduler"，但**从来没有人实现这一步** ——
+      `init()` 只调了 `_register_builtin_jobs()` 和 `register_user_scheduled_tasks()`，
+      而后者读的是 **history.db 的 scheduled_tasks**（完全另一套机制）。
+      schema 里 `idx_user_jobs_enabled` 的注释"scheduler 重启时按 enabled 过滤"
+      也印证了这是漏实现。
+
+      症状：用户通过 `/cron/user-jobs` 建的任务，重启后元数据还在（前端照常列出），
+      却没有对应 job → 永不触发，且没有任何提示。另外 `enabled=0` 的停用也形同虚设
+      —— jobstore 会把旧 job 按新的进程状态重新拉起，绕过了 enabled 和新的 cron_expr
+      （用户改了表达式，重启后仍按旧时间跑）。
+
+      行为约定：
+      - enabled=1 且 (func_name, cron_expr) 合法的行 → 注册；
+      - 非法行（未知名函数 / 非法 cron）→ 跳过并告警，不影响其它任务与启动；
+      - jobstore 里存在但库中已删/已停用的 `job_id` → 一并清除，
+        否则 SQLAlchemyJobStore 会让它继续按旧计划触发。
+    """
+    if not _scheduler:
+        return 0
+
+    try:
+        conn = get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT job_id, func_name, cron_expr, args_json, description, enabled "
+                "FROM cron_user_jobs"
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning("register_user_cron_jobs: 读取 cron_user_jobs 失败: %s", e)
+        return 0
+
+    live_ids: Set[str] = set()
+    registered = 0
+    for row in rows:
+        job_id = row["job_id"]
+        if not row["enabled"]:
+            continue
+        func_name = row["func_name"]
+        cron_expr = row["cron_expr"]
+        try:
+            func = _resolve_func(func_name)
+        except ValueError as e:
+            logger.warning("register_user_cron_jobs: 跳过 %r: %s", job_id, e)
+            continue
+        try:
+            from apscheduler.triggers.cron import CronTrigger
+            CronTrigger.from_crontab(str(cron_expr))
+        except Exception as e:
+            logger.warning("register_user_cron_jobs: 跳过 %r（cron 非法 %r）: %s", job_id, cron_expr, e)
+            continue
+
+        try:
+            raw_args = row["args_json"]
+            kwargs = json.loads(raw_args) if raw_args else {}
+            if not isinstance(kwargs, dict):
+                kwargs = {}
+        except Exception:
+            kwargs = {}
+
+        # ★ 白名单里的四个任务（run_market_review_daily / run_alert_scan /
+        #   run_paper_settle / run_community_rank）签名都不带参数。API 却接受
+        #   `args`（默认 {}），一旦用户传了非空 args，注册出来的 job 每次触发都会
+        #   抛 TypeError —— 而重启时正是静默重放它的时机。这里明确跳过并告警，
+        #   比注册一个必然失败的 job 更容易排查。
+        if kwargs:
+            if not _func_accepts_positional(func):
+                logger.warning(
+                    "register_user_cron_jobs: 跳过 %r —— 该任务携带 args=%r，"
+                    "但 %s 不接受参数（每次触发都会 TypeError）",
+                    job_id, kwargs, func_name,
+                )
+                continue
+            args: Optional[tuple] = tuple(kwargs.values())
+        else:
+            args = None
+
+        try:
+            _schedule_job(
+                job_id=job_id,
+                func=func,
+                cron=str(cron_expr),
+                description=row["description"] or job_id,
+                args=args,
+            )
+            live_ids.add(job_id)
+            registered += 1
+        except Exception as e:
+            logger.warning("register_user_cron_jobs: 注册 %r 失败: %s", job_id, e)
+
+    # 对账：清掉库中已不存在或已停用的 user job（非 builtin_ 前缀）
+    try:
+        for job in list(_scheduler.get_jobs()):
+            jid = getattr(job, "id", None)
+            if not jid or jid.startswith("builtin_") or jid.startswith("user_scheduled_"):
+                continue
+            if jid in live_ids:
+                continue
+            try:
+                _scheduler.remove_job(jid)
+                logger.info("removed stale user cron job: %s", jid)
+            except Exception as e:
+                logger.warning("failed to remove stale user cron job %s: %s", jid, e)
+    except Exception as e:
+        logger.warning("user cron job reconciliation failed: %s", e)
+
+    if registered:
+        logger.info("Registered %d user cron jobs from cron_user_jobs", registered)
+    return registered
+
+
 def resync_user_scheduled_tasks() -> int:
     """移除所有 user_scheduled_* 任务后重新注册（保存/删除定时任务后调用，保证增量生效）"""
     if _scheduler:
@@ -547,13 +684,16 @@ def _attach_listener_if_needed():
             job_id = event.job_id
             duration = time.time() - event.scheduled_run_time.timestamp() if event.scheduled_run_time else 0
             conn = get_conn()
-            conn.execute(
-                """INSERT INTO cron_run_log
-                   (job_id, started_at, finished_at, status, error_message, duration_seconds)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (job_id, event.scheduled_run_time.timestamp() if event.scheduled_run_time else time.time(),
-                 time.time(), status, err, duration),
-            )
+            try:
+                conn.execute(
+                    """INSERT INTO cron_run_log
+                       (job_id, started_at, finished_at, status, error_message, duration_seconds)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (job_id, event.scheduled_run_time.timestamp() if event.scheduled_run_time else time.time(),
+                     time.time(), status, err, duration),
+                )
+            finally:
+                conn.close()
         except Exception as e:
             logger.warning("Failed to log cron event: %s", e)
 
@@ -563,37 +703,44 @@ def _attach_listener_if_needed():
 
 def _wrap_with_log(job_id: str, func: Callable) -> Callable:
     """保留旧 API（用于非持久化场景）"""
+    def _finish_run(run_id: int, status: str, duration: float, err: Optional[str] = None) -> None:
+        """收尾写 cron_run_log；连接必须关闭（每条未关闭的 SQLite 连接占 2 个 fd）。"""
+        try:
+            conn = get_conn()
+            try:
+                conn.execute(
+                    "UPDATE cron_run_log SET finished_at=?, status=?, error_message=?, duration_seconds=? WHERE id=?",
+                    (time.time(), status, err, duration, run_id),
+                )
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning("cron run_log update failed for job_id=%s: %s", job_id, e)
+
     def wrapped():
         start = time.time()
         run_id = None
         try:
             conn = get_conn()
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO cron_run_log (job_id, started_at, status) VALUES (?, ?, ?)",
-                (job_id, start, "running"),
-            )
-            run_id = cur.lastrowid
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT INTO cron_run_log (job_id, started_at, status) VALUES (?, ?, ?)",
+                    (job_id, start, "running"),
+                )
+                run_id = cur.lastrowid
+            finally:
+                conn.close()
         except Exception as e:
             logger.warning("cron run_log insert failed for job_id=%s: %s", job_id, e)
         try:
             result = func()
-            duration = time.time() - start
             if run_id:
-                conn = get_conn()
-                conn.execute(
-                    "UPDATE cron_run_log SET finished_at=?, status=?, duration_seconds=? WHERE id=?",
-                    (time.time(), "success", duration, run_id),
-                )
+                _finish_run(run_id, "success", time.time() - start)
             return result
         except Exception as e:
-            duration = time.time() - start
             if run_id:
-                conn = get_conn()
-                conn.execute(
-                    "UPDATE cron_run_log SET finished_at=?, status=?, error_message=?, duration_seconds=? WHERE id=?",
-                    (time.time(), "failed", str(e)[:500], duration, run_id),
-                )
+                _finish_run(run_id, "failed", time.time() - start, str(e)[:500])
             logger.exception("Cron job %s failed: %s", job_id, e)
             raise
     return wrapped
@@ -914,9 +1061,12 @@ def add_user_job(
     #      的任务。非本人一律拒绝（而不是静默覆盖）。
     try:
         conn = get_conn()
-        existing = conn.execute(
-            "SELECT user_id FROM cron_user_jobs WHERE job_id=?", (job_id,)
-        ).fetchone()
+        try:
+            existing = conn.execute(
+                "SELECT user_id FROM cron_user_jobs WHERE job_id=?", (job_id,)
+            ).fetchone()
+        finally:
+            conn.close()
     except Exception as e:
         logger.exception("Failed to read user job meta: %s", e)
         return False
@@ -928,13 +1078,16 @@ def add_user_job(
     # 3. 写 SQLite 元数据
     try:
         conn = get_conn()
-        conn.execute(
-            """INSERT OR REPLACE INTO cron_user_jobs
-               (job_id, user_id, func_name, cron_expr, args_json, description, enabled, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1, ?)""",
-            (job_id, user_id, func_name, cron_expr,
-             json.dumps(args or {}), description, time.time()),
-        )
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO cron_user_jobs
+                   (job_id, user_id, func_name, cron_expr, args_json, description, enabled, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, 1, ?)""",
+                (job_id, user_id, func_name, cron_expr,
+                 json.dumps(args or {}), description, time.time()),
+            )
+        finally:
+            conn.close()
     except Exception as e:
         logger.exception("Failed to write user job meta: %s", e)
         return False
@@ -953,9 +1106,12 @@ def remove_user_job(job_id: str) -> bool:
     # 1. 删 SQLite
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM cron_user_jobs WHERE job_id=?", (job_id,))
-        deleted = cur.rowcount > 0
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM cron_user_jobs WHERE job_id=?", (job_id,))
+            deleted = cur.rowcount > 0
+        finally:
+            conn.close()
     except Exception as e:
         logger.warning("Delete user job meta failed: %s", e)
         return False
@@ -985,32 +1141,38 @@ def list_jobs() -> List[Dict[str, Any]]:
 def list_user_jobs(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """列出用户自定义任务（来自 cron_user_jobs 表）"""
     conn = get_conn()
-    cur = conn.cursor()
-    if user_id:
-        cur.execute(
-            "SELECT * FROM cron_user_jobs WHERE user_id=? ORDER BY created_at DESC",
-            (user_id,),
-        )
-    else:
-        cur.execute("SELECT * FROM cron_user_jobs ORDER BY created_at DESC")
-    return [dict(r) for r in cur.fetchall()]
+    try:
+        cur = conn.cursor()
+        if user_id:
+            cur.execute(
+                "SELECT * FROM cron_user_jobs WHERE user_id=? ORDER BY created_at DESC",
+                (user_id,),
+            )
+        else:
+            cur.execute("SELECT * FROM cron_user_jobs ORDER BY created_at DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 def list_run_log(job_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
     """查看 cron 任务的执行日志"""
     conn = get_conn()
-    cur = conn.cursor()
-    if job_id:
-        cur.execute(
-            "SELECT * FROM cron_run_log WHERE job_id=? ORDER BY started_at DESC LIMIT ?",
-            (job_id, limit),
-        )
-    else:
-        cur.execute(
-            "SELECT * FROM cron_run_log ORDER BY started_at DESC LIMIT ?",
-            (limit,),
-        )
-    return [dict(r) for r in cur.fetchall()]
+    try:
+        cur = conn.cursor()
+        if job_id:
+            cur.execute(
+                "SELECT * FROM cron_run_log WHERE job_id=? ORDER BY started_at DESC LIMIT ?",
+                (job_id, limit),
+            )
+        else:
+            cur.execute(
+                "SELECT * FROM cron_run_log ORDER BY started_at DESC LIMIT ?",
+                (limit,),
+            )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 def trigger_now(job_id: str) -> bool:
