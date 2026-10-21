@@ -10,6 +10,7 @@ import json
 import sys
 import logging
 import secrets
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -17,6 +18,31 @@ from db.migrate import get_conn
 from core.data_source import fetch_quote_with_fallback, fetch_quotes_bulk, call_with_timeout
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _conn():
+    """本模块统一的连接入口：必定关闭。
+
+    ★ 探索期修复(fd 泄漏)：本文件原有 15 处 `conn = get_conn()`，**没有一处
+      调用 close()**。`sqlite3.Connection` 被追踪对象引用时不会在引用消失时
+      立刻释放 fd（容器内实测：drop 引用后 fd 仍在，只有 gc.collect() 才回 0）。
+
+      `GET /api/v2/community/hot-list` 是首页/社区页会轮询的读路径，容器内实测
+      40 次请求后 fd 17 → 89，静置 12s 仍不回落（净泄漏 2 fd/请求，
+      与 SQLite「db + wal」两个句柄吻合）。持续跑下去会先耗尽 fd，
+      然后所有端点一起 EMFILE。
+
+      收口到一个上下文管理器，比在 15 个函数里各写一份 try/finally 更不容易再漏。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 # ★ 探索期修复(定时任务被挂起的上游拖死)：刷新榜单时 akshare 全市场抓取
 #   实测耗时 129s，且 akshare 无内部超时。给一个宽但有限的上限，
@@ -41,6 +67,21 @@ def refresh_daily_hot_list(top_n: int = 50) -> Dict[str, Any]:
     from datetime import datetime
     today = datetime.now().strftime("%Y-%m-%d")
     conn = get_conn()
+    try:
+        return _refresh_daily_hot_list_with_conn(conn, today, top_n)
+    finally:
+        # ★ 探索期修复(fd 泄漏)：本文件 15 处 `conn = get_conn()` 从不 close。
+        #   sqlite3.Connection 被追踪对象引用时不会立刻释放 fd（实测：
+        #   drop 引用后 fd 仍在，gc.collect() 才归 0）。容器内实测
+        #   `GET /community/hot-list` 40 次 → fd 17→89，12s 后不回落。
+        #   这个端点由首页/社区页轮询，是用户量最高的一条读路径。
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _refresh_daily_hot_list_with_conn(conn, today: str, top_n: int) -> Dict[str, Any]:
     cur = conn.cursor()
 
     # 不在抓取前删除任何数据。抓取失败时旧榜单原样保留。
@@ -183,13 +224,21 @@ def get_daily_hot_list(
         from datetime import datetime
         rank_date = datetime.now().strftime("%Y-%m-%d")
     conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """SELECT * FROM community_hot_list WHERE rank_date=?
-           ORDER BY rank ASC LIMIT ?""",
-        (rank_date, limit),
-    )
-    raw_rows = [dict(r) for r in cur.fetchall()]
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT * FROM community_hot_list WHERE rank_date=?
+               ORDER BY rank ASC LIMIT ?""",
+            (rank_date, limit),
+        )
+        raw_rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        # ★ 探索期修复(fd 泄漏)：连接必须在读完就关，后面的 fetch_quotes_bulk
+        #   可能要跑好几秒（外部行情源），没必要一直占着数据库句柄。
+        try:
+            conn.close()
+        except Exception:
+            pass
     if not raw_rows:
         return []
     symbols = [r["symbol"] for r in raw_rows]
@@ -204,18 +253,24 @@ def get_daily_hot_list(
 
 def get_latest_hot_list_date() -> Optional[str]:
     conn = get_conn()
-    cur = conn.cursor()
-    # ★ 修复：过滤未来日期。测试（test_phase13）曾注入 2099-12-31 模拟数据且未清理，
-    #   MAX(rank_date) 会把这类测试残留当成"最新日期"返回给前端热力图/社区页，
-    #   用户看到 2099 年的假榜单。加 rank_date <= 今天 约束，未来残留一律忽略。
-    from datetime import datetime
-    today = datetime.now().strftime("%Y-%m-%d")
-    cur.execute(
-        "SELECT MAX(rank_date) as d FROM community_hot_list WHERE rank_date <= ?",
-        (today,),
-    )
-    row = cur.fetchone()
-    return row["d"] if row else None
+    try:
+        cur = conn.cursor()
+        # ★ 修复：过滤未来日期。测试（test_phase13）曾注入 2099-12-31 模拟数据且未清理，
+        #   MAX(rank_date) 会把这类测试残留当成"最新日期"返回给前端热力图/社区页，
+        #   用户看到 2099 年的假榜单。加 rank_date <= 今天 约束，未来残留一律忽略。
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        cur.execute(
+            "SELECT MAX(rank_date) as d FROM community_hot_list WHERE rank_date <= ?",
+            (today,),
+        )
+        row = cur.fetchone()
+        return row["d"] if row else None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 # ============================================================================
@@ -278,6 +333,22 @@ def create_share(
         if expires_in_days <= 0:
             raise ValueError("expires_in_days 必须 > 0")
     conn = get_conn()
+    try:
+        return _insert_share(
+            conn, user_id, resource_type, resource_id, title,
+            is_public, expires_in_days,
+        )
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _insert_share(
+    conn, user_id: str, resource_type: str, resource_id: str,
+    title: str, is_public: bool, expires_in_days,
+) -> Dict[str, Any]:
     cur = conn.cursor()
     now = time.time()
     expires_at = (now + expires_in_days * 86400) if expires_in_days else None
@@ -316,33 +387,34 @@ def get_share_owner(token: str) -> Optional[str]:
     ★ resolve_share() 会拒绝私有/过期分享（那是**公开访问**的正确语义），
       但撤销接口需要能校验私有分享的归属，不能用它判存在。
     """
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT user_id FROM shared_report WHERE share_token=?", (token,)
-    ).fetchone()
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT user_id FROM shared_report WHERE share_token=?", (token,)
+        ).fetchone()
     return row["user_id"] if row else None
 
 
 def resolve_share(token: str) -> Optional[Dict[str, Any]]:
     """解析短链 → 资源（公开访问）"""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM shared_report WHERE share_token=?", (token,))
-    row = cur.fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    if d.get("expires_at") and d["expires_at"] < time.time():
-        return None  # 过期
-    # ★ 修复(私有分享泄露)：create_share 支持 is_public=0（私有分享），
-    #   但 resolve_share 从不校验 → 任何拿到 token 的人都能读取私有分享内容。
-    #   私有分享仅允许创建者本人通过带 owner 校验的路径访问，公开短链拒绝。
-    if not d.get("is_public"):
-        return None  # 私有分享不通过公开短链解析
-    # 增加 view_count
-    cur.execute("UPDATE shared_report SET view_count=view_count+1 WHERE share_token=?", (token,))
-    d["view_count"] = d.get("view_count", 0) + 1
-    # 加载资源内容
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM shared_report WHERE share_token=?", (token,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("expires_at") and d["expires_at"] < time.time():
+            return None  # 过期
+        # ★ 修复(私有分享泄露)：create_share 支持 is_public=0（私有分享），
+        #   但 resolve_share 从不校验 → 任何拿到 token 的人都能读取私有分享内容。
+        #   私有分享仅允许创建者本人通过带 owner 校验的路径访问，公开短链拒绝。
+        if not d.get("is_public"):
+            return None  # 私有分享不通过公开短链解析
+        # 增加 view_count
+        cur.execute("UPDATE shared_report SET view_count=view_count+1 WHERE share_token=?", (token,))
+        d["view_count"] = d.get("view_count", 0) + 1
+    # ★ 连接已关闭后再加载资源：_load_resource 会另开自己的连接
+    #   （甚至换到 history.db），没必要让本连接跟着多活一段时间。
     d["resource"] = _load_resource(d["resource_type"], d["resource_id"])
     return d
 
@@ -419,29 +491,29 @@ def _open_conn(db_alias: str):
 
 
 def list_user_shares(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """SELECT * FROM shared_report WHERE user_id=?
-           ORDER BY created_at DESC LIMIT ?""",
-        (user_id, limit),
-    )
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT * FROM shared_report WHERE user_id=?
+               ORDER BY created_at DESC LIMIT ?""",
+            (user_id, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 def delete_share(share_id: int, user_id: str) -> bool:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM shared_report WHERE id=? AND user_id=?", (share_id, user_id))
-    return cur.rowcount > 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM shared_report WHERE id=? AND user_id=?", (share_id, user_id))
+        return cur.rowcount > 0
 
 
 def delete_share_by_token(token: str, user_id: str) -> bool:
     """通过 share_token + user_id 双重校验删除分享"""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM shared_report WHERE share_token=? AND user_id=?", (token, user_id))
-    return cur.rowcount > 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM shared_report WHERE share_token=? AND user_id=?", (token, user_id))
+        return cur.rowcount > 0
 
 
 # ============================================================================
@@ -450,81 +522,81 @@ def delete_share_by_token(token: str, user_id: str) -> bool:
 def follow(follower_id: str, followee_id: str) -> bool:
     if follower_id == followee_id:
         return False
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "INSERT INTO user_follow (follower_id, followee_id, created_at) VALUES (?, ?, ?)",
-            (follower_id, followee_id, time.time()),
-        )
-        return True
-    except Exception as e:
-        if "UNIQUE" in str(e):
-            return False
-        raise
+    with _conn() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "INSERT INTO user_follow (follower_id, followee_id, created_at) VALUES (?, ?, ?)",
+                (follower_id, followee_id, time.time()),
+            )
+            return True
+        except Exception as e:
+            if "UNIQUE" in str(e):
+                return False
+            raise
 
 
 def unfollow(follower_id: str, followee_id: str) -> bool:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "DELETE FROM user_follow WHERE follower_id=? AND followee_id=?",
-        (follower_id, followee_id),
-    )
-    return cur.rowcount > 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "DELETE FROM user_follow WHERE follower_id=? AND followee_id=?",
+            (follower_id, followee_id),
+        )
+        return cur.rowcount > 0
 
 
 def list_followers(user_id: str, limit: int = 100) -> List[str]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT follower_id FROM user_follow WHERE followee_id=? ORDER BY created_at DESC LIMIT ?",
-        (user_id, limit),
-    )
-    return [r["follower_id"] for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT follower_id FROM user_follow WHERE followee_id=? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit),
+        )
+        return [r["follower_id"] for r in cur.fetchall()]
 
 
 def list_following(user_id: str, limit: int = 100) -> List[str]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT followee_id FROM user_follow WHERE follower_id=? ORDER BY created_at DESC LIMIT ?",
-        (user_id, limit),
-    )
-    return [r["followee_id"] for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT followee_id FROM user_follow WHERE follower_id=? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit),
+        )
+        return [r["followee_id"] for r in cur.fetchall()]
 
 
 def is_following(follower_id: str, followee_id: str) -> bool:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT 1 FROM user_follow WHERE follower_id=? AND followee_id=?",
-        (follower_id, followee_id),
-    )
-    return cur.fetchone() is not None
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM user_follow WHERE follower_id=? AND followee_id=?",
+            (follower_id, followee_id),
+        )
+        return cur.fetchone() is not None
 
 
 # ============================================================================
 # 用户公开主页（聚合：分享数 / 关注数 / 粉丝数）
 # ============================================================================
 def get_user_profile(user_id: str) -> Dict[str, Any]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT COUNT(*) as cnt FROM shared_report WHERE user_id=? AND is_public=1",
-        (user_id,),
-    )
-    shares = cur.fetchone()["cnt"]
-    cur.execute(
-        "SELECT COUNT(*) as cnt FROM user_follow WHERE followee_id=?",
-        (user_id,),
-    )
-    followers = cur.fetchone()["cnt"]
-    cur.execute(
-        "SELECT COUNT(*) as cnt FROM user_follow WHERE follower_id=?",
-        (user_id,),
-    )
-    following = cur.fetchone()["cnt"]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM shared_report WHERE user_id=? AND is_public=1",
+            (user_id,),
+        )
+        shares = cur.fetchone()["cnt"]
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM user_follow WHERE followee_id=?",
+            (user_id,),
+        )
+        followers = cur.fetchone()["cnt"]
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM user_follow WHERE follower_id=?",
+            (user_id,),
+        )
+        following = cur.fetchone()["cnt"]
     return {
         "user_id": user_id,
         "public_shares": shares,
