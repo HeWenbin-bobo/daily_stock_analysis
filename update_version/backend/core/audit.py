@@ -4,9 +4,33 @@ import json
 import logging
 import re
 import time
+from contextlib import contextmanager
 from typing import Optional, Any, Dict
 
 from db.migrate import get_conn
+
+
+@contextmanager
+def _conn():
+    """必定关闭的连接。
+
+    ★ 探索期修复(fd 泄漏)：record / list_recent / cleanup_old 三处都把
+      `get_conn()` 的结果直接丢掉，从不 close。`sqlite3.Connection` 不会因为
+      引用消失就释放 fd（容器内实测：drop 引用后 fd 不变，gc.collect() 才归 0）。
+      每条连接占 2 个 fd（db + wal），实测 `GET /audit/recent` 每次 +1，
+      连续调用后进程里堆积了几十个 v2_dev.db 句柄。
+
+      更严重的是 `record()`：它被**每个写操作**调用（几乎所有 POST/DELETE 端点），
+      属于全站写路径的公共开销。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 logger = logging.getLogger(__name__)
 
@@ -89,19 +113,19 @@ def record(
     try:
         redacted = _redact_body(request_body) if request_body else None
         body_json = json.dumps(redacted, ensure_ascii=False, default=str) if redacted else None
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO audit_log
-               (user_id, action, resource_type, resource_id, ip_address, user_agent,
-                request_body, status, error_message, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                user_id, action, resource_type, resource_id, ip_address, user_agent,
-                body_json, status, error_message, time.time(),
-            ),
-        )
-        return cur.lastrowid or 0
+        with _conn() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO audit_log
+                   (user_id, action, resource_type, resource_id, ip_address, user_agent,
+                    request_body, status, error_message, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id, action, resource_type, resource_id, ip_address, user_agent,
+                    body_json, status, error_message, time.time(),
+                ),
+            )
+            return cur.lastrowid or 0
     except Exception as e:
         logger.exception("Failed to record audit log: %s", e)
         return 0
@@ -113,28 +137,28 @@ def list_recent(
     limit: int = 100,
 ) -> list[dict]:
     """查询最近的审计日志"""
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM audit_log WHERE 1=1"
-    params: list = []
-    if user_id:
-        sql += " AND user_id = ?"
-        params.append(user_id)
-    if action:
-        sql += " AND action = ?"
-        params.append(action)
-    sql += " ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
-    cur.execute(sql, params)
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM audit_log WHERE 1=1"
+        params: list = []
+        if user_id:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        if action:
+            sql += " AND action = ?"
+            params.append(action)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 def cleanup_old(days: int = 90) -> int:
     """清理 N 天前的审计日志"""
-    conn = get_conn()
-    cur = conn.cursor()
-    cutoff = time.time() - days * 86400
-    cur.execute("DELETE FROM audit_log WHERE created_at < ?", (cutoff,))
-    deleted = cur.rowcount
+    with _conn() as conn:
+        cur = conn.cursor()
+        cutoff = time.time() - days * 86400
+        cur.execute("DELETE FROM audit_log WHERE created_at < ?", (cutoff,))
+        deleted = cur.rowcount
     logger.info("Cleaned up %d old audit log entries", deleted)
     return deleted
