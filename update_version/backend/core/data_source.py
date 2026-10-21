@@ -397,26 +397,35 @@ def update_health(source_name: str, *, success: bool, error: str = "") -> None:
     try:
         conn = get_conn()
         now = time.time()
-        conn.execute(
-            """INSERT INTO data_source_health
-               (source_name, success_count, failure_count,
-                last_success_at, last_failure_at, last_error, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(source_name) DO UPDATE SET
-                 success_count = success_count + excluded.success_count,
-                 failure_count = failure_count + excluded.failure_count,
-                 last_success_at = COALESCE(excluded.last_success_at, last_success_at),
-                 last_failure_at = COALESCE(excluded.last_failure_at, last_failure_at),
-                 last_error      = COALESCE(excluded.last_error, last_error),
-                 updated_at      = excluded.updated_at""",
-            (source_name,
-             1 if success else 0,
-             0 if success else 1,
-             now if success else None,
-             now if not success else None,
-             None if success else error,
-             now),
-        )
+        try:
+            conn.execute(
+                """INSERT INTO data_source_health
+                   (source_name, success_count, failure_count,
+                    last_success_at, last_failure_at, last_error, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(source_name) DO UPDATE SET
+                     success_count = success_count + excluded.success_count,
+                     failure_count = failure_count + excluded.failure_count,
+                     last_success_at = COALESCE(excluded.last_success_at, last_success_at),
+                     last_failure_at = COALESCE(excluded.last_failure_at, last_failure_at),
+                     last_error      = COALESCE(excluded.last_error, last_error),
+                     updated_at      = excluded.updated_at""",
+                (source_name,
+                 1 if success else 0,
+                 0 if success else 1,
+                 now if success else None,
+                 now if not success else None,
+                 None if success else error,
+                 now),
+            )
+        finally:
+            # ★ 探索期修复(fd 泄漏)：本函数被**每一次**行情/K线/日历调用命中
+            #   （成功和失败都记），连接却从不关闭。每条 SQLite 连接占 2 个 fd。
+            #   实测容器里堆积的 v2_dev.db 句柄绝大部分来自这条路径。
+            try:
+                conn.close()
+            except Exception:
+                pass
     except Exception as e:
         logger.warning("Failed to update health for %s: %s", source_name, e)
 
@@ -536,6 +545,15 @@ _QUOTE_SOURCE_TIMEOUT = 15.0
 #   异动告警从此完全静默，且日志里只有 WARNING，看不出根因。
 _KLINE_SOURCE_TIMEOUT = 15.0
 
+# ★ 探索期修复(fd 慢泄漏)：`call_with_timeout` 超时后把 worker 线程抛弃为 daemon，
+#   那个线程仍会跑完上游调用并持有 HTTP 连接（每条 1~2 个 fd）。akshare 单次调用
+#   最坏 197 秒，于是持续打批量行情接口会让 fd 单调上涨（实测 +8~10/请求，
+#   堆到 1500+ 不回落），最终所有端点一起 EMFILE。
+#   这里给"同时被放弃的调用数"设上限；超限时快速失败走降级，而不是继续泄漏。
+_MAX_ABANDONED_THREADS = int(os.environ.get("DATA_SOURCE_MAX_ABANDONED_THREADS", "32"))
+_abandoned: list = []
+_abandoned_lock = threading.Lock()
+
 
 def call_with_timeout(fn: Callable[[], Any], timeout: float, label: str) -> Any:
     """在 daemon 线程里跑 ``fn``，超过 ``timeout`` 秒就放弃并抛 TimeoutError。
@@ -548,7 +566,27 @@ def call_with_timeout(fn: Callable[[], Any], timeout: float, label: str) -> Any:
 
     为什么不用 ThreadPoolExecutor：`with` 块退出会 join 挂起的 worker，
     超时形同虚设。这里让放弃的线程自然泄漏为 daemon，进程退出时一并回收。
+
+    ★ 探索期修复(fd 慢泄漏)：被放弃的线程并非"免费"—— 它会继续跑完整个
+      上游调用，期间持有 requests/urllib 的连接（每条连接 1~2 个 fd）。
+      实测 `GET /community/hot-list?limit=5` 每次 +8~10 fd，堆到 1500+ 也不回落，
+      因为 akshare 单次调用最坏 197 秒。
+
+      这里给"放弃"设置一个上限：同时被放弃的线程过多时直接拒绝新调用
+      （抛 TimeoutError，让 fallback 链或调用方走降级路径），
+      避免上游整体挂起时把进程的 fd 打穿 —— 那会连带所有不相关的端点 EMFILE。
     """
+    with _abandoned_lock:
+        # 顺手回收已结束的占位（thread 对象本身很小，但列表不该只增不减）
+        _abandoned[:] = [t for t in _abandoned if t.is_alive()]
+        abandoned_count = len(_abandoned)
+
+    if abandoned_count >= _MAX_ABANDONED_THREADS:
+        raise TimeoutError(
+            f"{label} skipped: {abandoned_count} abandoned upstream calls still "
+            f"running (limit {_MAX_ABANDONED_THREADS}); refusing to leak more fds"
+        )
+
     box: list = []
 
     def _run() -> None:
@@ -557,10 +595,12 @@ def call_with_timeout(fn: Callable[[], Any], timeout: float, label: str) -> Any:
         except BaseException as exc:  # noqa: BLE001 - 原样转交给调用方
             box.append(("err", exc))
 
-    thread = threading.Thread(target=_run, daemon=True)
+    thread = threading.Thread(target=_run, daemon=True, name=f"call-timeout:{label}")
     thread.start()
     thread.join(timeout)
     if thread.is_alive():
+        with _abandoned_lock:
+            _abandoned.append(thread)
         raise TimeoutError(f"{label} timed out after {timeout}s")
     state, value = box[0]
     if state == "err":

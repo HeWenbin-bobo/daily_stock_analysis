@@ -12,6 +12,7 @@ import logging
 import smtplib
 import ssl
 import asyncio
+from contextlib import contextmanager
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional, Dict, Any, List
@@ -24,6 +25,26 @@ import urllib.parse
 
 from db.migrate import get_conn
 from core.crypto import encrypt_str, decrypt_str
+
+
+@contextmanager
+def _conn():
+    """必定关闭的连接。
+
+    ★ 探索期修复(fd 泄漏)：本文件 6 处 `conn = get_conn()` 全部不 close。
+      `sqlite3.Connection` 不会因引用消失就释放 fd（容器内实测：drop 引用后
+      fd 不变，gc.collect() 才归 0），每条连接占 2 个 fd（db + wal）。
+      `_record_and_return` 是**每次推送**都走的路径（含异动告警、定时任务结果），
+      属于长期运行下增长最快的一类。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 logger = logging.getLogger(__name__)
 
@@ -412,34 +433,34 @@ def _dispatch(channel_type: str, target: str, title: str, content: str) -> Notif
 def _record_and_return(channel, title, content, template_name, result: NotifyResult) -> NotifyResult:
     """写推送历史 + 返回结果"""
     try:
-        conn = get_conn()
-        conn.execute(
-            """INSERT INTO notification_log
-               (channel_id, user_id, title, content, template_name,
-                related_resource_type, related_resource_id,
-                status, retry_count, error_message, sent_at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                channel["id"], channel["user_id"], title, content, template_name,
-                None, None,
-                "success" if result.success else ("skipped" if "quiet" in (result.error_message or "") else "failed"),
-                result.retry_count,
-                result.error_message,
-                time.time() if result.success else None,
-                time.time(),
-            ),
-        )
+        with _conn() as conn:
+            conn.execute(
+                """INSERT INTO notification_log
+                   (channel_id, user_id, title, content, template_name,
+                    related_resource_type, related_resource_id,
+                    status, retry_count, error_message, sent_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    channel["id"], channel["user_id"], title, content, template_name,
+                    None, None,
+                    "success" if result.success else ("skipped" if "quiet" in (result.error_message or "") else "failed"),
+                    result.retry_count,
+                    result.error_message,
+                    time.time() if result.success else None,
+                    time.time(),
+                ),
+            )
     except Exception as e:
         logger.warning("Failed to record notification log: %s", e)
     return result
 
 
 def _get_channel(channel_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM notification_channel WHERE id=?", (channel_id,))
-    row = cur.fetchone()
-    return dict(row) if row else None
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM notification_channel WHERE id=?", (channel_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def _in_quiet_hours(channel: Dict[str, Any]) -> bool:
@@ -622,21 +643,21 @@ def add_channel(
     # ★ 探索期修复：quiet_hours 写错格式（"99:99" / "abc"）时 _in_quiet_hours
     #   用字符串比较，永远静默返回 False —— 用户以为设置了免打扰，实际照推。
     _validate_quiet_hours(quiet_hours_start, quiet_hours_end)
-    conn = get_conn()
     encrypted = encrypt_str(target)
-    cur = conn.cursor()
     now = time.time()
     try:
-        # ★ Round 4 安全修复：不再写入 plaintext target 列，避免 DB dump / 备份泄露 webhook URL / SMTP 密码
-        cur.execute(
-            """INSERT INTO notification_channel
-               (user_id, channel_type, target, target_encrypted, enabled,
-                quiet_hours_start, quiet_hours_end, created_at, updated_at)
-               VALUES (?, ?, '', ?, ?, ?, ?, ?, ?)""",
-            (user_id, channel_type, encrypted, 1 if enabled else 0,
-             quiet_hours_start, quiet_hours_end, now, now),
-        )
-        return cur.lastrowid or 0
+        with _conn() as conn:
+            cur = conn.cursor()
+            # ★ Round 4 安全修复：不再写入 plaintext target 列，避免 DB dump / 备份泄露 webhook URL / SMTP 密码
+            cur.execute(
+                """INSERT INTO notification_channel
+                   (user_id, channel_type, target, target_encrypted, enabled,
+                    quiet_hours_start, quiet_hours_end, created_at, updated_at)
+                   VALUES (?, ?, '', ?, ?, ?, ?, ?, ?)""",
+                (user_id, channel_type, encrypted, 1 if enabled else 0,
+                 quiet_hours_start, quiet_hours_end, now, now),
+            )
+            return cur.lastrowid or 0
     except Exception as e:
         # unique 冲突 → update
         if "UNIQUE" in str(e):
@@ -659,14 +680,15 @@ def list_channels(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     ★ Round 20 修复(M3)：Round 4 起 target 明文列恒为空串，旧实现只对 d["target"] 脱敏
        → 返回空串，脱敏逻辑对新增数据失效。改为：解密 target_encrypted 后再脱敏展示。
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    if user_id:
-        cur.execute("SELECT * FROM notification_channel WHERE user_id=?", (user_id,))
-    else:
-        cur.execute("SELECT * FROM notification_channel")
+    with _conn() as conn:
+        cur = conn.cursor()
+        if user_id:
+            cur.execute("SELECT * FROM notification_channel WHERE user_id=?", (user_id,))
+        else:
+            cur.execute("SELECT * FROM notification_channel")
+        fetched = cur.fetchall()
     rows = []
-    for r in cur.fetchall():
+    for r in fetched:
         d = dict(r)
         raw = ""
         # 优先解密 target_encrypted（Round 4+ 的新格式）
@@ -686,10 +708,10 @@ def list_channels(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
 
 
 def delete_channel(channel_id: int) -> bool:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM notification_channel WHERE id=?", (channel_id,))
-    return cur.rowcount > 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM notification_channel WHERE id=?", (channel_id,))
+        return cur.rowcount > 0
 
 
 def list_logs(
@@ -697,17 +719,17 @@ def list_logs(
     status: Optional[str] = None,
     limit: int = 50,
 ) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM notification_log WHERE 1=1"
-    params: list = []
-    if user_id:
-        sql += " AND user_id=?"
-        params.append(user_id)
-    if status:
-        sql += " AND status=?"
-        params.append(status)
-    sql += " ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
-    cur.execute(sql, params)
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM notification_log WHERE 1=1"
+        params: list = []
+        if user_id:
+            sql += " AND user_id=?"
+            params.append(user_id)
+        if status:
+            sql += " AND status=?"
+            params.append(status)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]

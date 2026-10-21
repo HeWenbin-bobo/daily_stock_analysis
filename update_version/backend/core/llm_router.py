@@ -221,12 +221,20 @@ def _record_usage(
         total = prompt_tokens + completion_tokens
         cost = _estimate_cost(provider, prompt_tokens, completion_tokens)
         conn = get_conn()
-        conn.execute(
-            """INSERT INTO llm_usage
-               (user_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_cny, task_type, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (user_id, provider.value, model, prompt_tokens, completion_tokens, total, cost, task_type, time.time()),
-        )
+        try:
+            conn.execute(
+                """INSERT INTO llm_usage
+                   (user_id, provider, model, prompt_tokens, completion_tokens, total_tokens, cost_cny, task_type, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, provider.value, model, prompt_tokens, completion_tokens, total, cost, task_type, time.time()),
+            )
+        finally:
+            # ★ 探索期修复(fd 泄漏)：每次 LLM 调用都会走这里，连接却从不关闭。
+            #   每条 SQLite 连接占 2 个 fd（db + wal）。
+            try:
+                conn.close()
+            except Exception:
+                pass
     except Exception as e:
         logger.warning("Failed to record LLM usage: %s", e)
 
@@ -486,21 +494,27 @@ def _chunk_text(text: str, chunk_size: int = 10) -> List[str]:
 # ============================================================================
 def get_usage_summary(user_id: Optional[str] = None, days: int = 30) -> Dict[str, Any]:
     conn = get_conn()
-    cur = conn.cursor()
-    since = time.time() - days * 86400
-    if user_id:
-        cur.execute(
-            """SELECT provider, COUNT(*), SUM(total_tokens), SUM(cost_cny)
-               FROM llm_usage WHERE user_id=? AND created_at>=? GROUP BY provider""",
-            (user_id, since),
-        )
-    else:
-        cur.execute(
-            """SELECT provider, COUNT(*), SUM(total_tokens), SUM(cost_cny)
-               FROM llm_usage WHERE created_at>=? GROUP BY provider""",
-            (since,),
-        )
-    rows = [dict(r) for r in cur.fetchall()]
+    try:
+        cur = conn.cursor()
+        since = time.time() - days * 86400
+        if user_id:
+            cur.execute(
+                """SELECT provider, COUNT(*), SUM(total_tokens), SUM(cost_cny)
+                   FROM llm_usage WHERE user_id=? AND created_at>=? GROUP BY provider""",
+                (user_id, since),
+            )
+        else:
+            cur.execute(
+                """SELECT provider, COUNT(*), SUM(total_tokens), SUM(cost_cny)
+                   FROM llm_usage WHERE created_at>=? GROUP BY provider""",
+                (since,),
+            )
+        rows = [dict(r) for r in cur.fetchall()]
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
     total_cost = sum((r["SUM(cost_cny)"] or 0) for r in rows)
     total_tokens = sum((r["SUM(total_tokens)"] or 0) for r in rows)
     return {
