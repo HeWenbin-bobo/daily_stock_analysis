@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 必须先 import app 才不会循环
@@ -27,8 +28,20 @@ client = TestClient(app)
 
 
 def _reset():
-    """每个 test 前重置 DB"""
-    conn_path = "data/v2_dev_e2e.db"
+    """每个 test 前重置 DB
+
+    ★ 探索期修复(绕过测试隔离)：旧实现用相对路径 `data/v2_dev_e2e.db`，
+      按**当前工作目录**解析。在 backend/ 下跑 pytest 时会落到
+      `backend/data/`，把 e2e 库直接写进仓库工作目录（实测残留 280KB，
+      与该目录下其它 test_*.db 一起积累）。conftest 已经把 V4_DB_PATH
+      指向临时目录，这里改为在**同一个临时目录**下派生 e2e 库，
+      既保持"e2e 独立库"的原意，又不再污染工作目录。
+    """
+    base = os.environ.get("V4_DB_PATH") or ""
+    if base:
+        conn_path = str(Path(base).parent / "v2_dev_e2e.db")
+    else:
+        conn_path = "data/v2_dev_e2e.db"   # 兜底：未经过 conftest 时保持旧行为
     if os.path.exists(conn_path):
         os.remove(conn_path)
     # 用 e2e 数据库

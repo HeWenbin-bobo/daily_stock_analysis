@@ -9,7 +9,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ★ 迭代2 修复（测试隔离）：切到独立测试库 v2_test.db，防止全表 DELETE 清空生产库
-os.environ["V4_DB_PATH"] = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "v2_test.db")
+# ★ 探索期修复(绕过 conftest 隔离)：无条件覆盖会把 conftest 已设好的
+#   进程级临时库改回仓库工作目录，每次跑测试都在 backend/data/ 留一份
+#   v2_test.db。仅在无人设置时兜底。
+if not os.environ.get("V4_DB_PATH"):
+    os.environ["V4_DB_PATH"] = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "v2_test.db"
+    )
 
 from db.migrate import get_conn, migrate
 migrate()  # 确保测试库 schema 就绪（幂等）

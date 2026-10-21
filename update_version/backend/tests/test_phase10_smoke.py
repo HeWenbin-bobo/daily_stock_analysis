@@ -5,7 +5,15 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ★ 迭代2 修复（测试隔离）：切到独立测试库 v2_test.db，防止全表 DELETE 清空生产库
-os.environ["V4_DB_PATH"] = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "v2_test.db")
+# ★ 探索期修复(绕过 conftest 隔离)：上面那行是**无条件覆盖**，即使 conftest
+#   已经把 V4_DB_PATH 指向进程级临时目录，这里也会把它改回仓库工作目录
+#   —— 实测每次全量跑都在 backend/data/ 下留一个 6.5MB 的 v2_test.db。
+#   conftest 的临时库本身就是隔离的，不需要再派生第二份；只有在没人设过
+#   （单独执行本文件、或绕过 conftest）时才保留原来的兜底行为。
+if not os.environ.get("V4_DB_PATH"):
+    os.environ["V4_DB_PATH"] = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "v2_test.db"
+    )
 
 from db.migrate import get_conn, migrate
 migrate()  # 确保测试库 schema 就绪（幂等）

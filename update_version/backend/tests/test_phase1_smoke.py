@@ -3,6 +3,7 @@
 import time
 import os
 import sys
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db.migrate import get_conn
@@ -14,9 +15,23 @@ def test_apscheduler_available():
     print(f"OK apscheduler available: APS_AVAILABLE={cron_mod.APS_AVAILABLE}")
 
 
+def _isolated_db(name: str) -> str:
+    """在 conftest 指定的临时目录下派生一个独立库文件。
+
+    ★ 探索期修复(绕过测试隔离)：这里原先是相对路径 `data/test_cron.db`，
+      按**当前工作目录**解析。在 backend/ 下跑 pytest 就落到 `backend/data/`，
+      测试库直接写进仓库工作目录（实测残留 test_cron.db / test_cron2.db 各 24KB）。
+      conftest 已设置 V4_DB_PATH 指向临时目录，改为在那里派生。
+    """
+    base = os.environ.get("V4_DB_PATH") or ""
+    if base:
+        return str(Path(base).parent / name)
+    return os.path.join("data", name)   # 兜底：未经过 conftest 时保持旧行为
+
+
 def test_init_scheduler():
     """初始化调度器（需要单独的 db 文件避免污染）"""
-    test_db = "data/test_cron.db"
+    test_db = _isolated_db("test_cron.db")
     # 删除旧的
     if os.path.exists(test_db):
         os.remove(test_db)
@@ -116,7 +131,7 @@ def test_shutdown_and_restart():
     cron_mod.shutdown()
     assert cron_mod._scheduler is None
     # 重启
-    test_db = "data/test_cron2.db"
+    test_db = _isolated_db("test_cron2.db")
     if os.path.exists(test_db):
         os.remove(test_db)
     cron_mod.init(db_path=test_db)
