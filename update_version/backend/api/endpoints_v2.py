@@ -282,7 +282,7 @@ def test_notification(payload: dict, request: Request):
 
 
 @router.get("/notifications/logs")
-def list_notification_logs(user_id: Optional[str] = None, status: Optional[str] = None, limit: int = Query(50, le=200)):
+def list_notification_logs(user_id: Optional[str] = None, status: Optional[str] = None, limit: int = Query(50, ge=1, le=200)):
     return {"logs": notifier.list_logs(user_id, status, limit)}
 
 
@@ -420,7 +420,7 @@ def trigger_alert_scan(request: Request):
 
 
 @router.get("/alerts/triggers")
-def list_alert_triggers(user_id: Optional[str] = None, rule_id: Optional[int] = None, limit: int = Query(100, le=500)):
+def list_alert_triggers(user_id: Optional[str] = None, rule_id: Optional[int] = None, limit: int = Query(100, ge=1, le=500)):
     return {"triggers": ae.list_triggers(user_id, rule_id, limit)}
 
 
@@ -541,7 +541,7 @@ async def run_backtest(payload: dict, request: Request):
 
 
 @router.get("/backtest/results")
-def list_backtest_results(user_id: Optional[str] = None, strategy_id: Optional[int] = None, limit: int = Query(50, le=200)):
+def list_backtest_results(user_id: Optional[str] = None, strategy_id: Optional[int] = None, limit: int = Query(50, ge=1, le=200)):
     return {"results": be.list_results(user_id, strategy_id, limit)}
 
 
@@ -616,7 +616,7 @@ async def run_hyperopt(payload: dict, request: Request):
 
 
 @router.get("/backtest/hyperopt/runs")
-def list_hyperopt_runs(user_id: Optional[str] = None, strategy_id: Optional[int] = None, limit: int = Query(20, le=100)):
+def list_hyperopt_runs(user_id: Optional[str] = None, strategy_id: Optional[int] = None, limit: int = Query(20, ge=1, le=100)):
     return {"runs": he.list_runs(user_id, strategy_id, limit)}
 
 
@@ -629,7 +629,7 @@ def get_hyperopt_run(run_id: int):
 
 
 @router.get("/backtest/hyperopt/runs/{run_id}/epochs")
-def get_hyperopt_epochs(run_id: int, limit: int = Query(100, le=500)):
+def get_hyperopt_epochs(run_id: int, limit: int = Query(100, ge=1, le=500)):
     return {"epochs": he.list_epochs(run_id, limit)}
 
 
@@ -784,7 +784,7 @@ def place_paper_order(account_id: int, payload: dict, request: Request):
 
 
 @router.get("/paper/accounts/{account_id}/trades")
-def list_paper_trades(account_id: int, limit: int = Query(100, le=500), request: Request = None, user_id: str = ""):
+def list_paper_trades(account_id: int, limit: int = Query(100, ge=1, le=500), request: Request = None, user_id: str = ""):
     # 归属一致性检查（非安全边界，见 _check_resource_owner 的说明）。
     acc = pt.get_account(account_id)
     if not acc:
@@ -810,7 +810,7 @@ async def take_paper_snapshot(account_id: int, payload: dict = {}, request: Requ
 
 
 @router.get("/paper/accounts/{account_id}/snapshots")
-def list_paper_snapshots(account_id: int, limit: int = Query(365, le=1000), request: Request = None, user_id: str = ""):
+def list_paper_snapshots(account_id: int, limit: int = Query(365, ge=1, le=1000), request: Request = None, user_id: str = ""):
     # 归属一致性检查（非安全边界，见 _check_resource_owner 的说明）。
     acc = pt.get_account(account_id)
     if not acc:
@@ -820,7 +820,7 @@ def list_paper_snapshots(account_id: int, limit: int = Query(365, le=1000), requ
 
 
 @router.get("/paper/leaderboard")
-def paper_leaderboard(limit: int = Query(50, le=200)):
+def paper_leaderboard(limit: int = Query(50, ge=1, le=200)):
     return {"leaderboard": pt.leaderboard(limit)}
 
 
@@ -870,7 +870,7 @@ def paper_transfer(payload: dict, request: Request):
 # 社区
 # ============================================================================
 @router.get("/community/hot-list")
-def community_hot_list(date: Optional[str] = None, limit: int = Query(50, le=200)):
+def community_hot_list(date: Optional[str] = None, limit: int = Query(50, ge=1, le=200)):
     # ★ 迭代2 修复(M2)：date=None 时 date 与 items 必须用同一个日期，否则响应显示
     #   "最新日期" 却查今天（可能无数据）→ 自相矛盾
     # ★ 本轮修复：榜单行的行情富化设总预算。这是只读接口且榜单数据已在库里，
@@ -886,7 +886,7 @@ def community_hot_list(date: Optional[str] = None, limit: int = Query(50, le=200
 
 
 @router.post("/community/hot-list/refresh")
-def community_hot_list_refresh(top_n: int = Query(50, le=200), request: Request = None):
+def community_hot_list_refresh(top_n: int = Query(50, ge=1, le=200), request: Request = None):
     """刷新每日公开榜单（限流 1/10min/IP — 抓全网数据很贵）"""
     _require_rate_limit(request, "/api/v2/community/hot-list/refresh")
     return cm.refresh_daily_hot_list(top_n)
@@ -1089,7 +1089,7 @@ def data_kline(
 
 
 @router.get("/llm/usage")
-def llm_usage(user_id: Optional[str] = None, days: int = Query(30, le=365)):
+def llm_usage(user_id: Optional[str] = None, days: int = Query(30, ge=1, le=365)):
     return llm.get_usage_summary(user_id, days)
 
 
@@ -1214,7 +1214,7 @@ def cron_user_jobs_remove(job_id: str, request: Request, user_id: str = ""):
 
 
 @router.get("/cron/run-log")
-def cron_run_log(job_id: Optional[str] = None, limit: int = Query(50, le=500)):
+def cron_run_log(job_id: Optional[str] = None, limit: int = Query(50, ge=1, le=500)):
     return {"logs": cron_mod.list_run_log(job_id, limit)}
 
 
@@ -1232,12 +1232,12 @@ def cron_trigger(job_id: str, request: Request):
 # 审计日志
 # ============================================================================
 @router.get("/audit/recent")
-def audit_recent(user_id: Optional[str] = None, action: Optional[str] = None, limit: int = Query(100, le=500)):
+def audit_recent(user_id: Optional[str] = None, action: Optional[str] = None, limit: int = Query(100, ge=1, le=500)):
     return {"logs": audit.list_recent(user_id, action, limit)}
 
 
 @router.get("/audit/stats")
-def audit_stats(days: int = Query(7, le=90)):
+def audit_stats(days: int = Query(7, ge=1, le=90)):
     """审计摘要：按 action 统计 + 错误数"""
     from db.migrate import get_conn
     # ★ 探索期修复(fd 泄漏)：此前 `conn = get_conn()` 后用三条查询直接 return，

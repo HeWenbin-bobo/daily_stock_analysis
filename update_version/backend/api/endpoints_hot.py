@@ -782,7 +782,7 @@ def _clamp_sql_int(value: int, field: str, *, low: int = 1) -> int:
 
 
 @router.get("/hot-analysis/history")
-def hot_analysis_history(limit: int = Query(50, le=200), offset: int = 0, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200)):
+def hot_analysis_history(limit: int = Query(50, ge=1, le=200), offset: int = 0, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200)):
     # 兼容两种调用：limit+offset（旧）或 page+page_size（新）
     # ★ Round 19 修复(H3)：旧启发式 (page_size==20 and page==1) 会命中前端默认参数
     #   导致第一页返回 50 条、后续页返回 20 条的分页错乱。
@@ -1079,13 +1079,13 @@ def market_review_generate_alias_post(payload: dict = {}, request: Request = Non
 
 
 @router.get("/hot-analysis/market-review")
-def market_review_list_alias(limit: int = Query(30, le=100), page: int = 1, page_size: int = Query(20, le=100), region: Optional[str] = None):
+def market_review_list_alias(limit: int = Query(30, ge=1, le=100), page: int = 1, page_size: int = Query(20, ge=1, le=100), region: Optional[str] = None):
     """兼容 /hot-analysis/market-review（无 /list 后缀）的旧调用"""
     return market_review_list(limit=limit, page=page, page_size=page_size, region=region)
 
 
 @router.get("/hot-analysis/market-review/list")
-def market_review_list_alias2(limit: int = Query(30, le=100), page: int = 1, page_size: int = Query(20, le=100), region: Optional[str] = None):
+def market_review_list_alias2(limit: int = Query(30, ge=1, le=100), page: int = 1, page_size: int = Query(20, ge=1, le=100), region: Optional[str] = None):
     return market_review_list(limit=limit, page=page, page_size=page_size, region=region)
 
 
@@ -1250,13 +1250,13 @@ def market_review_latest(region: Optional[str] = None):
 
 
 @router.get("/market-review/list")
-def market_review_list_with_suffix(limit: int = Query(30, le=100), page: int = 1, page_size: int = Query(20, le=100), region: Optional[str] = None):
+def market_review_list_with_suffix(limit: int = Query(30, ge=1, le=100), page: int = 1, page_size: int = Query(20, ge=1, le=100), region: Optional[str] = None):
     """★ Round 10：显式 /list 路由，必须在 /{review_date} 前声明（否则 {review_date}=list 占位）"""
     return market_review_list(limit=limit, page=page, page_size=page_size, region=region)
 
 
 @router.get("/market-review")
-def market_review_list(limit: int = Query(30, le=100), page: int = 1, page_size: Optional[int] = Query(None, le=100), region: Optional[str] = None):
+def market_review_list(limit: int = Query(30, ge=1, le=100), page: int = 1, page_size: Optional[int] = Query(None, ge=1, le=100), region: Optional[str] = None):
     """复盘历史列表（兼容 limit 与 page_size 两种命名）
 
     返回字段与 v1 主项目 MarketReviewListResponse 一致：items + total + page + page_size。
@@ -1444,7 +1444,7 @@ async def run_etf_rotation_endpoint(request: Request, force: bool = False):
 
 
 @router.get("/etf-rotation/history")
-def etf_rotation_history(limit: int = Query(30, le=200)):
+def etf_rotation_history(limit: int = Query(30, ge=1, le=200)):
     """列出已落盘的 ETF 轮动报告（主项目 reports/etf_rotation_*.md，新→旧）。"""
     reports_dir = Path(__file__).resolve().parent.parent.parent.parent / "reports"
     if not reports_dir.exists():
