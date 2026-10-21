@@ -272,8 +272,13 @@ def hot_analysis_preview(payload: dict):
         )
         try:
             loop = asyncio.new_event_loop()
-            resp = loop.run_until_complete(_hot_mod.preview_hot_analysis(req))
-            loop.close()
+            try:
+                resp = loop.run_until_complete(_hot_mod.preview_hot_analysis(req))
+            finally:
+                # ★ 探索期修复(fd 泄漏)：run_until_complete 抛异常时原实现跳过
+                #   loop.close()，而 new_event_loop() 每次都新建 selector/socketpair，
+                #   实测每条未关闭的 loop 泄漏 3 个 fd（epoll + socketpair 两端）。
+                loop.close()
         except RuntimeError:
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as ex:
@@ -316,8 +321,12 @@ def hot_analysis_run(payload: dict, request: Request = None):
         req = _build_run_request(payload, schema=_schemas_mod.HotAnalysisRunRequest)
         try:
             loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(_hot_mod.run_hot_analysis(req))
-            loop.close()
+            try:
+                result = loop.run_until_complete(_hot_mod.run_hot_analysis(req))
+            finally:
+                # ★ 探索期修复(fd 泄漏)：同上——异常路径必须关闭 loop，
+                #   否则每次失败的分析请求泄漏 3 个 fd。
+                loop.close()
         except RuntimeError:
             import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor() as ex:
