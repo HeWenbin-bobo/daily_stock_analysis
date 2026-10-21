@@ -85,6 +85,14 @@ def served_port(argv: list[str]) -> str | None:
 def candidate_ports(argv: list[str] | None = None) -> list[str]:
     ports: list[str] = []
     for raw in (
+        # update_version 镜像的应用端口变量是 ``V4_PORT``（app.py 读它），
+        # 而 ``DSA_HEALTH_PORT`` 只是构建期从它展开的常量 —— 运行时用
+        # ``-e V4_PORT=9000`` 换端口时，前者不会跟着变。实测那种情况下服务在
+        # 9000 上正常返回 200，探针却一直打 8002，重试后容器被判 unhealthy。
+        # 主应用不设 V4_PORT，所以放在这里对它是无害的空操作。
+        # 必须排在 DSA_HEALTH_PORT 之前：否则会先探旧的 8002，
+        # 该端口若恰好有别的服务在监听就会误判 healthy。
+        os.environ.get("V4_PORT"),
         os.environ.get("DSA_HEALTH_PORT"),
         served_port(argv or []),
         os.environ.get("API_PORT"),

@@ -144,13 +144,21 @@ ENV PYTHONUNBUFFERED=1
 ENV DSA_WRITABLE_DIRS="/app/update_version/backend/data /app/update_version/data /app/data /app/logs /app/reports /home/dsa/.longbridge"
 # 健康检查走 /health（本应用没有 /api/health）
 ENV DSA_HEALTH_PATH=/health
-ENV DSA_HEALTH_PORT=8002
 ENV V4_HOST=0.0.0.0
 ENV V4_PORT=8002
+# ★ 探索期修复(健康检查误判)：健康检查端口必须跟随应用实际监听的 V4_PORT。
+#   此前这里写死 `ENV DSA_HEALTH_PORT=8002`，而 app.py 读的是 `V4_PORT` ——
+#   用户用 `-e V4_PORT=9000` 换端口时，服务在 9000 上正常响应（实测 /health 200），
+#   探针却一直打 8002，重试 3 次后容器被判 unhealthy。在有重启策略/编排器的环境里，
+#   一个完全健康的容器会被反复杀掉重建。
+#   用 `${V4_PORT}` 让两者只有一个真相来源；healthcheck.py 的 candidate_ports()
+#   已经在读 DSA_HEALTH_PORT，所以这里只需保证它不再是独立常量。
+ENV DSA_HEALTH_PORT=${V4_PORT}
 # 注意：APP_ENV / APP_CORS_ORIGINS 故意不写死。前端由本进程同源托管时不需要
 # CORS；暴露给其它来源时由 compose 或 .env 显式设置（APP_ENV=production 会强制
 # 要求白名单，缺省则拒绝启动，这是应用自身的护栏）。
 
+# EXPOSE 只是文档性声明，不支持变量插值；换端口时以 V4_PORT 为准（健康检查已跟随）。
 EXPOSE 8002
 
 VOLUME ["/app/update_version/backend/data", "/app/update_version/data"]
