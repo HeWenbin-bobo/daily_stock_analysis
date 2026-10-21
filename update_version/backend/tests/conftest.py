@@ -64,6 +64,41 @@ def _ensure_test_schema():
 
 
 @pytest.fixture(autouse=True)
+def _reset_ratelimit_buckets():
+    """每个测试开始前清空限流桶。
+
+    `core.ratelimit._buckets` 是**进程级全局**的滑动窗口，测试之间不会自然过期。
+    多个模块会打同一批受限端点（`/notifications/test` 5/min、
+    `/market-review/generate` 1/min、`/backtest/hyperopt` 2/min …），一旦前一个
+    用例把配额吃满，后一个用例的断言就从"校验分支返回 400/404"变成"收到 429"。
+
+    实测症状：`test_phase77` 单独跑 5 passed，与 `test_phase76` 一起跑就 2 failed
+    （429 ≠ 404/400）。这类失败与业务代码无关，纯属测试顺序耦合，且极易被误判成
+    限流器 bug。生产环境不限流是对的，所以只在这里重置，不改 LIMITS。
+    """
+    ratelimit = sys.modules.get("core.ratelimit") or _import_soft("core.ratelimit")
+    if ratelimit is not None:
+        lock = getattr(ratelimit, "_buckets_lock", None)
+        buckets = getattr(ratelimit, "_buckets", None)
+        if buckets is not None:
+            if lock is not None:
+                with lock:
+                    buckets.clear()
+            else:
+                buckets.clear()
+    yield
+
+
+def _import_soft(name):
+    try:
+        import importlib
+
+        return importlib.import_module(name)
+    except Exception:
+        return None
+
+
+@pytest.fixture(autouse=True)
 def _isolate_backend_globals():
     cron_mod = sys.modules.get("core.cron")
     snap_aps = getattr(cron_mod, "APS_AVAILABLE", None) if cron_mod is not None else None

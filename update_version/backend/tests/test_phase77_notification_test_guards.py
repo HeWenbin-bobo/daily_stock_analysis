@@ -19,6 +19,10 @@ sys.path.insert(0, str(BACKEND))
 import pytest
 
 
+# 注：限流桶的重置由 tests/conftest.py 的 `_reset_ratelimit_buckets` 统一处理
+# （`/notifications/test` 只有 5 次/分钟，本模块自己就发 5 个请求）
+
+
 def _client():
     from db.migrate import migrate
     migrate()
