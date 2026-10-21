@@ -104,3 +104,9 @@ e2e_*.png
 fail_groups.txt
 pytest_failures_full.txt
 pytest_final.txt
+
+# ★ 例外：update_version 前端构建产物入库（便于开箱运行，无需安装 Node）。
+#   构建：cd update_version/frontend && npm run build
+#   改前端源码后必须重新构建并提交 dist，否则页面与源码不一致。
+!update_version/frontend/dist/
+!update_version/frontend/dist/**

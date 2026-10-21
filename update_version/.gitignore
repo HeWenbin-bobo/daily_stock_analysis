@@ -1,8 +1,7 @@
 # Dependencies
 frontend/node_modules/
 
-# Build output
-frontend/dist/
+# Build output —— dist/ 已入库（见 frontend/.gitignore 的说明）
 
 # Python cache
 __pycache__/

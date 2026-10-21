@@ -1,6 +1,8 @@
 # Vite/Node
 node_modules/
-dist/
+# ★ dist/ 现在入库：仓库维护者要求提交前端构建产物（开箱即可运行，
+#   不必先装 Node）。构建命令：cd update_version/frontend && npm run build
+#   注意：改动前端源码后必须重新构建并提交 dist，否则页面与源码不一致。
 .DS_Store
 *.log
 .env.local
