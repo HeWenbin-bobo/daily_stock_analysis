@@ -17,8 +17,24 @@ from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
-_HMAC_FILE = Path(__file__).resolve().parent.parent / "data" / ".llm_usage_hmac_secret"
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_HMAC_FILE = _DATA_DIR / ".llm_usage_hmac_secret"
 _SIGNING_KEY: Optional[bytes] = None
+
+
+def _hmac_file() -> Path:
+    """签名密钥文件路径（★ 探索期修复：跟随 db.migrate.DB_PATH 的目录）。
+
+    原先硬编码 `backend/data/`，而数据库路径受 `V4_DB_PATH` 覆盖 ——
+    测试隔离或多实例部署时会出现「数据在 A、密钥在 B」，多实例因此共享
+    同一把签名密钥，隔离形同虚设。
+    """
+    try:
+        from db.migrate import DB_PATH as _db_path
+
+        return Path(_db_path).parent / ".llm_usage_hmac_secret"
+    except Exception:
+        return _HMAC_FILE
 
 
 def _get_or_create_key() -> bytes:
@@ -27,16 +43,17 @@ def _get_or_create_key() -> bytes:
     env = os.environ.get("APP_HMAC_KEY")
     if env:
         return env.encode("utf-8")
-    if _HMAC_FILE.exists():
-        return _HMAC_FILE.read_bytes()
+    key_file = _hmac_file()
+    if key_file.exists():
+        return key_file.read_bytes()
     key = secrets.token_bytes(32)
-    _HMAC_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _HMAC_FILE.write_bytes(key)
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    key_file.write_bytes(key)
     try:
-        _HMAC_FILE.chmod(0o600)
+        key_file.chmod(0o600)
     except Exception:
         pass
-    logger.warning("Generated new HMAC key at %s; keep it safe!", _HMAC_FILE)
+    logger.warning("Generated new HMAC key at %s; keep it safe!", key_file)
     return key
 
 

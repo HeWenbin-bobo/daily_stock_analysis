@@ -13,8 +13,29 @@ from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
 
-_KEY_FILE = Path(__file__).resolve().parent.parent / "data" / ".encryption_key"
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_KEY_FILE = _DATA_DIR / ".encryption_key"
 _FERNET: Optional[Fernet] = None
+
+
+def _key_file() -> Path:
+    """密钥文件的实际路径。
+
+    ★ 探索期修复(配置漂移)：原先密钥路径硬编码为 `backend/data/.encryption_key`，
+      而数据库路径由 `db.migrate.DB_PATH` 决定（受 `V4_DB_PATH` 覆盖）。
+      两者不一致时——测试隔离、多实例部署、自定义数据目录——会出现
+      「数据写到 A，密钥还在 B」：多实例共享同一把密钥（隔离失效），
+      测试也会往生产目录写密钥。
+
+      现在优先跟随 `db.migrate.DB_PATH` 的目录；无法导入时回落到模块同级 data/，
+      保持与原先完全一致的行为。
+    """
+    try:
+        from db.migrate import DB_PATH as _db_path
+
+        return Path(_db_path).parent / ".encryption_key"
+    except Exception:
+        return _KEY_FILE
 
 
 def _get_or_create_key() -> bytes:
@@ -22,16 +43,17 @@ def _get_or_create_key() -> bytes:
     env_key = os.environ.get("APP_ENCRYPTION_KEY")
     if env_key:
         return env_key.encode("utf-8")
-    if _KEY_FILE.exists():
-        return _KEY_FILE.read_bytes()
+    key_file = _key_file()
+    if key_file.exists():
+        return key_file.read_bytes()
     key = Fernet.generate_key()
-    _KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _KEY_FILE.write_bytes(key)
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    key_file.write_bytes(key)
     try:
-        _KEY_FILE.chmod(0o600)
+        key_file.chmod(0o600)
     except Exception:
         pass
-    logger.warning("Generated new encryption key at %s; keep it safe!", _KEY_FILE)
+    logger.warning("Generated new encryption key at %s; keep it safe!", key_file)
     return key
 
 
