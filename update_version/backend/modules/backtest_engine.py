@@ -9,6 +9,7 @@
 "支持 walk-forward 验证"，与实现矛盾，已更正。跨段稳定性目前只能通过
 hyperopt 的 train/test 切分（前 80% / 后 20%）间接观察。
 """
+from contextlib import contextmanager
 import time
 import json
 import math
@@ -17,6 +18,24 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from db.migrate import get_conn
+
+
+@contextmanager
+def _conn():
+    """必定关闭的连接（★ 探索期修复 fd 泄漏）。
+
+    `sqlite3.Connection` 不会因引用消失就释放 fd（容器内实测：drop 引用后
+    fd 不变，gc.collect() 才归 0），每条连接占 2 个 fd（db + wal）。
+    本模块原先多处 `conn = get_conn()` 从不 close，长期运行会耗尽进程 fd。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 from core import llm_router as llm
 from core.data_source import fetch_kline_with_fallback
 from core.json_utils import _extract_json_object
@@ -168,56 +187,56 @@ def create_strategy(
     *,
     description: str = "",
 ) -> int:
-    conn = get_conn()
-    cur = conn.cursor()
-    now = time.time()
-    cur.execute(
-        """INSERT INTO backtest_strategy
-           (user_id, name, description, natural_language, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (user_id, name, description, natural_language, now, now),
-    )
-    return cur.lastrowid or 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        now = time.time()
+        cur.execute(
+            """INSERT INTO backtest_strategy
+               (user_id, name, description, natural_language, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (user_id, name, description, natural_language, now, now),
+        )
+        return cur.lastrowid or 0
 
 
 def list_strategies(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM backtest_strategy"
-    params: list = []
-    if user_id:
-        sql += " WHERE user_id=?"
-        params.append(user_id)
-    sql += " ORDER BY created_at DESC"
-    cur.execute(sql, params)
-    rows = []
-    for r in cur.fetchall():
-        d = dict(r)
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM backtest_strategy"
+        params: list = []
+        if user_id:
+            sql += " WHERE user_id=?"
+            params.append(user_id)
+        sql += " ORDER BY created_at DESC"
+        cur.execute(sql, params)
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            for k in ("compiled_dsl", "compiled_code"):
+                if d.get(k):
+                    try:
+                        d[k] = json.loads(d[k])
+                    except Exception:
+                        pass
+            rows.append(d)
+        return rows
+
+
+def get_strategy(strategy_id: int) -> Optional[Dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM backtest_strategy WHERE id=?", (strategy_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
         for k in ("compiled_dsl", "compiled_code"):
             if d.get(k):
                 try:
                     d[k] = json.loads(d[k])
                 except Exception:
                     pass
-        rows.append(d)
-    return rows
-
-
-def get_strategy(strategy_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM backtest_strategy WHERE id=?", (strategy_id,))
-    row = cur.fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    for k in ("compiled_dsl", "compiled_code"):
-        if d.get(k):
-            try:
-                d[k] = json.loads(d[k])
-            except Exception:
-                pass
-    return d
+        return d
 
 
 def update_strategy(strategy_id: int, **fields) -> bool:
@@ -235,10 +254,10 @@ def update_strategy(strategy_id: int, **fields) -> bool:
     sets.append("updated_at=?")
     params.append(time.time())
     params.append(strategy_id)
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(f"UPDATE backtest_strategy SET {','.join(sets)} WHERE id=?", params)
-    return cur.rowcount > 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE backtest_strategy SET {','.join(sets)} WHERE id=?", params)
+        return cur.rowcount > 0
 
 
 def delete_strategy(strategy_id: int) -> bool:
@@ -250,24 +269,24 @@ def delete_strategy(strategy_id: int) -> bool:
       （点进去引用一个不存在的 strategy_id），hyperopt_run / hyperopt_epoch
       同理永久占库。改为同一事务内按 策略 → 结果/优化 顺序清理。
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute("BEGIN IMMEDIATE")
-        cur.execute("DELETE FROM hyperopt_epoch WHERE run_id IN "
-                    "(SELECT id FROM hyperopt_run WHERE strategy_id=?)", (strategy_id,))
-        cur.execute("DELETE FROM hyperopt_run WHERE strategy_id=?", (strategy_id,))
-        cur.execute("DELETE FROM backtest_result WHERE strategy_id=?", (strategy_id,))
-        cur.execute("DELETE FROM backtest_strategy WHERE id=?", (strategy_id,))
-        deleted = cur.rowcount > 0
-        cur.execute("COMMIT")
-        return deleted
-    except Exception:
+    with _conn() as conn:
+        cur = conn.cursor()
         try:
-            cur.execute("ROLLBACK")
+            cur.execute("BEGIN IMMEDIATE")
+            cur.execute("DELETE FROM hyperopt_epoch WHERE run_id IN "
+                        "(SELECT id FROM hyperopt_run WHERE strategy_id=?)", (strategy_id,))
+            cur.execute("DELETE FROM hyperopt_run WHERE strategy_id=?", (strategy_id,))
+            cur.execute("DELETE FROM backtest_result WHERE strategy_id=?", (strategy_id,))
+            cur.execute("DELETE FROM backtest_strategy WHERE id=?", (strategy_id,))
+            deleted = cur.rowcount > 0
+            cur.execute("COMMIT")
+            return deleted
         except Exception:
-            pass
-        raise
+            try:
+                cur.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
 
 
 # ============================================================================
@@ -399,28 +418,28 @@ def run_backtest(
     result = _execute_backtest(kline, dsl, initial_capital, warmup_bars=warmup)
 
     # 写结果
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """INSERT INTO backtest_result
-           (strategy_id, user_id, symbol, start_date, end_date,
-            initial_capital, final_capital, total_return_pct,
-            annualized_return_pct, sharpe_ratio, max_drawdown_pct,
-            win_rate, total_trades, trades_json, equity_curve_json,
-            status, created_at, completed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (strategy_id, user_id, symbol, kline[0]["date"], kline[-1]["date"],
-         initial_capital, result["final_capital"], result["total_return_pct"],
-         result["annualized_return_pct"], result["sharpe_ratio"], result["max_drawdown_pct"],
-         result["win_rate"], result["total_trades"],
-         json.dumps(result["trades"], ensure_ascii=False),
-         json.dumps(result["equity_curve"], ensure_ascii=False),
-         "success", time.time(), time.time()),
-    )
-    result_id = cur.lastrowid or 0
-    result["result_id"] = result_id
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO backtest_result
+               (strategy_id, user_id, symbol, start_date, end_date,
+                initial_capital, final_capital, total_return_pct,
+                annualized_return_pct, sharpe_ratio, max_drawdown_pct,
+                win_rate, total_trades, trades_json, equity_curve_json,
+                status, created_at, completed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (strategy_id, user_id, symbol, kline[0]["date"], kline[-1]["date"],
+             initial_capital, result["final_capital"], result["total_return_pct"],
+             result["annualized_return_pct"], result["sharpe_ratio"], result["max_drawdown_pct"],
+             result["win_rate"], result["total_trades"],
+             json.dumps(result["trades"], ensure_ascii=False),
+             json.dumps(result["equity_curve"], ensure_ascii=False),
+             "success", time.time(), time.time()),
+        )
+        result_id = cur.lastrowid or 0
+        result["result_id"] = result_id
 
-    return result
+        return result
 
 
 def _execute_backtest(
@@ -778,38 +797,38 @@ def _volume_ratio(volumes: List[float], period: int = 5) -> List[float]:
 # 回测结果查询
 # ============================================================================
 def list_results(user_id: Optional[str] = None, strategy_id: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM backtest_result WHERE 1=1"
-    params: list = []
-    if user_id:
-        sql += " AND user_id=?"
-        params.append(user_id)
-    if strategy_id:
-        sql += " AND strategy_id=?"
-        params.append(strategy_id)
-    sql += " ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
-    cur.execute(sql, params)
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM backtest_result WHERE 1=1"
+        params: list = []
+        if user_id:
+            sql += " AND user_id=?"
+            params.append(user_id)
+        if strategy_id:
+            sql += " AND strategy_id=?"
+            params.append(strategy_id)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 def get_result(result_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM backtest_result WHERE id=?", (result_id,))
-    row = cur.fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    for k in ("trades_json", "equity_curve_json"):
-        if d.get(k):
-            try:
-                d[k.replace("_json", "")] = json.loads(d[k])
-                del d[k]
-            except Exception:
-                pass
-    return d
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM backtest_result WHERE id=?", (result_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        for k in ("trades_json", "equity_curve_json"):
+            if d.get(k):
+                try:
+                    d[k.replace("_json", "")] = json.loads(d[k])
+                    del d[k]
+                except Exception:
+                    pass
+        return d
 
 
 # ============================================================================

@@ -227,6 +227,42 @@ APScheduler 持久化要求函数是 module-level named function（不能 lambda
 ### 8. v1 兼容 alias
 前端用 `/api/v1/hot-analysis/*`，v2 后端**同时挂 v1 + v2 两个前缀**（同一个 router），避免改前端调用路径。
 
+## 运维注意：SQLite 连接与文件描述符（fd）
+
+`sqlite3.Connection` **不会**因为引用消失就释放 fd。容器内实测：变量被丢弃后
+fd 数量不降，只有显式 `gc.collect()` 才归 0。每条连接占 **2 个 fd**
+（数据库文件 + `-wal`）。
+
+这意味着「`conn = get_conn()` 用完不管」在本项目里是**真泄漏**，不是理论风险。
+实测过的几个点（均已修复）：
+
+| 位置 | 触发频率 | 实测现象 |
+|---|---|---|
+| `core/cron.py` 的 job listener | 每次 cron 执行 | 生产每天约 76 次 |
+| `modules/community.py` 热榜 | 首页/社区页轮询 | 40 次请求 fd 17→89，12s 不回落 |
+| `core/audit.py` `record()` | **每个写请求** | `/audit/recent` 每次 +1 |
+| `core/data_source.update_health()` | 每次行情/K线调用 | 堆积最多的来源 |
+| `api/endpoints_hot.py` 的两处 `new_event_loop()` | 分析失败时 | 每个未关闭 loop 占 **3 个 fd** |
+| `call_with_timeout` 放弃的线程 | 上游挂起时 | 线程仍持有 HTTP 连接（akshare 单次最坏 197s） |
+
+**排查手法**（不要靠猜）：
+
+```bash
+# 1) 容器内取基线
+docker exec dsa-v2 sh -c 'ls /proc/1/fd | wc -l'
+# 2) 打流量
+for i in $(seq 30); do curl -s -o /dev/null "http://localhost:8002$EP"; done
+# 3) 再数一次；增长量 / 请求数 = 每请求泄漏几个 fd
+docker exec dsa-v2 sh -c 'ls /proc/1/fd | wc -l'
+```
+
+注意 `/proc/<pid>/fd` 属主是容器内的运行用户，要 `docker exec -u dsa ...`
+才能 `readlink` 看具体指向。
+
+写入侧统一用各模块的 `_conn()` 上下文管理器（`core/audit.py`、`core/notifier.py`、
+`modules/community.py` 等），或 `db.migrate.get_conn()` + `try/finally`。
+`tests/test_phase99_conn_leak_sweep.py` 会用 AST 扫全后端，拦住新写的漏网路径。
+
 ## 跳过的项
 
 > 这一节区分「不需要做」「做不了」「以后要做时怎么做」。凡是 Docker 部署相关

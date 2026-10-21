@@ -7,6 +7,7 @@
 - 每日快照（资产 + 持仓市值 + 现金 + 沪深 300 对比）
 - 排行榜（按总收益率）
 """
+from contextlib import contextmanager
 import time
 import json
 import logging
@@ -14,6 +15,24 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from db.migrate import get_conn
+
+
+@contextmanager
+def _conn():
+    """必定关闭的连接（★ 探索期修复 fd 泄漏）。
+
+    `sqlite3.Connection` 不会因引用消失就释放 fd（容器内实测：drop 引用后
+    fd 不变，gc.collect() 才归 0），每条连接占 2 个 fd（db + wal）。
+    本模块原先多处 `conn = get_conn()` 从不 close，长期运行会耗尽进程 fd。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 from core.data_source import fetch_quote_with_fallback, fetch_quotes_bulk, is_mock_payload
 
 logger = logging.getLogger(__name__)
@@ -61,41 +80,41 @@ def create_account(user_id: str, name: str, initial_capital: float = INITIAL_CAP
         raise ValueError("initial_capital 必须 > 0")
     if initial_capital > MAX_INITIAL_CAPITAL:
         raise ValueError(f"initial_capital 超出合理范围（上限 {MAX_INITIAL_CAPITAL:.0f}）")
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            """INSERT INTO paper_account (user_id, name, initial_capital, cash, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (user_id, name, initial_capital, initial_capital, time.time()),
-        )
-        return cur.lastrowid or 0
-    except Exception as e:
-        if "UNIQUE" in str(e):
-            cur.execute("SELECT id FROM paper_account WHERE user_id=? AND name=?", (user_id, name))
-            return cur.fetchone()["id"]
-        raise
+    with _conn() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """INSERT INTO paper_account (user_id, name, initial_capital, cash, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user_id, name, initial_capital, initial_capital, time.time()),
+            )
+            return cur.lastrowid or 0
+        except Exception as e:
+            if "UNIQUE" in str(e):
+                cur.execute("SELECT id FROM paper_account WHERE user_id=? AND name=?", (user_id, name))
+                return cur.fetchone()["id"]
+            raise
 
 
 def list_accounts(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM paper_account"
-    params: list = []
-    if user_id:
-        sql += " WHERE user_id=?"
-        params.append(user_id)
-    sql += " ORDER BY created_at DESC"
-    cur.execute(sql, params)
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM paper_account"
+        params: list = []
+        if user_id:
+            sql += " WHERE user_id=?"
+            params.append(user_id)
+        sql += " ORDER BY created_at DESC"
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 def get_account(account_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM paper_account WHERE id=?", (account_id,))
-    row = cur.fetchone()
-    return dict(row) if row else None
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM paper_account WHERE id=?", (account_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
 
 
 def delete_account(account_id: int) -> bool:
@@ -124,25 +143,25 @@ def delete_account(account_id: int) -> bool:
         raise ValueError(
             "组合持仓账本不能删除（请用 /portfolio/holdings 逐个移除持仓）"
         )
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute("BEGIN IMMEDIATE")
-        cur.execute("DELETE FROM paper_snapshot WHERE account_id=?", (account_id,))
-        cur.execute(
-            f"DELETE FROM paper_trade WHERE account_id=? AND {_PAPER_LEDGER_FILTER}",
-            (account_id,),
-        )
-        cur.execute("DELETE FROM paper_account WHERE id=?", (account_id,))
-        deleted = cur.rowcount > 0
-        cur.execute("COMMIT")
-        return deleted
-    except Exception:
+    with _conn() as conn:
+        cur = conn.cursor()
         try:
-            cur.execute("ROLLBACK")
+            cur.execute("BEGIN IMMEDIATE")
+            cur.execute("DELETE FROM paper_snapshot WHERE account_id=?", (account_id,))
+            cur.execute(
+                f"DELETE FROM paper_trade WHERE account_id=? AND {_PAPER_LEDGER_FILTER}",
+                (account_id,),
+            )
+            cur.execute("DELETE FROM paper_account WHERE id=?", (account_id,))
+            deleted = cur.rowcount > 0
+            cur.execute("COMMIT")
+            return deleted
         except Exception:
-            pass
-        raise
+            try:
+                cur.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
 
 
 # ============================================================================
@@ -174,60 +193,60 @@ def transfer_between_accounts(
     # 快速预检（真正保证见事务内条件更新，避免 TOCTOU 透支）
     if src["cash"] < amount:
         raise ValueError(f"现金不足：可用 {src['cash']:.0f}，要转 {amount:.0f}")
-    conn = get_conn()
-    try:
-        conn.execute("BEGIN")
-        # ★ Round 22 修复(TOCTOU)：余额检查必须在事务内用条件更新做，并检查 rowcount。
-        #   旧实现只在本事务外读了一次 cash，两个并发转账都能通过预检 → cash 透支为负。
-        cur = conn.execute(
-            "UPDATE paper_account SET cash=cash-? WHERE id=? AND cash>=?",
-            (amount, from_account_id, amount),
-        )
-        if cur.rowcount == 0:
-            conn.execute("ROLLBACK")
-            # 用最新值报错，更友好
-            fresh = get_account(from_account_id)
-            bal = fresh["cash"] if fresh else 0
-            raise ValueError(f"现金不足：可用 {bal:.0f}，要转 {amount:.0f}")
-        conn.execute("UPDATE paper_account SET cash=cash+? WHERE id=?", (amount, to_account_id))
-        # 记录两笔交易（转出 + 转入）
-        now = time.time()
-        trade_date = datetime.now().strftime("%Y-%m-%d")
-        conn.execute(
-            """INSERT INTO paper_trade (account_id, user_id, symbol, side, price, quantity, amount, fee, reason, trade_date, created_at)
-               VALUES (?, ?, '_CASH_', 'sell', 1, 0, ?, 0, ?, ?, ?)""",
-            (from_account_id, src["user_id"], amount, f"transfer_out:{note}"[:200], trade_date, now),
-        )
-        conn.execute(
-            """INSERT INTO paper_trade (account_id, user_id, symbol, side, price, quantity, amount, fee, reason, trade_date, created_at)
-               VALUES (?, ?, '_CASH_', 'buy', 1, 0, ?, 0, ?, ?, ?)""",
-            (to_account_id, dst["user_id"], amount, f"transfer_in:{note}"[:200], trade_date, now),
-        )
-        conn.execute("COMMIT")
-    except Exception:
+    with _conn() as conn:
         try:
-            conn.execute("ROLLBACK")
+            conn.execute("BEGIN")
+            # ★ Round 22 修复(TOCTOU)：余额检查必须在事务内用条件更新做，并检查 rowcount。
+            #   旧实现只在本事务外读了一次 cash，两个并发转账都能通过预检 → cash 透支为负。
+            cur = conn.execute(
+                "UPDATE paper_account SET cash=cash-? WHERE id=? AND cash>=?",
+                (amount, from_account_id, amount),
+            )
+            if cur.rowcount == 0:
+                conn.execute("ROLLBACK")
+                # 用最新值报错，更友好
+                fresh = get_account(from_account_id)
+                bal = fresh["cash"] if fresh else 0
+                raise ValueError(f"现金不足：可用 {bal:.0f}，要转 {amount:.0f}")
+            conn.execute("UPDATE paper_account SET cash=cash+? WHERE id=?", (amount, to_account_id))
+            # 记录两笔交易（转出 + 转入）
+            now = time.time()
+            trade_date = datetime.now().strftime("%Y-%m-%d")
+            conn.execute(
+                """INSERT INTO paper_trade (account_id, user_id, symbol, side, price, quantity, amount, fee, reason, trade_date, created_at)
+                   VALUES (?, ?, '_CASH_', 'sell', 1, 0, ?, 0, ?, ?, ?)""",
+                (from_account_id, src["user_id"], amount, f"transfer_out:{note}"[:200], trade_date, now),
+            )
+            conn.execute(
+                """INSERT INTO paper_trade (account_id, user_id, symbol, side, price, quantity, amount, fee, reason, trade_date, created_at)
+                   VALUES (?, ?, '_CASH_', 'buy', 1, 0, ?, 0, ?, ?, ?)""",
+                (to_account_id, dst["user_id"], amount, f"transfer_in:{note}"[:200], trade_date, now),
+            )
+            conn.execute("COMMIT")
         except Exception:
-            pass
-        raise
-    # ★ 修复(M4)：返回值用事务内最新余额 —— 旧实现用事务外 get_account 读到的
-    #   src/dst cash 计算，并发转账下返回值与实际 DB 余额漂移。这里重新读。
-    try:
-        fresh_src = get_account(from_account_id)
-        fresh_dst = get_account(to_account_id)
-        from_new_cash = fresh_src["cash"] if fresh_src else 0
-        to_new_cash = fresh_dst["cash"] if fresh_dst else 0
-    except Exception:
-        from_new_cash = src["cash"] - amount
-        to_new_cash = dst["cash"] + amount
-    return {
-        "from_account_id": from_account_id,
-        "to_account_id": to_account_id,
-        "amount": amount,
-        "from_new_cash": from_new_cash,
-        "to_new_cash": to_new_cash,
-        "note": note,
-    }
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        # ★ 修复(M4)：返回值用事务内最新余额 —— 旧实现用事务外 get_account 读到的
+        #   src/dst cash 计算，并发转账下返回值与实际 DB 余额漂移。这里重新读。
+        try:
+            fresh_src = get_account(from_account_id)
+            fresh_dst = get_account(to_account_id)
+            from_new_cash = fresh_src["cash"] if fresh_src else 0
+            to_new_cash = fresh_dst["cash"] if fresh_dst else 0
+        except Exception:
+            from_new_cash = src["cash"] - amount
+            to_new_cash = dst["cash"] + amount
+        return {
+            "from_account_id": from_account_id,
+            "to_account_id": to_account_id,
+            "amount": amount,
+            "from_new_cash": from_new_cash,
+            "to_new_cash": to_new_cash,
+            "note": note,
+        }
 
 
 # ============================================================================
@@ -251,19 +270,19 @@ def is_portfolio_account(account_id: int) -> bool:
     判定：账户名是组合模块建的 `我的持仓`，或名下存在 portfolio_holding 记录。
     两者都查，因为老数据可能只满足其中一条。
     """
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT name FROM paper_account WHERE id=?", (account_id,)
-    ).fetchone()
-    if not row:
-        return False
-    if (row["name"] or "") == "我的持仓":
-        return True
-    hit = conn.execute(
-        "SELECT 1 FROM paper_trade WHERE account_id=? AND COALESCE(reason,'') LIKE ? LIMIT 1",
-        (account_id, _PORTFOLIO_REASON_PREFIX + "%"),
-    ).fetchone()
-    return hit is not None
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT name FROM paper_account WHERE id=?", (account_id,)
+        ).fetchone()
+        if not row:
+            return False
+        if (row["name"] or "") == "我的持仓":
+            return True
+        hit = conn.execute(
+            "SELECT 1 FROM paper_trade WHERE account_id=? AND COALESCE(reason,'') LIKE ? LIMIT 1",
+            (account_id, _PORTFOLIO_REASON_PREFIX + "%"),
+        ).fetchone()
+        return hit is not None
 
 
 def get_positions(account_id: int) -> List[Dict[str, Any]]:
@@ -271,60 +290,60 @@ def get_positions(account_id: int) -> List[Dict[str, Any]]:
 
     只统计模拟盘自身的成交，排除组合持仓账本（见 _PAPER_LEDGER_FILTER）。
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        f"""SELECT symbol, side, quantity, price, trade_date
-           FROM paper_trade WHERE account_id=? AND {_PAPER_LEDGER_FILTER}
-           ORDER BY created_at ASC""",
-        (account_id,),
-    )
-    rows = [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT symbol, side, quantity, price, trade_date
+               FROM paper_trade WHERE account_id=? AND {_PAPER_LEDGER_FILTER}
+               ORDER BY created_at ASC""",
+            (account_id,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
 
-    pos: Dict[str, Dict[str, Any]] = {}
-    for r in rows:
-        sym = r["symbol"]
-        if sym not in pos:
-            pos[sym] = {"symbol": sym, "quantity": 0, "avg_cost": 0.0, "total_cost": 0.0}
-        if r["side"] == "buy":
-            pos[sym]["total_cost"] += r["quantity"] * r["price"]
-            pos[sym]["quantity"] += r["quantity"]
-        else:  # sell
-            if pos[sym]["quantity"] > 0:
-                avg = pos[sym]["total_cost"] / pos[sym]["quantity"]
-                pos[sym]["total_cost"] -= r["quantity"] * avg
-                pos[sym]["quantity"] -= r["quantity"]
+        pos: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            sym = r["symbol"]
+            if sym not in pos:
+                pos[sym] = {"symbol": sym, "quantity": 0, "avg_cost": 0.0, "total_cost": 0.0}
+            if r["side"] == "buy":
+                pos[sym]["total_cost"] += r["quantity"] * r["price"]
+                pos[sym]["quantity"] += r["quantity"]
+            else:  # sell
+                if pos[sym]["quantity"] > 0:
+                    avg = pos[sym]["total_cost"] / pos[sym]["quantity"]
+                    pos[sym]["total_cost"] -= r["quantity"] * avg
+                    pos[sym]["quantity"] -= r["quantity"]
 
-    result = []
-    # ★ 第三轮优化：批量并发拉取行情，避免 N+1
-    symbols_with_pos = [sym for sym, p in pos.items() if p["quantity"] > 0]
-    quotes_map = fetch_quotes_bulk(symbols_with_pos, parallel=True) if symbols_with_pos else {}
-    for sym, p in pos.items():
-        if p["quantity"] <= 0:
-            continue
-        avg_cost = p["total_cost"] / p["quantity"]
-        quote = quotes_map.get(sym) or {}
-        # ★ 探索期修复：估值路径此前不判 mock —— sandbox/断网时 fetch_quotes_bulk
-        #   返回 source="mock" 的合成价，会被写进 paper_snapshot（不可回滚），
-        #   排行榜与业绩曲线从此被假价格污染（实测成交价 100 的持仓被估成 9999）。
-        #   下单与基准早有 is_mock_payload 防护，这里补齐估值侧：mock 时回退成本价。
-        price_is_mock = is_mock_payload(quote)
-        last_price = avg_cost if price_is_mock else quote.get("price", avg_cost)
-        market_value = p["quantity"] * last_price
-        pnl = market_value - p["total_cost"]
-        pnl_pct = (pnl / p["total_cost"]) * 100 if p["total_cost"] > 0 else 0
-        result.append({
-            "symbol": sym,
-            "name": quote.get("name", sym),
-            "quantity": p["quantity"],
-            "avg_cost": round(avg_cost, 2),
-            "last_price": last_price,
-            "price_is_mock": price_is_mock,
-            "market_value": round(market_value, 2),
-            "pnl": round(pnl, 2),
-            "pnl_pct": round(pnl_pct, 2),
-        })
-    return result
+        result = []
+        # ★ 第三轮优化：批量并发拉取行情，避免 N+1
+        symbols_with_pos = [sym for sym, p in pos.items() if p["quantity"] > 0]
+        quotes_map = fetch_quotes_bulk(symbols_with_pos, parallel=True) if symbols_with_pos else {}
+        for sym, p in pos.items():
+            if p["quantity"] <= 0:
+                continue
+            avg_cost = p["total_cost"] / p["quantity"]
+            quote = quotes_map.get(sym) or {}
+            # ★ 探索期修复：估值路径此前不判 mock —— sandbox/断网时 fetch_quotes_bulk
+            #   返回 source="mock" 的合成价，会被写进 paper_snapshot（不可回滚），
+            #   排行榜与业绩曲线从此被假价格污染（实测成交价 100 的持仓被估成 9999）。
+            #   下单与基准早有 is_mock_payload 防护，这里补齐估值侧：mock 时回退成本价。
+            price_is_mock = is_mock_payload(quote)
+            last_price = avg_cost if price_is_mock else quote.get("price", avg_cost)
+            market_value = p["quantity"] * last_price
+            pnl = market_value - p["total_cost"]
+            pnl_pct = (pnl / p["total_cost"]) * 100 if p["total_cost"] > 0 else 0
+            result.append({
+                "symbol": sym,
+                "name": quote.get("name", sym),
+                "quantity": p["quantity"],
+                "avg_cost": round(avg_cost, 2),
+                "last_price": last_price,
+                "price_is_mock": price_is_mock,
+                "market_value": round(market_value, 2),
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+            })
+        return result
 
 
 # ============================================================================
@@ -340,29 +359,29 @@ def _shares_bought_before(account_id: int, symbol: str, before_date: str) -> int
     导致"昨日买 200 + 今日买 100 → 今日先卖 200 成功、再卖 100 也成功"（可卖额度
     永远返回 200，今日卖出不扣减），当日买入被重复卖出。
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    # ★ 探索期修复：排除组合持仓账本，否则组合里的"真实持仓"会被算成可卖额度
-    cur.execute(
-        f"""SELECT side, quantity, trade_date FROM paper_trade
-           WHERE account_id=? AND symbol=? AND {_PAPER_LEDGER_FILTER}
-           ORDER BY created_at ASC""",
-        (account_id, symbol),
-    )
-    held = 0  # 截至 today 之前的累计净买入（可卖基数）
-    sold_today = 0  # 今日已卖出（占用 T+1 额度）
-    for r in cur.fetchall():
-        if r["trade_date"] < before_date:
-            # 今日之前的交易：买入增加可卖基数，卖出减少
-            if r["side"] == "buy":
-                held += r["quantity"]
+    with _conn() as conn:
+        cur = conn.cursor()
+        # ★ 探索期修复：排除组合持仓账本，否则组合里的"真实持仓"会被算成可卖额度
+        cur.execute(
+            f"""SELECT side, quantity, trade_date FROM paper_trade
+               WHERE account_id=? AND symbol=? AND {_PAPER_LEDGER_FILTER}
+               ORDER BY created_at ASC""",
+            (account_id, symbol),
+        )
+        held = 0  # 截至 today 之前的累计净买入（可卖基数）
+        sold_today = 0  # 今日已卖出（占用 T+1 额度）
+        for r in cur.fetchall():
+            if r["trade_date"] < before_date:
+                # 今日之前的交易：买入增加可卖基数，卖出减少
+                if r["side"] == "buy":
+                    held += r["quantity"]
+                else:
+                    held -= r["quantity"]
             else:
-                held -= r["quantity"]
-        else:
-            # 今日的交易：买入不影响可卖（T+1 当日买入不可卖），卖出占用可卖额度
-            if r["side"] == "sell":
-                sold_today += r["quantity"]
-    return max(held - sold_today, 0)
+                # 今日的交易：买入不影响可卖（T+1 当日买入不可卖），卖出占用可卖额度
+                if r["side"] == "sell":
+                    sold_today += r["quantity"]
+        return max(held - sold_today, 0)
 
 
 def _held_and_sellable(conn, account_id: int, symbol: str, today: str) -> "tuple[int, int]":
@@ -482,98 +501,98 @@ def place_order(
     # ★ 本轮修复(TOCTOU)：BEGIN → BEGIN IMMEDIATE，立即拿写锁；卖出分支在锁内
     #   用 _held_and_sellable() 重新核验一次持仓/T+1 额度 —— 上面的检查是无锁预检，
     #   不是权威判断，见 _held_and_sellable 的注释。
-    conn = get_conn()
-    cur = conn.cursor()
-    trade_date = datetime.now().strftime("%Y-%m-%d")
-    try:
-        cur.execute("BEGIN IMMEDIATE")
-        if side == "sell":
-            total_held, sellable_now = _held_and_sellable(conn, account_id, symbol, trade_date)
-            if total_held < quantity:
-                conn.execute("ROLLBACK")
-                raise ValueError(f"持仓不足：{symbol} 持有 {max(total_held, 0)}，要卖 {quantity}")
-            if quantity > sellable_now:
-                conn.execute("ROLLBACK")
-                raise ValueError(
-                    f"T+1 限制：{symbol} 今日可卖 {sellable_now} 股（当日买入不可当日卖出），实际卖出 {quantity}"
-                )
-        cur.execute(
-            """INSERT INTO paper_trade
-               (account_id, user_id, symbol, side, price, quantity, amount, fee,
-                reason, related_alert_id, related_strategy_id, trade_date, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (account_id, account["user_id"], symbol, side, price, quantity, amount, fee,
-             reason, related_alert_id, related_strategy_id, trade_date, time.time()),
-        )
-        trade_id = cur.lastrowid or 0
-
-        # 更新账户现金
-        if side == "buy":
-            # ★ Round 22 修复(TOCTOU)：买入用条件更新 SET cash=cash-?，事务内检查 rowcount，
-            #   旧实现用事务外读到的旧 cash 做绝对写，两个并发买单都能通过 → 透支
-            cur2 = conn.execute(
-                "UPDATE paper_account SET cash=cash-? WHERE id=? AND cash>=?",
-                (amount + fee, account_id, amount + fee),
-            )
-            if cur2.rowcount == 0:
-                conn.execute("ROLLBACK")
-                fresh = get_account(account_id)
-                bal = fresh["cash"] if fresh else 0
-                raise ValueError(f"现金不足：可用 {bal:.0f}，需要 {amount + fee:.0f}")
-            row = conn.execute("SELECT cash FROM paper_account WHERE id=?", (account_id,)).fetchone()
-            new_cash = row["cash"] if row else 0
-        else:
-            # ★ 探索期修复(负现金)：卖出所得可能**小于佣金** —— 佣金是
-            #   `max(amount*0.0003, 5.0)` 的最低 5 元，而卖出 1 股 ¥1 的股票
-            #   只有 ¥1 收入，于是 `cash + (amount - fee)` 把现金打成负数。
-            #   实测：现金 0 的账户卖出 1 股 @¥1 → cash = -4.0。
-            #   负现金会直接污染排行榜权益与后续买入判断（`cash > 0` 护栏失效），
-            #   且真实券商不会让账户因成交而凭空负债 —— 直接拒绝更诚实。
-            if amount - fee < 0:
-                conn.execute("ROLLBACK")
-                raise ValueError(
-                    f"卖出所得 ¥{amount:.2f} 不足以支付佣金 ¥{fee:.2f}，"
-                    f"该笔订单会亏本成交，已拒绝"
-                )
-            # ★ 修复(L3)：卖出分支旧实现 new_cash = account["cash"] + amount - fee
-            #   （account 是事务外读的旧值），并发成交下返回值与实际 DB 余额漂移。
-            #   改为事务内重读最新余额（与买入分支一致）。
-            conn.execute(
-                "UPDATE paper_account SET cash=cash+? WHERE id=?",
-                (amount - fee, account_id),
-            )
-            row = conn.execute("SELECT cash FROM paper_account WHERE id=?", (account_id,)).fetchone()
-            new_cash = row["cash"] if row else 0
-        cur.execute("COMMIT")
-    except Exception:
+    with _conn() as conn:
+        cur = conn.cursor()
+        trade_date = datetime.now().strftime("%Y-%m-%d")
         try:
-            cur.execute("ROLLBACK")
-        except Exception:
-            pass
-        raise
+            cur.execute("BEGIN IMMEDIATE")
+            if side == "sell":
+                total_held, sellable_now = _held_and_sellable(conn, account_id, symbol, trade_date)
+                if total_held < quantity:
+                    conn.execute("ROLLBACK")
+                    raise ValueError(f"持仓不足：{symbol} 持有 {max(total_held, 0)}，要卖 {quantity}")
+                if quantity > sellable_now:
+                    conn.execute("ROLLBACK")
+                    raise ValueError(
+                        f"T+1 限制：{symbol} 今日可卖 {sellable_now} 股（当日买入不可当日卖出），实际卖出 {quantity}"
+                    )
+            cur.execute(
+                """INSERT INTO paper_trade
+                   (account_id, user_id, symbol, side, price, quantity, amount, fee,
+                    reason, related_alert_id, related_strategy_id, trade_date, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (account_id, account["user_id"], symbol, side, price, quantity, amount, fee,
+                 reason, related_alert_id, related_strategy_id, trade_date, time.time()),
+            )
+            trade_id = cur.lastrowid or 0
 
-    return {
-        "trade_id": trade_id,
-        "symbol": symbol,
-        "side": side,
-        "price": price,
-        "quantity": quantity,
-        "amount": amount,
-        "fee": fee,
-        "new_cash": new_cash,
-        "trade_date": trade_date,
-    }
+            # 更新账户现金
+            if side == "buy":
+                # ★ Round 22 修复(TOCTOU)：买入用条件更新 SET cash=cash-?，事务内检查 rowcount，
+                #   旧实现用事务外读到的旧 cash 做绝对写，两个并发买单都能通过 → 透支
+                cur2 = conn.execute(
+                    "UPDATE paper_account SET cash=cash-? WHERE id=? AND cash>=?",
+                    (amount + fee, account_id, amount + fee),
+                )
+                if cur2.rowcount == 0:
+                    conn.execute("ROLLBACK")
+                    fresh = get_account(account_id)
+                    bal = fresh["cash"] if fresh else 0
+                    raise ValueError(f"现金不足：可用 {bal:.0f}，需要 {amount + fee:.0f}")
+                row = conn.execute("SELECT cash FROM paper_account WHERE id=?", (account_id,)).fetchone()
+                new_cash = row["cash"] if row else 0
+            else:
+                # ★ 探索期修复(负现金)：卖出所得可能**小于佣金** —— 佣金是
+                #   `max(amount*0.0003, 5.0)` 的最低 5 元，而卖出 1 股 ¥1 的股票
+                #   只有 ¥1 收入，于是 `cash + (amount - fee)` 把现金打成负数。
+                #   实测：现金 0 的账户卖出 1 股 @¥1 → cash = -4.0。
+                #   负现金会直接污染排行榜权益与后续买入判断（`cash > 0` 护栏失效），
+                #   且真实券商不会让账户因成交而凭空负债 —— 直接拒绝更诚实。
+                if amount - fee < 0:
+                    conn.execute("ROLLBACK")
+                    raise ValueError(
+                        f"卖出所得 ¥{amount:.2f} 不足以支付佣金 ¥{fee:.2f}，"
+                        f"该笔订单会亏本成交，已拒绝"
+                    )
+                # ★ 修复(L3)：卖出分支旧实现 new_cash = account["cash"] + amount - fee
+                #   （account 是事务外读的旧值），并发成交下返回值与实际 DB 余额漂移。
+                #   改为事务内重读最新余额（与买入分支一致）。
+                conn.execute(
+                    "UPDATE paper_account SET cash=cash+? WHERE id=?",
+                    (amount - fee, account_id),
+                )
+                row = conn.execute("SELECT cash FROM paper_account WHERE id=?", (account_id,)).fetchone()
+                new_cash = row["cash"] if row else 0
+            cur.execute("COMMIT")
+        except Exception:
+            try:
+                cur.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+
+        return {
+            "trade_id": trade_id,
+            "symbol": symbol,
+            "side": side,
+            "price": price,
+            "quantity": quantity,
+            "amount": amount,
+            "fee": fee,
+            "new_cash": new_cash,
+            "trade_date": trade_date,
+        }
 
 
 def list_trades(account_id: int, limit: int = 100) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """SELECT * FROM paper_trade WHERE account_id=?
-           ORDER BY created_at DESC LIMIT ?""",
-        (account_id, limit),
-    )
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT * FROM paper_trade WHERE account_id=?
+               ORDER BY created_at DESC LIMIT ?""",
+            (account_id, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ============================================================================
@@ -641,54 +660,54 @@ def take_snapshot(
     }
 
     # 写库
-    conn = get_conn()
-    conn.execute(
-        """INSERT OR REPLACE INTO paper_snapshot
-           (account_id, snapshot_date, total_equity, cash, positions_value,
-            positions_json, benchmark_equity, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (account_id, snapshot_date, snapshot["total_equity"], snapshot["cash"],
-         snapshot["positions_value"], json.dumps(positions, ensure_ascii=False),
-         snapshot["benchmark_equity"], time.time()),
-    )
-    return snapshot
+    with _conn() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO paper_snapshot
+               (account_id, snapshot_date, total_equity, cash, positions_value,
+                positions_json, benchmark_equity, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, snapshot_date, snapshot["total_equity"], snapshot["cash"],
+             snapshot["positions_value"], json.dumps(positions, ensure_ascii=False),
+             snapshot["benchmark_equity"], time.time()),
+        )
+        return snapshot
 
 
 def list_snapshots(account_id: int, limit: int = 365) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """SELECT * FROM paper_snapshot WHERE account_id=?
-           ORDER BY snapshot_date DESC LIMIT ?""",
-        (account_id, limit),
-    )
-    rows = []
-    for r in cur.fetchall():
-        d = dict(r)
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT * FROM paper_snapshot WHERE account_id=?
+               ORDER BY snapshot_date DESC LIMIT ?""",
+            (account_id, limit),
+        )
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            try:
+                d["positions"] = json.loads(d.pop("positions_json", "[]"))
+            except Exception:
+                d["positions"] = []
+            rows.append(d)
+        return rows
+
+
+def get_snapshot(account_id: int, snapshot_date: str) -> Optional[Dict[str, Any]]:
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM paper_snapshot WHERE account_id=? AND snapshot_date=?",
+            (account_id, snapshot_date),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
         try:
             d["positions"] = json.loads(d.pop("positions_json", "[]"))
         except Exception:
             d["positions"] = []
-        rows.append(d)
-    return rows
-
-
-def get_snapshot(account_id: int, snapshot_date: str) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT * FROM paper_snapshot WHERE account_id=? AND snapshot_date=?",
-        (account_id, snapshot_date),
-    )
-    row = cur.fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    try:
-        d["positions"] = json.loads(d.pop("positions_json", "[]"))
-    except Exception:
-        d["positions"] = []
-    return d
+        return d
 
 
 # ============================================================================
@@ -731,37 +750,37 @@ def settle_daily() -> Dict[str, Any]:
 # ============================================================================
 def leaderboard(limit: int = 50) -> List[Dict[str, Any]]:
     """取最新快照，按总收益率降序（只含模拟盘账户）"""
-    conn = get_conn()
-    cur = conn.cursor()
-    # 取每个账户的最新快照
-    ## ★ 探索期修复：组合持仓账本（"我的持仓"）不是模拟盘，混进排行榜会
-    #   让"录入真实持仓"的用户凭空占据榜首。用 name + portfolio_holding 记录
-    #   双重排除，与 is_portfolio_account() 的判定保持一致。
-    cur.execute(
-        """SELECT s.*, a.user_id, a.name as account_name, a.initial_capital
-           FROM paper_snapshot s
-           JOIN paper_account a ON s.account_id = a.id
-           WHERE s.snapshot_date = (
-             SELECT MAX(snapshot_date) FROM paper_snapshot s2 WHERE s2.account_id = s.account_id
-           )
-           AND a.name != '我的持仓'
-           AND NOT EXISTS (
-             SELECT 1 FROM paper_trade t
-             WHERE t.account_id = a.id
-               AND COALESCE(t.reason, '') LIKE 'portfolio_holding%'
-           )
-           ORDER BY s.total_equity DESC LIMIT ?""",
-        (limit,),
-    )
-    rows = []
-    for r in cur.fetchall():
-        d = dict(r)
-        # ★ 修复(除零)：initial_capital=0 时 leaderboard 500；兜底返回 0%
-        initial = d.get("initial_capital") or 0
-        ret_pct = (d["total_equity"] - initial) / initial * 100 if initial > 0 else 0.0
-        d["total_return_pct"] = round(ret_pct, 2)
-        rows.append(d)
-    return rows
+    with _conn() as conn:
+        cur = conn.cursor()
+        # 取每个账户的最新快照
+        ## ★ 探索期修复：组合持仓账本（"我的持仓"）不是模拟盘，混进排行榜会
+        #   让"录入真实持仓"的用户凭空占据榜首。用 name + portfolio_holding 记录
+        #   双重排除，与 is_portfolio_account() 的判定保持一致。
+        cur.execute(
+            """SELECT s.*, a.user_id, a.name as account_name, a.initial_capital
+               FROM paper_snapshot s
+               JOIN paper_account a ON s.account_id = a.id
+               WHERE s.snapshot_date = (
+                 SELECT MAX(snapshot_date) FROM paper_snapshot s2 WHERE s2.account_id = s.account_id
+               )
+               AND a.name != '我的持仓'
+               AND NOT EXISTS (
+                 SELECT 1 FROM paper_trade t
+                 WHERE t.account_id = a.id
+                   AND COALESCE(t.reason, '') LIKE 'portfolio_holding%'
+               )
+               ORDER BY s.total_equity DESC LIMIT ?""",
+            (limit,),
+        )
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            # ★ 修复(除零)：initial_capital=0 时 leaderboard 500；兜底返回 0%
+            initial = d.get("initial_capital") or 0
+            ret_pct = (d["total_equity"] - initial) / initial * 100 if initial > 0 else 0.0
+            d["total_return_pct"] = round(ret_pct, 2)
+            rows.append(d)
+        return rows
 
 
 # ============================================================================

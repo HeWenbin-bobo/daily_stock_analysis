@@ -5,6 +5,7 @@
 - 扫描入口：scan_all_alerts()（被 cron 每 5 分钟调用）
 - 触发后：写入 alert_trigger + 调用 notifier.send() 推送到用户的所有启用通道
 """
+from contextlib import contextmanager
 import time
 import sys
 import json
@@ -15,6 +16,24 @@ from typing import Dict, Any, List, Optional, Callable, Tuple
 from datetime import datetime, timedelta
 
 from db.migrate import get_conn
+
+
+@contextmanager
+def _conn():
+    """必定关闭的连接（★ 探索期修复 fd 泄漏）。
+
+    `sqlite3.Connection` 不会因引用消失就释放 fd（容器内实测：drop 引用后
+    fd 不变，gc.collect() 才归 0），每条连接占 2 个 fd（db + wal）。
+    本模块原先多处 `conn = get_conn()` 从不 close，长期运行会耗尽进程 fd。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 from core import notifier
 from core.data_source import fetch_quote_with_fallback, fetch_kline_with_fallback, is_mock_payload
 
@@ -164,19 +183,19 @@ def create_rule(
     #   归一化，新数据不再产生 "null" 行。
     params = params or {}
     cooldown_minutes = _validate_cooldown(cooldown_minutes)
-    conn = get_conn()
-    cur = conn.cursor()
-    now = time.time()
-    cur.execute(
-        """INSERT INTO alert_rule
-           (user_id, name, rule_type, symbol_filter, params_json,
-            enabled, cooldown_minutes, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (user_id, name, rule_type, symbol_filter,
-         json.dumps(params, ensure_ascii=False),
-         1 if enabled else 0, cooldown_minutes, now, now),
-    )
-    return cur.lastrowid or 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        now = time.time()
+        cur.execute(
+            """INSERT INTO alert_rule
+               (user_id, name, rule_type, symbol_filter, params_json,
+                enabled, cooldown_minutes, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, name, rule_type, symbol_filter,
+             json.dumps(params, ensure_ascii=False),
+             1 if enabled else 0, cooldown_minutes, now, now),
+        )
+        return cur.lastrowid or 0
 
 
 def _parse_rule_params(raw: Any) -> Dict[str, Any]:
@@ -200,33 +219,33 @@ def _parse_rule_params(raw: Any) -> Dict[str, Any]:
 
 
 def list_rules(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM alert_rule"
-    params: list = []
-    if user_id:
-        sql += " WHERE user_id=?"
-        params.append(user_id)
-    sql += " ORDER BY created_at DESC"
-    cur.execute(sql, params)
-    rows = []
-    for r in cur.fetchall():
-        d = dict(r)
-        d["params"] = _parse_rule_params(d.pop("params_json", None))
-        rows.append(d)
-    return rows
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM alert_rule"
+        params: list = []
+        if user_id:
+            sql += " WHERE user_id=?"
+            params.append(user_id)
+        sql += " ORDER BY created_at DESC"
+        cur.execute(sql, params)
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            d["params"] = _parse_rule_params(d.pop("params_json", None))
+            rows.append(d)
+        return rows
 
 
 def get_rule(rule_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM alert_rule WHERE id=?", (rule_id,))
-    row = cur.fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    d["params"] = _parse_rule_params(d.pop("params_json", None))
-    return d
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM alert_rule WHERE id=?", (rule_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["params"] = _parse_rule_params(d.pop("params_json", None))
+        return d
 
 
 def update_rule(rule_id: int, **fields) -> bool:
@@ -282,10 +301,10 @@ def update_rule(rule_id: int, **fields) -> bool:
     sets.append("updated_at=?")
     params.append(time.time())
     params.append(rule_id)
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(f"UPDATE alert_rule SET {','.join(sets)} WHERE id=?", params)
-    return cur.rowcount > 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(f"UPDATE alert_rule SET {','.join(sets)} WHERE id=?", params)
+        return cur.rowcount > 0
 
 
 def delete_rule(rule_id: int) -> bool:
@@ -295,21 +314,21 @@ def delete_rule(rule_id: int) -> bool:
       实测 `alert_trigger` 里的历史记录全部残留（`list_triggers` 仍会返回
       引用已删除 rule_id 的条目）。
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute("BEGIN IMMEDIATE")
-        cur.execute("DELETE FROM alert_trigger WHERE rule_id=?", (rule_id,))
-        cur.execute("DELETE FROM alert_rule WHERE id=?", (rule_id,))
-        deleted = cur.rowcount > 0
-        cur.execute("COMMIT")
-        return deleted
-    except Exception:
+    with _conn() as conn:
+        cur = conn.cursor()
         try:
-            cur.execute("ROLLBACK")
+            cur.execute("BEGIN IMMEDIATE")
+            cur.execute("DELETE FROM alert_trigger WHERE rule_id=?", (rule_id,))
+            cur.execute("DELETE FROM alert_rule WHERE id=?", (rule_id,))
+            deleted = cur.rowcount > 0
+            cur.execute("COMMIT")
+            return deleted
         except Exception:
-            pass
-        raise
+            try:
+                cur.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
 
 
 # ============================================================================
@@ -319,14 +338,14 @@ def bulk_toggle(rule_ids: List[int], enabled: bool) -> int:
     """批量启用/禁用规则；返回影响行数"""
     if not rule_ids:
         return 0
-    conn = get_conn()
-    cur = conn.cursor()
-    placeholders = ",".join("?" for _ in rule_ids)
-    cur.execute(
-        f"UPDATE alert_rule SET enabled=?, updated_at=? WHERE id IN ({placeholders})",
-        [1 if enabled else 0, time.time()] + rule_ids,
-    )
-    return cur.rowcount
+    with _conn() as conn:
+        cur = conn.cursor()
+        placeholders = ",".join("?" for _ in rule_ids)
+        cur.execute(
+            f"UPDATE alert_rule SET enabled=?, updated_at=? WHERE id IN ({placeholders})",
+            [1 if enabled else 0, time.time()] + rule_ids,
+        )
+        return cur.rowcount
 
 
 # ============================================================================
@@ -337,28 +356,28 @@ def list_triggers(
     rule_id: Optional[int] = None,
     limit: int = 100,
 ) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM alert_trigger WHERE 1=1"
-    params: list = []
-    if user_id:
-        sql += " AND user_id=?"
-        params.append(user_id)
-    if rule_id:
-        sql += " AND rule_id=?"
-        params.append(rule_id)
-    sql += " ORDER BY triggered_at DESC LIMIT ?"
-    params.append(limit)
-    cur.execute(sql, params)
-    rows = []
-    for r in cur.fetchall():
-        d = dict(r)
-        try:
-            d["context"] = json.loads(d.pop("context_json", "{}"))
-        except Exception:
-            d["context"] = {}
-        rows.append(d)
-    return rows
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM alert_trigger WHERE 1=1"
+        params: list = []
+        if user_id:
+            sql += " AND user_id=?"
+            params.append(user_id)
+        if rule_id:
+            sql += " AND rule_id=?"
+            params.append(rule_id)
+        sql += " ORDER BY triggered_at DESC LIMIT ?"
+        params.append(limit)
+        cur.execute(sql, params)
+        rows = []
+        for r in cur.fetchall():
+            d = dict(r)
+            try:
+                d["context"] = json.loads(d.pop("context_json", "{}"))
+            except Exception:
+                d["context"] = {}
+            rows.append(d)
+        return rows
 
 
 # ============================================================================
@@ -675,68 +694,68 @@ def _record_trigger_and_notify(
     fresh = get_rule(rule["id"]) or rule
     cooldown_sec = (fresh.get("cooldown_minutes") or 60) * 60
 
-    conn = get_conn()
-    cur = conn.cursor()
-    now = time.time()
-    # ★ 本轮修复(TOCTOU)：条件 UPDATE —— 仅在"从未通知过 或 距上次通知已过
-    #   cooldown"时才更新成功（rowcount=1）；否则（仍在冷却窗口内，或被并发
-    #   扫描抢先）rowcount=0 → 直接跳过。SQLite 写操作串行化保证原子性。
-    cur.execute(
-        """UPDATE alert_rule SET last_notified_at=?, last_triggered_at=?
-           WHERE id=? AND (last_notified_at IS NULL OR ? - last_notified_at >= ?)""",
-        (now, now, rule["id"], now, cooldown_sec),
-    )
-    if cur.rowcount == 0:
-        logger.debug("Rule %s in cooldown, skipping notify (atomic claim)", rule["id"])
-        # ★ 修复(H7)语义保持：cooldown 期间不写 trigger 表 —— 旧实现每 5 分钟扫描
-        #   只要规则仍满足就一直 _record_trigger(...)，alert_trigger 表无限膨胀。
-        return
+    with _conn() as conn:
+        cur = conn.cursor()
+        now = time.time()
+        # ★ 本轮修复(TOCTOU)：条件 UPDATE —— 仅在"从未通知过 或 距上次通知已过
+        #   cooldown"时才更新成功（rowcount=1）；否则（仍在冷却窗口内，或被并发
+        #   扫描抢先）rowcount=0 → 直接跳过。SQLite 写操作串行化保证原子性。
+        cur.execute(
+            """UPDATE alert_rule SET last_notified_at=?, last_triggered_at=?
+               WHERE id=? AND (last_notified_at IS NULL OR ? - last_notified_at >= ?)""",
+            (now, now, rule["id"], now, cooldown_sec),
+        )
+        if cur.rowcount == 0:
+            logger.debug("Rule %s in cooldown, skipping notify (atomic claim)", rule["id"])
+            # ★ 修复(H7)语义保持：cooldown 期间不写 trigger 表 —— 旧实现每 5 分钟扫描
+            #   只要规则仍满足就一直 _record_trigger(...)，alert_trigger 表无限膨胀。
+            return
 
-    # 写 trigger 表
-    trigger_id = _record_trigger(rule, symbol, triggered, notification_log_id=None)
+        # 写 trigger 表
+        trigger_id = _record_trigger(rule, symbol, triggered, notification_log_id=None)
 
-    # 推送到所有启用通道
-    cur.execute(
-        "SELECT id FROM notification_channel WHERE user_id=? AND enabled=1",
-        (rule["user_id"],),
-    )
-    channel_ids = [r["id"] for r in cur.fetchall()]
+        # 推送到所有启用通道
+        cur.execute(
+            "SELECT id FROM notification_channel WHERE user_id=? AND enabled=1",
+            (rule["user_id"],),
+        )
+        channel_ids = [r["id"] for r in cur.fetchall()]
 
-    if quote is None:
-        # 单独调用入口（_evaluate_symbol_for_rule）时 quote 为 None，补一次拉取
-        quote = fetch_quote_with_fallback(symbol) or {}
-    context = {
-        "symbol": symbol,
-        "name": quote.get("name", symbol),
-        "rule_name": RULE_TYPES.get(rule["rule_type"], rule["rule_type"]),
-        "metric_value": triggered["metric"],
-        "threshold_value": triggered["threshold"],
-        "trigger_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "commentary": triggered["commentary"],
-    }
-    for ch_id in channel_ids:
-        try:
-            result = notifier.send(
-                ch_id,
-                template_name="alert_triggered",
-                context=context,
-            )
-            logger.info("Alert notify: rule=%s symbol=%s ch=%s ok=%s", rule["id"], symbol, ch_id, result.success)
-        except Exception as e:
-            logger.warning("Notify failed for channel %s: %s", ch_id, e)
+        if quote is None:
+            # 单独调用入口（_evaluate_symbol_for_rule）时 quote 为 None，补一次拉取
+            quote = fetch_quote_with_fallback(symbol) or {}
+        context = {
+            "symbol": symbol,
+            "name": quote.get("name", symbol),
+            "rule_name": RULE_TYPES.get(rule["rule_type"], rule["rule_type"]),
+            "metric_value": triggered["metric"],
+            "threshold_value": triggered["threshold"],
+            "trigger_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "commentary": triggered["commentary"],
+        }
+        for ch_id in channel_ids:
+            try:
+                result = notifier.send(
+                    ch_id,
+                    template_name="alert_triggered",
+                    context=context,
+                )
+                logger.info("Alert notify: rule=%s symbol=%s ch=%s ok=%s", rule["id"], symbol, ch_id, result.success)
+            except Exception as e:
+                logger.warning("Notify failed for channel %s: %s", ch_id, e)
 
 
 def _record_trigger(rule, symbol, triggered, notification_log_id) -> int:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """INSERT INTO alert_trigger
-           (rule_id, user_id, symbol, triggered_at, metric_value, threshold_value,
-            context_json, notification_log_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (rule["id"], rule["user_id"], symbol, time.time(),
-         triggered["metric"], triggered["threshold"],
-         json.dumps(triggered, ensure_ascii=False),
-         notification_log_id),
-    )
-    return cur.lastrowid or 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO alert_trigger
+               (rule_id, user_id, symbol, triggered_at, metric_value, threshold_value,
+                context_json, notification_log_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (rule["id"], rule["user_id"], symbol, time.time(),
+             triggered["metric"], triggered["threshold"],
+             json.dumps(triggered, ensure_ascii=False),
+             notification_log_id),
+        )
+        return cur.lastrowid or 0

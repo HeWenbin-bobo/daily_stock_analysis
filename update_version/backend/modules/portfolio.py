@@ -6,6 +6,7 @@
 - 风险预警：单股占比 > 30%、行业集中度 > 60%、总亏损 > 20%
 - 强制在每个分析报告底部加风险提示
 """
+from contextlib import contextmanager
 import time
 import json
 import logging
@@ -13,6 +14,24 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from db.migrate import get_conn
+
+
+@contextmanager
+def _conn():
+    """必定关闭的连接（★ 探索期修复 fd 泄漏）。
+
+    `sqlite3.Connection` 不会因引用消失就释放 fd（容器内实测：drop 引用后
+    fd 不变，gc.collect() 才归 0），每条连接占 2 个 fd（db + wal）。
+    本模块原先多处 `conn = get_conn()` 从不 close，长期运行会耗尽进程 fd。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 from core.data_source import fetch_quote_with_fallback
 from core.crypto import encrypt_str, decrypt_str
 from core.security_headers import append_disclaimer
@@ -44,117 +63,117 @@ def add_holding(
     #   会产生无意义的天文数字持仓并污染组合统计（总市值溢出/展示崩溃）
     if cost > 10**9 or quantity > 10**9:
         raise ValueError("cost 和 quantity 超出合理范围（上限 1e9）")
-    conn = get_conn()
-    cur = conn.cursor()
-    trade_date = purchase_date or datetime.now().strftime("%Y-%m-%d")
-    # 找或建账户
-    cur.execute("SELECT id FROM paper_account WHERE user_id=? AND name='我的持仓'", (user_id,))
-    row = cur.fetchone()
-    if not row:
-        from modules.paper_trading import create_account
-        acc_id = create_account(user_id, "我的持仓")
-    else:
-        acc_id = row["id"]
+    with _conn() as conn:
+        cur = conn.cursor()
+        trade_date = purchase_date or datetime.now().strftime("%Y-%m-%d")
+        # 找或建账户
+        cur.execute("SELECT id FROM paper_account WHERE user_id=? AND name='我的持仓'", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            from modules.paper_trading import create_account
+            acc_id = create_account(user_id, "我的持仓")
+        else:
+            acc_id = row["id"]
 
-    amount = cost * quantity
-    meta = json.dumps({"note": note}, ensure_ascii=False)
-    cur.execute(
-        """INSERT INTO paper_trade
-           (account_id, user_id, symbol, side, price, quantity, amount, fee,
-            reason, trade_date, created_at)
-           VALUES (?, ?, ?, 'buy', ?, ?, ?, 0, ?, ?, ?)""",
-        (acc_id, user_id, symbol, cost, quantity, amount,
-         f"portfolio_holding|{meta}", trade_date, time.time()),
-    )
-    return cur.lastrowid or 0
+        amount = cost * quantity
+        meta = json.dumps({"note": note}, ensure_ascii=False)
+        cur.execute(
+            """INSERT INTO paper_trade
+               (account_id, user_id, symbol, side, price, quantity, amount, fee,
+                reason, trade_date, created_at)
+               VALUES (?, ?, ?, 'buy', ?, ?, ?, 0, ?, ?, ?)""",
+            (acc_id, user_id, symbol, cost, quantity, amount,
+             f"portfolio_holding|{meta}", trade_date, time.time()),
+        )
+        return cur.lastrowid or 0
 
 
 def list_holdings(user_id: str) -> List[Dict[str, Any]]:
     """列出用户的所有持仓（按 symbol 聚合）。★ Round 4：批量并发拉行情。"""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """SELECT symbol, side, price, quantity, trade_date, reason
-           FROM paper_trade WHERE user_id=? AND reason LIKE 'portfolio_holding%'
-           ORDER BY created_at ASC""",
-        (user_id,),
-    )
-    rows = [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT symbol, side, price, quantity, trade_date, reason
+               FROM paper_trade WHERE user_id=? AND reason LIKE 'portfolio_holding%'
+               ORDER BY created_at ASC""",
+            (user_id,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
 
-    pos: Dict[str, Dict[str, Any]] = {}
-    for r in rows:
-        sym = r["symbol"]
-        if sym not in pos:
-            pos[sym] = {
+        pos: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            sym = r["symbol"]
+            if sym not in pos:
+                pos[sym] = {
+                    "symbol": sym,
+                    "quantity": 0,
+                    "total_cost": 0.0,
+                    "earliest_date": r["trade_date"],
+                    "note": "",
+                }
+            if r["side"] == "buy":
+                pos[sym]["quantity"] += r["quantity"]
+                pos[sym]["total_cost"] += r["quantity"] * r["price"]
+                if r["trade_date"] < pos[sym]["earliest_date"]:
+                    pos[sym]["earliest_date"] = r["trade_date"]
+                # 提取 note
+                reason = r["reason"]
+                if "|" in reason:
+                    try:
+                        meta = json.loads(reason.split("|", 1)[1])
+                        pos[sym]["note"] = meta.get("note", "")
+                    except Exception:
+                        logger.warning("failed to parse portfolio_holding reason meta: %s", reason[:80])
+
+        result = []
+        # ★ Round 4 优化：批量并发拉取行情，避免 N+1（参考 paper_trading.get_positions）
+        from core.data_source import fetch_quotes_bulk
+        symbols = [sym for sym, p in pos.items() if p["quantity"] > 0]
+        quotes_map = fetch_quotes_bulk(symbols, parallel=True) if symbols else {}
+        for sym, p in pos.items():
+            if p["quantity"] <= 0:
+                continue
+            avg_cost = p["total_cost"] / p["quantity"]
+            quote = quotes_map.get(sym) or {}
+            last_price = quote.get("price", avg_cost)
+            market_value = p["quantity"] * last_price
+            pnl = market_value - p["total_cost"]
+            pnl_pct = (pnl / p["total_cost"]) * 100 if p["total_cost"] > 0 else 0
+            result.append({
                 "symbol": sym,
-                "quantity": 0,
-                "total_cost": 0.0,
-                "earliest_date": r["trade_date"],
-                "note": "",
-            }
-        if r["side"] == "buy":
-            pos[sym]["quantity"] += r["quantity"]
-            pos[sym]["total_cost"] += r["quantity"] * r["price"]
-            if r["trade_date"] < pos[sym]["earliest_date"]:
-                pos[sym]["earliest_date"] = r["trade_date"]
-            # 提取 note
-            reason = r["reason"]
-            if "|" in reason:
-                try:
-                    meta = json.loads(reason.split("|", 1)[1])
-                    pos[sym]["note"] = meta.get("note", "")
-                except Exception:
-                    logger.warning("failed to parse portfolio_holding reason meta: %s", reason[:80])
-
-    result = []
-    # ★ Round 4 优化：批量并发拉取行情，避免 N+1（参考 paper_trading.get_positions）
-    from core.data_source import fetch_quotes_bulk
-    symbols = [sym for sym, p in pos.items() if p["quantity"] > 0]
-    quotes_map = fetch_quotes_bulk(symbols, parallel=True) if symbols else {}
-    for sym, p in pos.items():
-        if p["quantity"] <= 0:
-            continue
-        avg_cost = p["total_cost"] / p["quantity"]
-        quote = quotes_map.get(sym) or {}
-        last_price = quote.get("price", avg_cost)
-        market_value = p["quantity"] * last_price
-        pnl = market_value - p["total_cost"]
-        pnl_pct = (pnl / p["total_cost"]) * 100 if p["total_cost"] > 0 else 0
-        result.append({
-            "symbol": sym,
-            "name": quote.get("name", sym),
-            "industry": quote.get("industry", "未知"),
-            "quantity": p["quantity"],
-            "avg_cost": round(avg_cost, 2),
-            "last_price": last_price,
-            "market_value": round(market_value, 2),
-            "total_cost": round(p["total_cost"], 2),
-            "pnl": round(pnl, 2),
-            "pnl_pct": round(pnl_pct, 2),
-            "earliest_purchase_date": p["earliest_date"],
-            "note": p["note"],
-            # ★ 修复(L4)：旧实现恒填 0（"在 overview 中填充"），调用 list_holdings 的
-            #   消费方（如前端直接调用列表端点）看到 0 权重。这里先计算各持仓占比，
-            #   get_overview 后续再基于 total_market_value 重新精确填充。
-            "position_weight": 0,
-        })
-    # 计算总市值并填充权重（列表端点也应有真实权重）
-    total_mv = sum(h["market_value"] for h in result)
-    for h in result:
-        h["position_weight"] = round((h["market_value"] / total_mv) * 100, 2) if total_mv > 0 else 0
-    return result
+                "name": quote.get("name", sym),
+                "industry": quote.get("industry", "未知"),
+                "quantity": p["quantity"],
+                "avg_cost": round(avg_cost, 2),
+                "last_price": last_price,
+                "market_value": round(market_value, 2),
+                "total_cost": round(p["total_cost"], 2),
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "earliest_purchase_date": p["earliest_date"],
+                "note": p["note"],
+                # ★ 修复(L4)：旧实现恒填 0（"在 overview 中填充"），调用 list_holdings 的
+                #   消费方（如前端直接调用列表端点）看到 0 权重。这里先计算各持仓占比，
+                #   get_overview 后续再基于 total_market_value 重新精确填充。
+                "position_weight": 0,
+            })
+        # 计算总市值并填充权重（列表端点也应有真实权重）
+        total_mv = sum(h["market_value"] for h in result)
+        for h in result:
+            h["position_weight"] = round((h["market_value"] / total_mv) * 100, 2) if total_mv > 0 else 0
+        return result
 
 
 def remove_holding(user_id: str, symbol: str) -> bool:
     """移除某 symbol 的所有买入记录"""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """DELETE FROM paper_trade
-           WHERE user_id=? AND symbol=? AND reason LIKE 'portfolio_holding%'""",
-        (user_id, symbol),
-    )
-    return cur.rowcount > 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """DELETE FROM paper_trade
+               WHERE user_id=? AND symbol=? AND reason LIKE 'portfolio_holding%'""",
+            (user_id, symbol),
+        )
+        return cur.rowcount > 0
 
 
 # ============================================================================

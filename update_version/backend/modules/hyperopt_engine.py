@@ -11,6 +11,7 @@ Hyperopt 最小版 —— 借鉴 freqtrade Hyperopt 的参数优化引擎
 - ★ 强制样本外验证：优化只在 train 段（前 80% 时间）跑，test 段（后 20%）单独报告
   （freqtrade 不强制，但这是防过拟合的红线）
 """
+from contextlib import contextmanager
 import time
 import json
 import logging
@@ -22,6 +23,24 @@ import optuna
 from optuna.samplers import TPESampler
 
 from db.migrate import get_conn
+
+
+@contextmanager
+def _conn():
+    """必定关闭的连接（★ 探索期修复 fd 泄漏）。
+
+    `sqlite3.Connection` 不会因引用消失就释放 fd（容器内实测：drop 引用后
+    fd 不变，gc.collect() 才归 0），每条连接占 2 个 fd（db + wal）。
+    本模块原先多处 `conn = get_conn()` 从不 close，长期运行会耗尽进程 fd。
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 from core.data_source import fetch_kline_with_fallback
 from modules import backtest_engine as be
 
@@ -280,181 +299,181 @@ def run_hyperopt(
         raise ValueError("DSL 无可优化参数（都是固定值/不支持自动推断），请在策略 JSON 加 optimize 字段")
 
     # 建 run 记录
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """INSERT INTO hyperopt_run
-           (strategy_id, user_id, symbol, epochs, loss_fn,
-            train_start, train_end, test_start, test_end, status, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?, 'running', ?)""",
-        (strategy_id, user_id, symbol, epochs, loss_fn,
-         train[0]["date"], train[-1]["date"], test[0]["date"], test[-1]["date"], time.time()),
-    )
-    run_id = cur.lastrowid or 0
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO hyperopt_run
+               (strategy_id, user_id, symbol, epochs, loss_fn,
+                train_start, train_end, test_start, test_end, status, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?, 'running', ?)""",
+            (strategy_id, user_id, symbol, epochs, loss_fn,
+             train[0]["date"], train[-1]["date"], test[0]["date"], test[-1]["date"], time.time()),
+        )
+        run_id = cur.lastrowid or 0
 
-    sampler = TPESampler(n_startup_trials=30, seed=42)
-    study = optuna.create_study(direction="minimize", sampler=sampler)
+        sampler = TPESampler(n_startup_trials=30, seed=42)
+        study = optuna.create_study(direction="minimize", sampler=sampler)
 
-    # ★ 早停：用 optuna Terminator（BestValueStagnationEvaluator）——连续 EARLY_STOP_EPOCHS
-    #   个 trial best loss 不改善即停。★ P1 修复：旧 MedianPruner 对单目标回测不生效
-    #   （无 intermediate value），EARLY_STOP_EPOCHS 原本是死代码。
-    from optuna.terminator import BestValueStagnationEvaluator, Terminator
-    terminator = Terminator(BestValueStagnationEvaluator(EARLY_STOP_EPOCHS))
+        # ★ 早停：用 optuna Terminator（BestValueStagnationEvaluator）——连续 EARLY_STOP_EPOCHS
+        #   个 trial best loss 不改善即停。★ P1 修复：旧 MedianPruner 对单目标回测不生效
+        #   （无 intermediate value），EARLY_STOP_EPOCHS 原本是死代码。
+        from optuna.terminator import BestValueStagnationEvaluator, Terminator
+        terminator = Terminator(BestValueStagnationEvaluator(EARLY_STOP_EPOCHS))
 
-    # ★ joblib 并行（借鉴 freqtrade）：批量 ask → 并行评估 → 批量 tell
-    #   目标函数是纯函数（train 段 K 线 + DSL + 指标），线程安全，直接 joblib Parallel
-    import joblib
-    n_jobs = int(os.environ.get("HYPEROPT_JOBS", "0") or 0)  # 0/负 → 自动
-    if n_jobs <= 0:
-        import multiprocessing
-        n_jobs = min(max(1, multiprocessing.cpu_count() - 1), 8)
+        # ★ joblib 并行（借鉴 freqtrade）：批量 ask → 并行评估 → 批量 tell
+        #   目标函数是纯函数（train 段 K 线 + DSL + 指标），线程安全，直接 joblib Parallel
+        import joblib
+        n_jobs = int(os.environ.get("HYPEROPT_JOBS", "0") or 0)  # 0/负 → 自动
+        if n_jobs <= 0:
+            import multiprocessing
+            n_jobs = min(max(1, multiprocessing.cpu_count() - 1), 8)
 
-    def _evaluate_one(trial_params: tuple) -> Dict[str, Any]:
-        """单个参数组合的评估（joblib worker 内调用）。"""
-        trial_idx, params = trial_params
-        dsl_trial = _apply_params(dsl, params)
-        try:
-            metrics = be._execute_backtest(train, dsl_trial, initial_capital=1000000.0)
-        except Exception:
-            metrics = None
-        loss = LOSS_FUNCTIONS[loss_fn](metrics) if metrics else MAX_LOSS
-        return {
-            "trial_idx": trial_idx,
-            "params": params,
-            "loss": loss,
-            "metrics": metrics,
-        }
+        def _evaluate_one(trial_params: tuple) -> Dict[str, Any]:
+            """单个参数组合的评估（joblib worker 内调用）。"""
+            trial_idx, params = trial_params
+            dsl_trial = _apply_params(dsl, params)
+            try:
+                metrics = be._execute_backtest(train, dsl_trial, initial_capital=1000000.0)
+            except Exception:
+                metrics = None
+            loss = LOSS_FUNCTIONS[loss_fn](metrics) if metrics else MAX_LOSS
+            return {
+                "trial_idx": trial_idx,
+                "params": params,
+                "loss": loss,
+                "metrics": metrics,
+            }
 
-    # 保存每个 epoch 到 DB（独立连接，供并行 worker 写）
-    def _save_epoch(run_id_, epoch_no, params, loss, metrics):
-        try:
-            get_conn().execute(
-                """INSERT INTO hyperopt_epoch (run_id, epoch, params_json, loss, metrics_json, created_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (run_id_, epoch_no, json.dumps(params, ensure_ascii=False),
-                 loss, json.dumps(metrics, ensure_ascii=False, default=str), time.time()),
-            )
-        except Exception as e:
-            logger.warning("save epoch failed: %s", e)
-
-    try:
-        # 并行模式：批量 ask → joblib 并行 → tell + 落库
-        # optuna ask/tell 是顺序 API；并行版需要自己管理 batch（参考 freqtrade get_asked_points）
-        remaining = epochs
-        trial_no = 0
-        with joblib.Parallel(n_jobs=n_jobs, prefer="threads") as parallel:
-            while remaining > 0:
-                batch = min(remaining, n_jobs * 2)
-                asked = [study.ask() for _ in range(batch)]
-                params_list = []
-                for t in asked:
-                    p = {}
-                    for s in space:
-                        if s["kind"] == "int":
-                            p[s["key"]] = t.suggest_int(s["key"], int(s["low"]), int(s["high"]))
-                        else:
-                            p[s["key"]] = t.suggest_float(s["key"], s["low"], s["high"])
-                    params_list.append(p)
-                results = parallel(
-                    joblib.delayed(_evaluate_one)((trial_no + i, p))
-                    for i, p in enumerate(params_list)
+        # 保存每个 epoch 到 DB（独立连接，供并行 worker 写）
+        def _save_epoch(run_id_, epoch_no, params, loss, metrics):
+            try:
+                get_conn().execute(
+                    """INSERT INTO hyperopt_epoch (run_id, epoch, params_json, loss, metrics_json, created_at)
+                       VALUES (?,?,?,?,?,?)""",
+                    (run_id_, epoch_no, json.dumps(params, ensure_ascii=False),
+                     loss, json.dumps(metrics, ensure_ascii=False, default=str), time.time()),
                 )
-                for t, r in zip(asked, results):
-                    study.tell(t, r["loss"])
-                    trial_no += 1
-                    _save_epoch(run_id, trial_no, r["params"], r["loss"], r["metrics"])
-                remaining -= batch
-                # ★ 早停生效（P1）：每个 batch 后检查 best loss 是否已停滞
-                if terminator.should_terminate(study):
-                    logger.info("early stop: best loss 连续 %d epochs 未改善，提前终止", EARLY_STOP_EPOCHS)
-                    break
-    except KeyboardInterrupt:
-        logger.info("hyperopt interrupted by user")
+            except Exception as e:
+                logger.warning("save epoch failed: %s", e)
 
-    # ★ 探索期修复：best 评估阶段（以及上面的并行搜索）任何异常都会直接抛出，
-    #   而 run 记录已写成 'running' —— 旧实现没有兜底，`hyperopt_run.status`
-    #   永久停在 running（实测：评估阶段抛 RuntimeError 后 status 仍为 running，
-    #   前端一直显示"优化中"，只能靠手动 cleanup 接口恢复）。
-    #   这里统一兜底：失败时把 run 置 failed 并记录原因，再把异常抛给端点。
-    try:
-        best = study.best_trial
-        best_params = best.params
-
-        # 训练段指标（best）
-        dsl_best = _apply_params(dsl, best_params)
-        train_metrics = be._execute_backtest(train, dsl_best, initial_capital=1000000.0)
-        # 样本外验证（test 段）
-        # ★ 探索期修复(样本外指标失真)：旧实现把**裸 test 段**直接丢进回测。
-        #   指标需要预热窗口（MA60 要 60 根），而 test 只占全量的
-        #   TEST_SPLIT_RATIO（20%）—— 500 根 K 线时 test 只有 100 根，
-        #   其中 60 根被预热吃掉，真正能交易的只剩 40 根。
-        #   实测（同一策略、同一参数）：MA60 裸跑 11 笔，带预热 28 笔。
-        #   样本外指标本是用户判断过拟合的唯一依据，缩水一半会直接误导结论。
-        #   复用 run_backtest 的既有约定：拿 train 尾部作预热前缀，
-        #   并让这部分只喂指标、不产生交易。
-        oos_warmup = _oos_warmup_bars(train, test, dsl_best)
-        if oos_warmup:
-            oos_metrics = be._execute_backtest(
-                train[-oos_warmup:] + test, dsl_best,
-                initial_capital=1000000.0, warmup_bars=oos_warmup,
-            )
-        else:
-            oos_metrics = be._execute_backtest(test, dsl_best, initial_capital=1000000.0)
-        oos_loss = LOSS_FUNCTIONS[loss_fn](oos_metrics)
-    except Exception as exc:
-        logger.exception("hyperopt run %s failed after search: %s", run_id, exc)
         try:
-            get_conn().execute(
-                "UPDATE hyperopt_run SET status='failed', error_message=?, completed_at=? WHERE id=?",
-                (f"{type(exc).__name__}: {str(exc)[:400]}", time.time(), run_id),
-            )
-        except Exception as inner:
-            logger.warning("hyperopt run %s: failed to mark failed status: %s", run_id, inner)
-        raise
+            # 并行模式：批量 ask → joblib 并行 → tell + 落库
+            # optuna ask/tell 是顺序 API；并行版需要自己管理 batch（参考 freqtrade get_asked_points）
+            remaining = epochs
+            trial_no = 0
+            with joblib.Parallel(n_jobs=n_jobs, prefer="threads") as parallel:
+                while remaining > 0:
+                    batch = min(remaining, n_jobs * 2)
+                    asked = [study.ask() for _ in range(batch)]
+                    params_list = []
+                    for t in asked:
+                        p = {}
+                        for s in space:
+                            if s["kind"] == "int":
+                                p[s["key"]] = t.suggest_int(s["key"], int(s["low"]), int(s["high"]))
+                            else:
+                                p[s["key"]] = t.suggest_float(s["key"], s["low"], s["high"])
+                        params_list.append(p)
+                    results = parallel(
+                        joblib.delayed(_evaluate_one)((trial_no + i, p))
+                        for i, p in enumerate(params_list)
+                    )
+                    for t, r in zip(asked, results):
+                        study.tell(t, r["loss"])
+                        trial_no += 1
+                        _save_epoch(run_id, trial_no, r["params"], r["loss"], r["metrics"])
+                    remaining -= batch
+                    # ★ 早停生效（P1）：每个 batch 后检查 best loss 是否已停滞
+                    if terminator.should_terminate(study):
+                        logger.info("early stop: best loss 连续 %d epochs 未改善，提前终止", EARLY_STOP_EPOCHS)
+                        break
+        except KeyboardInterrupt:
+            logger.info("hyperopt interrupted by user")
 
-    # 更新 run 记录
-    cur.execute(
-        """UPDATE hyperopt_run SET
-           best_params_json=?, best_loss=?, best_train_json=?, oos_metrics_json=?,
-           oos_loss=?, status='completed', completed_at=?
-           WHERE id=?""",
-        (json.dumps(best_params, ensure_ascii=False), best.value,
-         json.dumps(train_metrics, ensure_ascii=False, default=str),
-         json.dumps(oos_metrics, ensure_ascii=False, default=str), oos_loss, time.time(), run_id),
-    )
+        # ★ 探索期修复：best 评估阶段（以及上面的并行搜索）任何异常都会直接抛出，
+        #   而 run 记录已写成 'running' —— 旧实现没有兜底，`hyperopt_run.status`
+        #   永久停在 running（实测：评估阶段抛 RuntimeError 后 status 仍为 running，
+        #   前端一直显示"优化中"，只能靠手动 cleanup 接口恢复）。
+        #   这里统一兜底：失败时把 run 置 failed 并记录原因，再把异常抛给端点。
+        try:
+            best = study.best_trial
+            best_params = best.params
 
-    return {
-        "run_id": run_id,
-        "best_params": best_params,
-        "best_loss": best.value,
-        "train_metrics": train_metrics,
-        "oos_metrics": oos_metrics,
-        "oos_loss": oos_loss,
-        # ★ 迭代3 修复：样本外无交易 = 策略失效/过拟合，必须显式标记
-        #   （此前前端把 total_return=0 显示成"样本外持平"，误导用户）
-        "oos_no_trades": bool(oos_metrics and (oos_metrics.get("total_trades") or 0) == 0),
-        "train_range": (train[0]["date"], train[-1]["date"]),
-        "test_range": (test[0]["date"], test[-1]["date"]),
-        "search_space_size": len(space),
-        "n_trials": study.trials.__len__(),
-    }
+            # 训练段指标（best）
+            dsl_best = _apply_params(dsl, best_params)
+            train_metrics = be._execute_backtest(train, dsl_best, initial_capital=1000000.0)
+            # 样本外验证（test 段）
+            # ★ 探索期修复(样本外指标失真)：旧实现把**裸 test 段**直接丢进回测。
+            #   指标需要预热窗口（MA60 要 60 根），而 test 只占全量的
+            #   TEST_SPLIT_RATIO（20%）—— 500 根 K 线时 test 只有 100 根，
+            #   其中 60 根被预热吃掉，真正能交易的只剩 40 根。
+            #   实测（同一策略、同一参数）：MA60 裸跑 11 笔，带预热 28 笔。
+            #   样本外指标本是用户判断过拟合的唯一依据，缩水一半会直接误导结论。
+            #   复用 run_backtest 的既有约定：拿 train 尾部作预热前缀，
+            #   并让这部分只喂指标、不产生交易。
+            oos_warmup = _oos_warmup_bars(train, test, dsl_best)
+            if oos_warmup:
+                oos_metrics = be._execute_backtest(
+                    train[-oos_warmup:] + test, dsl_best,
+                    initial_capital=1000000.0, warmup_bars=oos_warmup,
+                )
+            else:
+                oos_metrics = be._execute_backtest(test, dsl_best, initial_capital=1000000.0)
+            oos_loss = LOSS_FUNCTIONS[loss_fn](oos_metrics)
+        except Exception as exc:
+            logger.exception("hyperopt run %s failed after search: %s", run_id, exc)
+            try:
+                get_conn().execute(
+                    "UPDATE hyperopt_run SET status='failed', error_message=?, completed_at=? WHERE id=?",
+                    (f"{type(exc).__name__}: {str(exc)[:400]}", time.time(), run_id),
+                )
+            except Exception as inner:
+                logger.warning("hyperopt run %s: failed to mark failed status: %s", run_id, inner)
+            raise
+
+        # 更新 run 记录
+        cur.execute(
+            """UPDATE hyperopt_run SET
+               best_params_json=?, best_loss=?, best_train_json=?, oos_metrics_json=?,
+               oos_loss=?, status='completed', completed_at=?
+               WHERE id=?""",
+            (json.dumps(best_params, ensure_ascii=False), best.value,
+             json.dumps(train_metrics, ensure_ascii=False, default=str),
+             json.dumps(oos_metrics, ensure_ascii=False, default=str), oos_loss, time.time(), run_id),
+        )
+
+        return {
+            "run_id": run_id,
+            "best_params": best_params,
+            "best_loss": best.value,
+            "train_metrics": train_metrics,
+            "oos_metrics": oos_metrics,
+            "oos_loss": oos_loss,
+            # ★ 迭代3 修复：样本外无交易 = 策略失效/过拟合，必须显式标记
+            #   （此前前端把 total_return=0 显示成"样本外持平"，误导用户）
+            "oos_no_trades": bool(oos_metrics and (oos_metrics.get("total_trades") or 0) == 0),
+            "train_range": (train[0]["date"], train[-1]["date"]),
+            "test_range": (test[0]["date"], test[-1]["date"]),
+            "search_space_size": len(space),
+            "n_trials": study.trials.__len__(),
+        }
 
 
 def list_runs(user_id: Optional[str] = None, strategy_id: Optional[int] = None, limit: int = 20) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    sql = "SELECT * FROM hyperopt_run WHERE 1=1"
-    params: list = []
-    if user_id:
-        sql += " AND user_id=?"
-        params.append(user_id)
-    if strategy_id:
-        sql += " AND strategy_id=?"
-        params.append(strategy_id)
-    sql += " ORDER BY created_at DESC LIMIT ?"
-    params.append(limit)
-    cur.execute(sql, params)
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        sql = "SELECT * FROM hyperopt_run WHERE 1=1"
+        params: list = []
+        if user_id:
+            sql += " AND user_id=?"
+            params.append(user_id)
+        if strategy_id:
+            sql += " AND strategy_id=?"
+            params.append(strategy_id)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
 
 
 # ============================================================================
@@ -496,10 +515,10 @@ def apply_best_params(run_id: int, user_id: str) -> Dict[str, Any]:
     prev_dsl_json = json.dumps(dsl, ensure_ascii=False)
     new_dsl = json.dumps(_apply_params(dsl, best), ensure_ascii=False)
     try:
-        conn = get_conn()
-        conn.execute(
-            "UPDATE hyperopt_run SET prev_dsl_json=? WHERE id=?", (prev_dsl_json, run_id)
-        )
+        with _conn() as conn:
+            conn.execute(
+                "UPDATE hyperopt_run SET prev_dsl_json=? WHERE id=?", (prev_dsl_json, run_id)
+            )
     except Exception as exc:
         # 列不存在（旧库未迁移）时不阻断应用，只记录 —— 回滚能力降级但不影响主流程
         logger.warning("hyperopt run %s: 无法写入 prev_dsl_json: %s", run_id, exc)
@@ -508,7 +527,11 @@ def apply_best_params(run_id: int, user_id: str) -> Dict[str, Any]:
         "strategy_id": strategy_id,
         "run_id": run_id,
         "applied_params": best,
-        "backup_hint": f"原 DSL 已备份到策略 description（hyperopt #{run_id} 备份）",
+        # ★ 探索期修复(文档与实现不符)：此前这里仍写着"已备份到策略 description"，
+        #   而实现早已改为写入 hyperopt_run.prev_dsl_json（description 保持用户原文）。
+        #   对外文案与真实存储位置必须一致，否则用户按提示去 description 里找回滚
+        #   数据会一无所获。
+        "backup_hint": f"原 DSL 已备份到 hyperopt_run.prev_dsl_json（run #{run_id}）",
     }
 
 
@@ -517,44 +540,44 @@ def apply_best_params(run_id: int, user_id: str) -> Dict[str, Any]:
 # ============================================================================
 def cleanup_stale_runs(stale_seconds: float = 3600) -> int:
     """把超过 stale_seconds 未更新且仍 running 的 run 标记为 interrupted。"""
-    conn = get_conn()
-    cur = conn.cursor()
-    cutoff = time.time() - stale_seconds
-    cur.execute(
-        "UPDATE hyperopt_run SET status='interrupted', completed_at=? "
-        "WHERE status='running' AND created_at < ?",
-        (time.time(), cutoff),
-    )
-    return cur.rowcount
+    with _conn() as conn:
+        cur = conn.cursor()
+        cutoff = time.time() - stale_seconds
+        cur.execute(
+            "UPDATE hyperopt_run SET status='interrupted', completed_at=? "
+            "WHERE status='running' AND created_at < ?",
+            (time.time(), cutoff),
+        )
+        return cur.rowcount
 
 
 def get_run(run_id: int) -> Optional[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM hyperopt_run WHERE id=?", (run_id,))
-    row = cur.fetchone()
-    if not row:
-        return None
-    d = dict(row)
-    for k in ("best_params_json", "best_train_json", "oos_metrics_json"):
-        if d.get(k):
-            try:
-                d[k.replace("_json", "")] = json.loads(d[k])
-                del d[k]
-            except Exception:
-                pass
-    # ★ 迭代3 修复：旧 run 无 oos_no_trades 字段 → 从 oos_metrics 补算
-    if "oos_no_trades" not in d:
-        oos = d.get("oos_metrics") or {}
-        d["oos_no_trades"] = bool((oos.get("total_trades") or 0) == 0)
-    return d
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM hyperopt_run WHERE id=?", (run_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        for k in ("best_params_json", "best_train_json", "oos_metrics_json"):
+            if d.get(k):
+                try:
+                    d[k.replace("_json", "")] = json.loads(d[k])
+                    del d[k]
+                except Exception:
+                    pass
+        # ★ 迭代3 修复：旧 run 无 oos_no_trades 字段 → 从 oos_metrics 补算
+        if "oos_no_trades" not in d:
+            oos = d.get("oos_metrics") or {}
+            d["oos_no_trades"] = bool((oos.get("total_trades") or 0) == 0)
+        return d
 
 
 def list_epochs(run_id: int, limit: int = 100) -> List[Dict[str, Any]]:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT * FROM hyperopt_epoch WHERE run_id=? ORDER BY epoch ASC LIMIT ?",
-        (run_id, limit),
-    )
-    return [dict(r) for r in cur.fetchall()]
+    with _conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM hyperopt_epoch WHERE run_id=? ORDER BY epoch ASC LIMIT ?",
+            (run_id, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
