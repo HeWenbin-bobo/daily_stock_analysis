@@ -72,6 +72,7 @@ def migrate() -> int:
     conn = get_conn()
     cur = conn.cursor()
     cur.executescript(cleaned)
+    _add_missing_columns(conn)
     cur.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
     )
@@ -79,6 +80,37 @@ def migrate() -> int:
     logger.info("Migration complete: %d tables created", len(tables))
     conn.close()
     return len(tables)
+
+
+# ============================================================================
+# 轻量列迁移
+# ============================================================================
+# 本项目此前的 migrate() 只做 CREATE TABLE IF NOT EXISTS，对已存在的表**不会
+# 补列**。所以任何新增字段都必须在这里登记，否则老库上读该列会报
+# `no such column`（新库因为 schema.sql 已含该列而正常，属于只在升级路径上
+# 炸的隐蔽问题）。这里用 PRAGMA table_info 判断，缺了才 ALTER。
+_ADDED_COLUMNS = (
+    # (表, 列, 类型)
+    # hyperopt 应用最优参数后，用它可以真正回滚到应用前的 DSL
+    ("hyperopt_run", "prev_dsl_json", "TEXT"),
+)
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """给已存在的表补上 _ADDED_COLUMNS 里登记的列（幂等）。"""
+    for table, column, coltype in _ADDED_COLUMNS:
+        try:
+            existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        except sqlite3.Error as exc:
+            logger.warning("column migration: 读取 %s 结构失败: %s", table, exc)
+            continue
+        if not existing or column in existing:
+            continue
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
+            logger.info("column migration: %s 新增列 %s", table, column)
+        except sqlite3.Error as exc:
+            logger.warning("column migration: %s.%s 添加失败: %s", table, column, exc)
 
 
 if __name__ == "__main__":

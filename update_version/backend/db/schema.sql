@@ -279,6 +279,9 @@ CREATE TABLE IF NOT EXISTS hyperopt_run (
     best_train_json TEXT,
     oos_metrics_json TEXT,
     oos_loss REAL,
+    -- ★ 应用最优参数前的 DSL 快照，用于回滚（见 hyperopt_engine.apply_best_params）。
+    --   老库由 db/migrate.py 的 _add_missing_columns 补齐。
+    prev_dsl_json TEXT,
     status TEXT DEFAULT 'running',
     error_message TEXT,
     created_at REAL NOT NULL,

@@ -486,10 +486,24 @@ def apply_best_params(run_id: int, user_id: str) -> Dict[str, Any]:
         raise ValueError("策略无 compiled_dsl")
 
     best = run["best_params"]
-    # 备份原 DSL 到 description（时间戳）
-    backup = f"[hyperopt #{run_id} 备份] {json.dumps(dsl, ensure_ascii=False)[:500]}"
+    # ★ 探索期修复(用户描述被永久覆盖)：旧实现把
+    #   `description` 整个替换成"[hyperopt #N 备份] {...截断到 500 字符...}"。
+    #   两个问题：
+    #     1) description 是用户写的策略说明，覆盖后**永久丢失**，且 API 对外暴露；
+    #     2) 截断到 500 字符的旧 DSL 根本不足以还原，所谓"备份"是假备份。
+    #   改为：完整旧 DSL 写进 hyperopt_run.prev_dsl_json（可真正回滚），
+    #   description 保持用户原文不动。
+    prev_dsl_json = json.dumps(dsl, ensure_ascii=False)
     new_dsl = json.dumps(_apply_params(dsl, best), ensure_ascii=False)
-    be.update_strategy(strategy_id, compiled_dsl=new_dsl, description=backup)
+    try:
+        conn = get_conn()
+        conn.execute(
+            "UPDATE hyperopt_run SET prev_dsl_json=? WHERE id=?", (prev_dsl_json, run_id)
+        )
+    except Exception as exc:
+        # 列不存在（旧库未迁移）时不阻断应用，只记录 —— 回滚能力降级但不影响主流程
+        logger.warning("hyperopt run %s: 无法写入 prev_dsl_json: %s", run_id, exc)
+    be.update_strategy(strategy_id, compiled_dsl=new_dsl)
     return {
         "strategy_id": strategy_id,
         "run_id": run_id,
