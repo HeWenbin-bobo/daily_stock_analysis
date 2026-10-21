@@ -37,12 +37,21 @@ def _ensure_db_dir() -> None:
 
 @contextmanager
 def _get_conn() -> Generator[sqlite3.Connection, None, None]:
-    """获取数据库连接（自动提交/关闭）。"""
+    """获取数据库连接（自动提交/关闭）。
+
+    ★ 探索期修复(并发锁)：`sqlite3.connect()` 的默认 timeout 是 **5 秒**，
+      而 `db/migrate.get_conn()`（v2_dev.db）用的是 30 秒。history.db 有多个
+      写入方：cron 的异动扫描（每 5 分钟）、用户定时任务、大盘复盘落库、
+      以及 API 的保存/删除请求。持有写锁的一方稍慢（akshare 抓取、LLM 调用
+      期间仍在事务里），其它写入方 5 秒后就抛 `database is locked`。
+      与主库统一到 30 秒，并在 busy 时让 SQLite 自己等而不是立刻失败。
+    """
     _ensure_db_dir()
-    conn = sqlite3.connect(str(_DB_PATH))
+    conn = sqlite3.connect(str(_DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=30000")
     try:
         yield conn
         conn.commit()
