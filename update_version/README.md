@@ -80,6 +80,11 @@ docker compose -f ./update_version/docker-compose.yml up -d --build
 
 访问 http://localhost:8002 —— 前端由后端进程直接托管，不需要另起 Vite。
 
+> ⚠️ **v2 没有认证**：任何人只要能访问到 8002 端口，就能读改全部数据。
+> 默认绑定 `0.0.0.0`，请只在本机或可信内网使用；要限制访问，
+> 把 compose 的 `ports` 改成 `"127.0.0.1:${V4_PORT:-8002}:8002"`。
+> 详见下方「需要认证时」。
+
 - 镜像内同时包含主项目的 `src/`、`api/`、`data_provider/`、`bot/`、`strategies/`：
   `backend/api/endpoints_hot.py` 靠 `Path(__file__).parent.parent.parent.parent`
   反推仓库根来复用主项目模块，所以目录层级必须与仓库一致，不能只 COPY
@@ -227,11 +232,25 @@ APScheduler 持久化要求函数是 module-level named function（不能 lambda
 > 这一节区分「不需要做」「做不了」「以后要做时怎么做」。凡是 Docker 部署相关
 > 且确实需要的，都已在镜像/compose 里落实（见上一节），这里只留真正的边界。
 
-- **用户系统 + 鉴权**：复用主项目 `api/v1/endpoints/auth.py`。当前 v2 用
-  `X-User-Id` header + `_require_user_match()` 做「身份自证」，不含登录态。
-  *补齐方式*：把主项目 `api.v1.endpoints.auth` 的 router 挂到 v2 app，
-  `APP_ENV=production` 时强制开启；同时把 `_require_user_match` 的匿名分支
-  从「允许」改为 401。
+- **用户系统 + 鉴权**：**v2 当前没有任何认证**（这是明确的设计取舍，不是遗漏）。
+  - 身份来源是请求头 `X-User-Id`，由调用方自己填写，服务端不验签、不校验来源。
+  - `_check_resource_owner()` / `_require_user_match()` 属于**一致性检查**：
+    声明了身份就按身份比对（不符 → 403）；**不声明则放行**。
+    它们挡得住"带错身份的手滑调用"，挡不住"根本不声明身份"的调用。
+  - 前端从不发送 `X-User-Id`，所以真实流量永远走"不带头 → 放行"这一支。
+  - 默认 compose 把 8002 绑在 `0.0.0.0`，同网段任何人都能访问且无需任何凭据。
+
+  **部署约束**：只在本机运行，或改绑定到 `127.0.0.1`：在 `update_version/`
+  下建 `.env` 写 `V4_PORT=8002` 不会改变绑定地址，需要改 `docker-compose.yml`
+  的 `ports` 为 `"127.0.0.1:${V4_PORT:-8002}:8002"`。
+  **不要把 v2 暴露到公网**，除非先补上下面任一种认证。
+
+  *需要认证时*：
+  1. 单管理员密码 + 会话 cookie —— 复用主项目 `api/v1/endpoints/auth.py` 的
+     router（`ADMIN_AUTH_ENABLED` 语义），登录态写签名 cookie。
+  2. 多用户 JWT —— 登录签发 token，服务端验签得到可信 `user_id`，
+     再把所有端点的身份来源从请求头改为 token。
+  无论选哪种，都要把"不带头就放行"的分支一起改掉，否则认证只覆盖了一半路径。
 - **Playwright / Chromium**：**已不再需要**。同花顺热度榜改为直接解析服务端
   渲染的静态 HTML（三个 rank 页实测每页 50 行、GBK），`parse_ths_rank_html`
   覆盖解析，容器内实测抓到 131 只。镜像因此不需要 Chromium（省 ~400MB）。
