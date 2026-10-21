@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from decimal import Decimal, InvalidOperation
 
+from core.json_utils import _extract_json_object
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -233,22 +235,15 @@ def deep_research(code: str, name: str = "", *, prefer_provider: Optional[str] =
     llm_resp = _call_llm(prompt, SYSTEM_PROMPT)
     content = llm_resp.get("content", "")
 
-    # 4. 解析 JSON 输出（容错：剥离可能的 markdown 代码块）
+    # 4. 解析 JSON 输出（容错：剥离代码块 + 括号配平抽取，见 _extract_json_object）
     parsed: Dict[str, Any] = {}
-    try:
-        cleaned = content.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("```", 2)[1]
-            if cleaned.startswith("json"):
-                cleaned = cleaned[4:]
-            cleaned = cleaned.strip()
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start >= 0 and end > start:
-            parsed = json.loads(cleaned[start : end + 1])
-    except Exception as e:
-        logger.warning("deep_research JSON parse failed: %s", e)
-        parsed = {"parse_error": str(e)[:200], "raw": content[:1000]}
+    extracted = _extract_json_object(content)
+    if extracted is not None:
+        parsed = extracted
+    elif content.strip():
+        # 确实抽不出结构化结果时保留原文片段，便于排障（不再把异常信息当主体）
+        parsed = {"parse_error": "no complete JSON object found", "raw": content[:1000]}
+        logger.warning("deep_research: 未从 LLM 输出中抽到 JSON 对象（content_len=%s）", len(content))
     # ★ 迭代3 修复：静默空解析不可诊断。content 为空或完全不含 JSON 时
     #   parsed 停留 {} 且无日志，报告降级为"数据不足"却查不到原因。
     if not parsed:

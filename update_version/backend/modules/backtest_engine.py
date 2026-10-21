@@ -15,6 +15,7 @@ from datetime import datetime
 from db.migrate import get_conn
 from core import llm_router as llm
 from core.data_source import fetch_kline_with_fallback
+from core.json_utils import _extract_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -297,18 +298,13 @@ def compile_strategy(
 
     content = result["content"].strip()
 
-    # 尝试提取 JSON（处理 markdown code block）
-    if "```" in content:
-        # 提取 ```json ... ``` 或 ``` ... ```
-        import re
-        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
-        if m:
-            content = m.group(1)
-
-    # 解析
-    try:
-        dsl = json.loads(content)
-    except json.JSONDecodeError:
+    # 解析 DSL
+    # ★ 探索期修复(合法编译结果被丢弃)：旧实现先剥 markdown 围栏，再把**整段
+    #   content** 丢给 json.loads。LLM 只要多说一句（"好的，编译结果如下："
+    #   或 JSON 之后的解释），解析就失败，用户看到「LLM 返回的不是有效 JSON」，
+    #   而 DSL 其实就完整躺在响应里。改用与 deep_research 同一个括号配平抽取器。
+    dsl = _extract_json_object(content)
+    if dsl is None:
         dsl = {"error": "LLM 返回的不是有效 JSON", "raw": content[:500]}
 
     # ★ 探索期修复：LLM 输出类型不可信（value 可能是 "1.5" 字符串、period 可能是
