@@ -1104,6 +1104,12 @@ def market_review_compare_alias_get(date_a: str, date_b: str):
     """GET 版对比（前端 compareMarketReviews 用 GET + query params）"""
     if date_a == date_b:
         raise HTTPException(400, "date_a 和 date_b 不能相同")
+    # ★ 探索期修复(参数未校验)：此前非法日期（"not-a-date"）直接查库，
+    #   查不到就报 404「复盘记录 not-a-date 不存在」—— 把"格式错"伪装成
+    #   "数据不存在"，调用方无从判断是自己传错还是真的没数据。
+    #   与 POST 版和 _safe_review_date 保持一致，格式错一律 400。
+    date_a = _safe_review_date(date_a)
+    date_b = _safe_review_date(date_b)
     a = db_history.get_market_review(date_a)
     b = db_history.get_market_review(date_b)
     if not a:
@@ -1339,8 +1345,12 @@ async def market_review_batch(payload: dict, request: Request = None):
         days = int(days)
     except (TypeError, ValueError):
         raise HTTPException(400, "days 必须是整数")
-    if days < 1 or days > 365:
-        raise HTTPException(400, "days 必须在 1~365 之间")
+    # ★ 上限取主项目的同一个值（api/v1/endpoints/hot_analysis.py 里
+    #   `days = max(1, min(req.days, 30))`，schema 也是 le=30）。
+    #   此前我给的是 1~365 —— 比主项目宽 12 倍，`days=50` 会真的跑 50 次
+    #   全市场抓取（实测写出了 50 条复盘记录）。上限必须与业务约束一致。
+    if days < 1 or days > 30:
+        raise HTTPException(400, "days 必须在 1~30 之间（与主项目一致，避免滥用）")
     return await asyncio.to_thread(
         market_review_service.batch_generate_recent_reviews,
         days=days, region=region, persist=persist,

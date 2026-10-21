@@ -396,10 +396,19 @@ def _open_conn(db_alias: str):
         from db.migrate import get_conn
         return get_conn()
     elif db_alias == "history":
+        import os
         import sqlite3
         from pathlib import Path
-        # 与 update_version/db/history.py 一致的路径
-        _DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "history.db"
+        # ★ 探索期修复(路径硬编码)：这里原先写死
+        #   `parent.parent.parent / "data" / "history.db"`，**完全不看
+        #   V4_HISTORY_PATH**。于是 db/history.py 通过环境变量把库指到别处时
+        #   （测试隔离、多实例部署），写入走的是重定向后的库，而本函数仍读
+        #   原始路径 —— 分享功能会「分享成功但点开 404」。
+        #   实测：test_phase13 里 save_analysis_run 写进临时库，
+        #   cm._load_resource("analysis_run", id) 却去原始库查，返回 None。
+        #   改为与 db/history.py 相同的解析规则。
+        _db_dir = Path(__file__).resolve().parent.parent.parent / "data"
+        _DB_PATH = Path(os.environ.get("V4_HISTORY_PATH") or (_db_dir / "history.db"))
         if not _DB_PATH.exists():
             logger.warning("history.db not found at %s", _DB_PATH)
             return None

@@ -59,7 +59,8 @@ def test_generate_rejects_bad_review_date(bad) -> None:
 
 @pytest.mark.parametrize(
     "days,expected_fragment",
-    [([7], "整数"), ({"a": 1}, "整数"), ("abc", "整数"), (0, "1~365"), (-1, "1~365"), (9999, "1~365")],
+    # 上限与主项目一致（api/v1/endpoints/hot_analysis.py 用 min(days, 30)）
+    [([7], "整数"), ({"a": 1}, "整数"), ("abc", "整数"), (0, "1~30"), (-1, "1~30"), (9999, "1~30")],
 )
 def test_batch_rejects_bad_days(days, expected_fragment: str) -> None:
     eh = _hot()
