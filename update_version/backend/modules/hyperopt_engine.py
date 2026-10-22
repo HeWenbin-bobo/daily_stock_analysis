@@ -41,6 +41,48 @@ def _conn():
             conn.close()
         except Exception:
             pass
+
+
+def _effective_cpu_count() -> int:
+    """本进程实际可用的 CPU 数（感知容器 cgroup 限额）。
+
+    ★ 探索期修复(容器内超配)：原先直接用 `multiprocessing.cpu_count()` 决定
+      hyperopt 的 joblib 并行度。但 Python 标准库**不读 cgroup 配额** ——
+      实测 `docker run --cpus=1.5` 时 cpu_count() 仍返回宿主机的 8
+      （`sched_getaffinity` 也返回 8，因为 cpuset 没限）。于是会按 7 路并行跑
+      CPU 密集的 optuna 评估，在 1.5 核的限额下严重超配：线程互相抢占，
+      整个容器（含 Web 端点）都被拖慢，hyperopt 本身也更慢。
+
+      依次尝试 cgroup v2 的 `cpu.max`、cgroup v1 的 cfs_quota/cfs_period，
+      取整后至少为 1；都不适用时回落到 cpu_count()。
+    """
+    try:
+        # cgroup v2: "<quota> <period>"，quota 可能是 "max"（不限）
+        with open("/sys/fs/cgroup/cpu.max", encoding="ascii") as f:
+            parts = f.read().split()
+        if len(parts) == 2 and parts[0] != "max":
+            quota, period = int(parts[0]), int(parts[1])
+            if quota > 0 and period > 0:
+                return max(1, round(quota / period))
+    except (OSError, ValueError):
+        pass
+
+    try:
+        # cgroup v1: cfs_quota_us / cfs_period_us，quota = -1 表示不限
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", encoding="ascii") as f:
+            quota = int(f.read().strip())
+        with open("/sys/fs/cgroup/cpu/cpu.cfs_period_us", encoding="ascii") as f:
+            period = int(f.read().strip())
+        if quota > 0 and period > 0:
+            return max(1, round(quota / period))
+    except (OSError, ValueError):
+        pass
+
+    import multiprocessing
+
+    return max(1, multiprocessing.cpu_count())
+
+
 from core.data_source import fetch_kline_with_fallback
 from modules import backtest_engine as be
 
@@ -325,8 +367,7 @@ def run_hyperopt(
         import joblib
         n_jobs = int(os.environ.get("HYPEROPT_JOBS", "0") or 0)  # 0/负 → 自动
         if n_jobs <= 0:
-            import multiprocessing
-            n_jobs = min(max(1, multiprocessing.cpu_count() - 1), 8)
+            n_jobs = min(max(1, _effective_cpu_count() - 1), 8)
 
         def _evaluate_one(trial_params: tuple) -> Dict[str, Any]:
             """单个参数组合的评估（joblib worker 内调用）。"""
