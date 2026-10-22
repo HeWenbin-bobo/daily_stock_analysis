@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1792469785752,
+  "lastScanned": 1792608062930,
   "projectRoot": "F:\\daily_stock_analysis",
   "techStack": {
     "languages": [
@@ -60,7 +60,7 @@
       "path": "api",
       "purpose": "API routes",
       "fileCount": 3,
-      "lastAccessed": 1792469785628,
+      "lastAccessed": 1792608062689,
       "keyFiles": [
         "app.py",
         "deps.py",
@@ -71,14 +71,14 @@
       "path": "apps",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1792469785628,
+      "lastAccessed": 1792608062689,
       "keyFiles": []
     },
     "bot": {
       "path": "bot",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1792469785646,
+      "lastAccessed": 1792608062709,
       "keyFiles": [
         "dispatcher.py",
         "handler.py",
@@ -90,7 +90,7 @@
       "path": "daily_stock_analysis",
       "purpose": null,
       "fileCount": 20,
-      "lastAccessed": 1792469785647,
+      "lastAccessed": 1792608062711,
       "keyFiles": [
         "AGENTS.md",
         "CLAUDE.md",
@@ -102,21 +102,21 @@
     "data": {
       "path": "data",
       "purpose": "Data files",
-      "fileCount": 10,
-      "lastAccessed": 1792469785648,
+      "fileCount": 9,
+      "lastAccessed": 1792608062713,
       "keyFiles": [
         "history.db",
-        "market_review.lock",
         "stock_analysis.db",
         "stock_analysis.history.db",
-        "test_cron.db"
+        "test_cron.db",
+        "test_cron2.db"
       ]
     },
     "data_provider": {
       "path": "data_provider",
       "purpose": null,
       "fileCount": 23,
-      "lastAccessed": 1792469785648,
+      "lastAccessed": 1792608062713,
       "keyFiles": [
         "adaptive_throttle.py",
         "akshare_fetcher.py",
@@ -129,7 +129,7 @@
       "path": "docker",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1792469785648,
+      "lastAccessed": 1792608062713,
       "keyFiles": [
         "docker-compose.yml",
         "Dockerfile",
@@ -141,7 +141,7 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 52,
-      "lastAccessed": 1792469785649,
+      "lastAccessed": 1792608062714,
       "keyFiles": [
         "agent-stream-events.md",
         "agent-trajectory-eval.md",
@@ -154,14 +154,14 @@
       "path": "evals",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1792469785649,
+      "lastAccessed": 1792608062714,
       "keyFiles": []
     },
     "logs": {
       "path": "logs",
       "purpose": null,
       "fileCount": 122,
-      "lastAccessed": 1792469785651,
+      "lastAccessed": 1792608062784,
       "keyFiles": [
         "api_server_20260703.log",
         "api_server_20260705.log",
@@ -174,27 +174,27 @@
       "path": "longbridge_tokens",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1792469785651,
+      "lastAccessed": 1792608062785,
       "keyFiles": []
     },
     "reports": {
       "path": "reports",
       "purpose": null,
-      "fileCount": 29,
-      "lastAccessed": 1792469785652,
+      "fileCount": 30,
+      "lastAccessed": 1792608062785,
       "keyFiles": [
         "etf_rotation_20261013.md",
         "etf_rotation_20261016.md",
+        "etf_rotation_20261020.md",
         "market_review_20260522.md",
-        "market_review_20260617.md",
-        "market_review_20260622.md"
+        "market_review_20260617.md"
       ]
     },
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 25,
-      "lastAccessed": 1792469785652,
+      "lastAccessed": 1792608062785,
       "keyFiles": [
         "build-all-macos.sh",
         "build-all.ps1",
@@ -207,7 +207,7 @@
       "path": "src",
       "purpose": "Source code",
       "fileCount": 30,
-      "lastAccessed": 1792469785653,
+      "lastAccessed": 1792608062786,
       "keyFiles": [
         "analysis_context_pack_overview.py",
         "analysis_context_pack_prompt.py",
@@ -220,7 +220,7 @@
       "path": "static",
       "purpose": "Static files",
       "fileCount": 4,
-      "lastAccessed": 1792469785654,
+      "lastAccessed": 1792608062786,
       "keyFiles": [
         "build-info.json",
         "index.html",
@@ -232,14 +232,14 @@
       "path": "stock_analysis",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1792469785654,
+      "lastAccessed": 1792608062787,
       "keyFiles": []
     },
     "strategies": {
       "path": "strategies",
       "purpose": null,
       "fileCount": 16,
-      "lastAccessed": 1792469785655,
+      "lastAccessed": 1792608062787,
       "keyFiles": [
         "bottom_volume.yaml",
         "box_oscillation.yaml",
@@ -252,7 +252,7 @@
       "path": "templates",
       "purpose": null,
       "fileCount": 4,
-      "lastAccessed": 1792469785656,
+      "lastAccessed": 1792608062787,
       "keyFiles": [
         "report_brief.j2",
         "report_markdown.j2",
@@ -264,7 +264,7 @@
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 302,
-      "lastAccessed": 1792469785657,
+      "lastAccessed": 1792608062788,
       "keyFiles": [
         "conftest.py",
         "litellm_stub.py",
@@ -277,7 +277,7 @@
       "path": "update_version",
       "purpose": null,
       "fileCount": 6,
-      "lastAccessed": 1792469785658,
+      "lastAccessed": 1792608062788,
       "keyFiles": [
         "docker-compose.yml",
         "Dockerfile",
@@ -290,7 +290,7 @@
       "path": "__pycache__",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1792469785658,
+      "lastAccessed": 1792608062789,
       "keyFiles": [
         "main.cpython-312.pyc",
         "server.cpython-312.pyc",
@@ -301,7 +301,7 @@
       "path": "docs\\assets",
       "purpose": "Static assets",
       "fileCount": 20,
-      "lastAccessed": 1792469785661,
+      "lastAccessed": 1792608062791,
       "keyFiles": [
         "2026-01-10_155341_daily_analysis.gif",
         "alert-center-p5-web.png",
@@ -312,14 +312,14 @@
       "path": "src\\assets",
       "purpose": "Static assets",
       "fileCount": 0,
-      "lastAccessed": 1792469785662,
+      "lastAccessed": 1792608062792,
       "keyFiles": []
     },
     "static\\assets": {
       "path": "static\\assets",
       "purpose": "Static assets",
       "fileCount": 45,
-      "lastAccessed": 1792469785663,
+      "lastAccessed": 1792608062927,
       "keyFiles": [
         "AlertsPage-CsI1Jv1W.js",
         "AppPage-G2MMhfID.js",
@@ -330,14 +330,14 @@
       "path": "tests\\fixtures",
       "purpose": "Test fixtures",
       "fileCount": 0,
-      "lastAccessed": 1792469785664,
+      "lastAccessed": 1792608062929,
       "keyFiles": []
     },
     "update_version\\data": {
       "path": "update_version\\data",
       "purpose": "Data files",
       "fileCount": 1,
-      "lastAccessed": 1792469785664,
+      "lastAccessed": 1792608062930,
       "keyFiles": [
         "history.db"
       ]
