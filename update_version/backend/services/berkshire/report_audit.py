@@ -44,32 +44,10 @@ _CTX = Context(prec=28, rounding=ROUND_HALF_EVEN)
 # 符号位涵盖 ASCII 正负号、Unicode 减号(U+2212)、en-dash(U+2013)、全角正负号。
 _SIGN = r'[+\-−–－＋]?'
 
-_PATTERNS = [
-    # 百分比
-    (r'(' + _SIGN + r'[\d,，\.]+)\s*%',                        '%',    'percent'),
-    # 亿元/亿美元/亿港元
-    (r'(' + _SIGN + r'[\d,，\.]+)\s*亿(元|美元|港元|RMB|USD|HKD)?', '亿',    'hundred_million'),
-    # 倍数 PE/PB/PS
-    (r'(' + _SIGN + r'[\d,，\.]+)\s*[xX倍]',                   'x',    'multiple'),
-    # 万亿
-    (r'(' + _SIGN + r'[\d,，\.]+)\s*万亿',                      '万亿', 'trillion'),
-    # 美元绝对值（B/T）
-    (r'\$\s*(' + _SIGN + r'[\d,，\.]+)\s*([BMT亿])',             '$',    'usd_abs'),
-    # 纯整数（如市值、收入、用户数等，出现在表格 | 里）
-    (r'\|\s*[~约]?\$?(' + _SIGN + r'[\d,，\.]+)\s*\|',          '',     'table_num'),
-]
-
-_LABEL_RE = re.compile(
-    r'(?P<label>[^\|\n：:]{2,25})[：:\s]+[~约]?\$?(?P<num>' + _SIGN + r'[\d,，\.]+)'
-    r'\s*(?P<unit>亿[元美港]?元?|万亿|[xX倍]|%|[BMT])?'
-)
-
-_TABLE_ROW_RE = re.compile(
-    r'\|\s*(?P<label>[^|]{1,40})\s*\|\s*[~约]?\$?(?P<num>' + _SIGN + r'[\d,，\.]+)'
-    r'\s*(?P<unit>亿[元美港]?元?|万亿|[xX倍]|%|[BMT])?\s*\|'
-)
-
-
+# ★ 探索期清理(死代码)：此处原有 _PATTERNS / _LABEL_RE / _TABLE_ROW_RE 三个正则，
+#   实际抽取走的是 _parse_md_tables()（内联 re.search）与 _KV_LABEL_RE，
+#   这三个从未被引用。删掉以免"注释说是主要来源、实现却在别处"的误导。
+#   实测抽取能力未受影响：KV 行 + 表格共 5 个数据点、单位（亿元/%/倍）均正确。
 def _clean_num(s: str) -> float:
     """把带逗号、中文逗号、各类正负号的数字字符串转为 float。
 
@@ -114,11 +92,7 @@ def _is_valid_label(label: str) -> bool:
 
 
 # 两列表格行：| 标签 | 数值 unit |（专为财务报告的 KV 表设计）
-_KV_TABLE_RE = re.compile(
-    r'^\|\s*(?P<label>[^|*\n]{2,40}?)\s*\|\s*[~约]?\$?(?P<num>' + _SIGN + r'[\d,，\.]+)\s*'
-    r'(?P<unit>亿[元美港]?元?|万亿|[xX倍]|%|[BMT亿])?\s*[\|（\(]'
-)
-
+# ★ 探索期清理(死代码)：_KV_TABLE_RE 从未被引用（表格解析在 _parse_md_tables）。
 # 带标签的 KV 行：标签：数值 单位
 _KV_LABEL_RE = re.compile(
     r'(?P<label>[\u4e00-\u9fa5A-Za-z][^\|\n：:*]{1,30})[：:]\s*[~约]?\$?'

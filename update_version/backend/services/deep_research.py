@@ -37,14 +37,9 @@ MASTERS = [
     {"key": "li", "name": "李录", "dimension": "文明趋势 / 长期主义"},
 ]
 
-DIMENSIONS = [
-    "生意质量（段永平）",
-    "护城河（巴菲特）",
-    "管理层（段永平+巴菲特）",
-    "最大风险（芒格）",
-    "文明趋势（李录）",
-    "估值（巴菲特+段永平）",
-]
+# ★ 探索期清理(死代码)：这里原有一份 DIMENSIONS 列表，内容与上方 MASTERS 的
+#   "dimension" 字段重复，且从未被引用（实际拼 prompt 用的是 MASTERS）。
+#   删掉以免两处定义漂移。
 
 # 信息丰富度评级（ai-berkshire 规范）
 INFO_RICHNESS_RULES = {
