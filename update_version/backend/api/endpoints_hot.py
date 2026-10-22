@@ -43,6 +43,10 @@ from fastapi import APIRouter, HTTPException, Query, Request  # noqa: E402
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Web Chat 意图解析的输入上限。真实聊天消息通常 10~30 字，2000 字符已非常宽松；
+# 不加限制时 10 万字符的消息也会走完整解析（实测返回 200），配合限流缺失可刷配额。
+_WEB_INTENT_MAX_MESSAGE_CHARS = 2000
+
 
 # 主项目 hot_analysis 模块缓存（★ 修复(M5)：避免每次请求重新 exec_module + 清 sys.modules）
 # 旧实现：10+ 调用点每次请求都重新 import api.v1.endpoints.hot_analysis 并 del sys.modules 中的
@@ -1541,16 +1545,36 @@ def _resolution_to_dict(t) -> dict:
 
 
 @router.post("/web-intent/resolve")
-def web_intent_resolve(payload: dict):
+def web_intent_resolve(payload: dict, request: Request = None):
     """解析一条 Web Chat 消息 → 二维任务组列表（组=子消息，组内平权任务）。
 
     body: {message, session_context?, request_context?}
     session_context: {recent_stocks?, pending_actions?, last_intent?}
     request_context: {current_stock_code?}
     """
+    # ★ 探索期修复(限流配置未接线)：core/ratelimit.LIMITS 里早就配了
+    #   "/api/v2/web-intent/resolve": (30, 60)，但端点从来没调用过 check_limit ——
+    #   配置存在却永不生效。这是个会触发 LLM 的端点，不设限意味着可以无限调用。
+    #   实测连打 35 次全部 200（限额 30/min 应该在第 31 次开始 429）。
+    from core import ratelimit
+    if request is not None:
+        ip = ratelimit.get_client_ip(request)
+        allowed, retry = ratelimit.check_limit(ip, "/api/v2/web-intent/resolve")
+        if not allowed:
+            raise HTTPException(429, f"限流，{retry}s 后重试")
+
     message = payload.get("message")
     if not isinstance(message, str):
         raise HTTPException(400, "message 必填（字符串）")
+    # ★ 探索期修复(无长度上限)：message 直接进意图解析（可能触发 LLM）。
+    #   实测 10 万字符的消息返回 200 并走完全流程 —— 单条请求就能把极长文本
+    #   塞进模型，配合上面的限流缺失可被用来刷配额。
+    #   2000 字符远超真实聊天消息（一句话查股 ≈ 10~30 字），足够宽松。
+    if len(message) > _WEB_INTENT_MAX_MESSAGE_CHARS:
+        raise HTTPException(
+            400,
+            f"message 过长（{len(message)} 字符），上限 {_WEB_INTENT_MAX_MESSAGE_CHARS}",
+        )
 
     def _run():
         resolver = _get_intent_resolver()
