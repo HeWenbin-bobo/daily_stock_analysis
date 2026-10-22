@@ -228,8 +228,38 @@ def init(db_path: str = "v2_dev.db") -> Optional[Any]:
 def shutdown() -> None:
     global _scheduler
     if _scheduler:
-        _scheduler.shutdown(wait=False)
-        _scheduler = None
+        # ★ 探索期修复(fd 不释放)：`shutdown(wait=False)` 只停调度器，
+        #   SQLAlchemyJobStore 内部的 Engine 连接池不会跟着释放 —— 实测
+        #   shutdown 后仍有 3 个 v2_dev.db 句柄（db + wal + shm 那套），
+        #   要等 gc.collect() 才归 0（Engine 与 Pool 之间有循环引用）。
+        #
+        #   ★ 顺序很关键：必须在 `shutdown()` **之后** dispose。scheduler.shutdown()
+        #     自身会写 jobstore 状态，会重新从池里取连接；先 dispose 会被它覆盖
+        #     （实测：先 dispose 归 0，shutdown 后又回到 3）。
+        scheduler = _scheduler
+        try:
+            scheduler.shutdown(wait=False)
+        finally:
+            _dispose_jobstore_engines(scheduler)
+            _scheduler = None
+
+
+def _dispose_jobstore_engines(scheduler) -> None:
+    """尽量释放 jobstore 持有的数据库连接池。
+
+    只在能安全拿到 engine 时操作；任何异常都吞掉——shutdown 路径不该因为
+    清理失败而抛错（那会让进程关停失败，是更严重的问题）。
+    """
+    try:
+        for store in (getattr(scheduler, "_jobstores", None) or {}).values():
+            engine = getattr(store, "engine", None)
+            if engine is not None:
+                try:
+                    engine.dispose()
+                except Exception as e:  # noqa: BLE001
+                    logger.debug("jobstore engine.dispose failed: %s", e)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("dispose jobstore engines failed: %s", e)
 
 
 # ============================================================================
