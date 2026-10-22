@@ -99,6 +99,11 @@ docs/specs/
 **/node_modules/
 .playwright-mcp/
 e2e_*.png
+# e2e_smoke.py 的截图输出目录。之前的 `e2e_*.png` 规则匹配不到它 ——
+# 那批文件叫 01_home.png / FAIL.png，只有目录名带 e2e_。
+# 脚本里 SHOT_DIR 还是硬编码绝对路径（F:/stock_analysis/...），每次跑都会
+# 重新生成，属于纯产物。
+_e2e_screenshots/
 
 # 本地探针/取证输出
 fail_groups.txt
